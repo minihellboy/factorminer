@@ -1,0 +1,13 @@
+{
+  "iteration": 3,
+  "library_size": 21,
+  "memory_version": 3,
+  "budget": {
+    "llm_calls": 3,
+    "llm_prompt_tokens": 0,
+    "llm_completion_tokens": 0,
+    "compute_seconds": 33.95530390739441,
+    "max_llm_calls": 0,
+    "max_wall_seconds": 0
+  }
+}

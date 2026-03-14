@@ -174,8 +174,11 @@ def ne_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
 LOGICAL_OPS = {
     "IfElse": (if_else_np, if_else_torch),
     "Greater": (greater_np, greater_torch),
+    "GreaterEqual": (greater_equal_np, greater_equal_torch),
     "Less": (less_np, less_torch),
+    "LessEqual": (less_equal_np, less_equal_torch),
     "Equal": (equal_np, equal_torch),
+    "Ne": (ne_np, ne_torch),
     "And": (and_np, and_torch),
     "Or": (or_np, or_torch),
     "Not": (not_np, not_torch),

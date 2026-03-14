@@ -17,6 +17,7 @@ import os
 import shutil
 import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import numpy as np
@@ -734,3 +735,308 @@ class TestSessionPersistence:
         loop2.load_session(checkpoint_path)
         # Memory should have been restored
         assert loop2.memory is not None
+
+
+# ===========================================================================
+# Checkpoint / Resume tests (Phase 1f)
+# ===========================================================================
+
+class TestCheckpointResume:
+    """Tests for the checkpoint/resume functionality."""
+
+    def test_checkpoint_creates_files(
+        self, test_config, synthetic_data, mock_provider, tmp_dir
+    ):
+        """Verify that save_session creates all expected checkpoint files."""
+        test_config.output_dir = tmp_dir
+        data_tensor, returns = synthetic_data
+
+        loop = RalphLoop(
+            config=test_config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=mock_provider,
+        )
+        loop.run(max_iterations=2)
+        checkpoint_path = loop.save_session()
+
+        checkpoint_dir = Path(checkpoint_path)
+        assert checkpoint_dir.exists()
+        assert (checkpoint_dir / "library.json").exists()
+        assert (checkpoint_dir / "memory.json").exists()
+        assert (checkpoint_dir / "loop_state.json").exists()
+        assert (checkpoint_dir / "session.json").exists()
+
+        # Verify loop_state.json contains expected keys
+        with open(checkpoint_dir / "loop_state.json") as f:
+            loop_state = json.load(f)
+        assert "iteration" in loop_state
+        assert "library_size" in loop_state
+        assert "memory_version" in loop_state
+        assert "budget" in loop_state
+        assert loop_state["iteration"] == loop.iteration
+        assert loop_state["library_size"] == loop.library.size
+        assert loop_state["budget"]["llm_calls"] == loop.budget.llm_calls
+
+    def test_resume_continues_from_checkpoint(
+        self, test_config, synthetic_data, mock_provider, tmp_dir
+    ):
+        """Verify that resuming continues from the saved iteration."""
+        test_config.output_dir = tmp_dir
+        test_config.target_library_size = 200  # High target so loop doesn't stop early
+        data_tensor, returns = synthetic_data
+
+        # Run 2 iterations, then save
+        loop1 = RalphLoop(
+            config=test_config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=mock_provider,
+        )
+        loop1.run(max_iterations=2, target_size=200)
+        saved_iteration = loop1.iteration
+        saved_library_size = loop1.library.size
+        loop1.save_session()
+
+        # Create a new loop and resume from checkpoint
+        loop2 = RalphLoop(
+            config=test_config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=MockProvider(cycle=True),
+        )
+        assert loop2.iteration == 0  # Starts fresh
+
+        # Resume should load the saved state and continue
+        library = loop2.run(max_iterations=4, target_size=200, resume=True)
+
+        # loop2 should have continued from iteration 2, running up to 4
+        assert loop2.iteration > saved_iteration
+        assert loop2.iteration <= 4
+
+    def test_resume_preserves_library(
+        self, test_config, synthetic_data, mock_provider, tmp_dir
+    ):
+        """Verify that library factors are preserved across resume."""
+        test_config.output_dir = tmp_dir
+        test_config.ic_threshold = 0.0001
+        test_config.correlation_threshold = 0.99
+        data_tensor, returns = synthetic_data
+
+        # Run and save
+        loop1 = RalphLoop(
+            config=test_config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=mock_provider,
+        )
+        loop1.run(max_iterations=3, target_size=100)
+        saved_factors = {
+            fid: f.to_dict() for fid, f in loop1.library.factors.items()
+        }
+        saved_size = loop1.library.size
+        loop1.save_session()
+
+        # Load into a new loop
+        loop2 = RalphLoop(
+            config=test_config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=MockProvider(cycle=True),
+        )
+        checkpoint_dir = os.path.join(tmp_dir, "checkpoint")
+        loop2.load_session(checkpoint_dir)
+
+        # Library should have the same factors
+        assert loop2.library.size == saved_size
+        for fid, f_dict in saved_factors.items():
+            assert fid in loop2.library.factors
+            restored = loop2.library.factors[fid].to_dict()
+            assert restored["name"] == f_dict["name"]
+            assert restored["formula"] == f_dict["formula"]
+            assert restored["ic_mean"] == pytest.approx(f_dict["ic_mean"])
+
+    def test_resume_preserves_memory(
+        self, test_config, synthetic_data, mock_provider, tmp_dir
+    ):
+        """Verify that experience memory is preserved across resume."""
+        test_config.output_dir = tmp_dir
+        data_tensor, returns = synthetic_data
+
+        # Run and save
+        loop1 = RalphLoop(
+            config=test_config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=mock_provider,
+        )
+        loop1.run(max_iterations=2)
+        saved_version = loop1.memory.version
+        saved_patterns = len(loop1.memory.success_patterns)
+        saved_forbidden = len(loop1.memory.forbidden_directions)
+        saved_insights = len(loop1.memory.insights)
+        loop1.save_session()
+
+        # Load into a new loop
+        loop2 = RalphLoop(
+            config=test_config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=MockProvider(cycle=True),
+        )
+        checkpoint_dir = os.path.join(tmp_dir, "checkpoint")
+        loop2.load_session(checkpoint_dir)
+
+        # Memory state should match
+        assert loop2.memory.version == saved_version
+        assert len(loop2.memory.success_patterns) == saved_patterns
+        assert len(loop2.memory.forbidden_directions) == saved_forbidden
+        assert len(loop2.memory.insights) == saved_insights
+
+    def test_checkpoint_interval_controls_frequency(
+        self, test_config, synthetic_data, mock_provider, tmp_dir
+    ):
+        """Verify checkpoint_interval controls how often checkpoints are saved."""
+        test_config.output_dir = tmp_dir
+        data_tensor, returns = synthetic_data
+
+        # With interval=2, checkpoint should be written at iterations 2 and 4
+        loop = RalphLoop(
+            config=test_config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=mock_provider,
+            checkpoint_interval=2,
+        )
+        loop.run(max_iterations=3)
+
+        checkpoint_dir = Path(tmp_dir) / "checkpoint"
+        # After 3 iterations with interval=2, checkpoint at iteration 2
+        # should have created the directory
+        assert checkpoint_dir.exists()
+
+        # Verify the checkpoint was written at least once
+        with open(checkpoint_dir / "loop_state.json") as f:
+            state = json.load(f)
+        # The last checkpoint should be at iteration 2 (since 3 is not
+        # divisible by 2, the checkpoint at iter 2 is the latest one)
+        assert state["iteration"] == 2
+
+    def test_checkpoint_disabled(
+        self, test_config, synthetic_data, mock_provider, tmp_dir
+    ):
+        """Verify checkpoint_interval=0 disables automatic checkpointing."""
+        test_config.output_dir = tmp_dir
+        data_tensor, returns = synthetic_data
+
+        loop = RalphLoop(
+            config=test_config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=mock_provider,
+            checkpoint_interval=0,
+        )
+        loop.run(max_iterations=2)
+
+        checkpoint_dir = Path(tmp_dir) / "checkpoint"
+        # No automatic checkpoint should have been created
+        assert not checkpoint_dir.exists()
+
+    def test_resume_from_classmethod(
+        self, test_config, synthetic_data, mock_provider, tmp_dir
+    ):
+        """Verify the resume_from classmethod works correctly."""
+        test_config.output_dir = tmp_dir
+        data_tensor, returns = synthetic_data
+
+        # Run and save
+        loop1 = RalphLoop(
+            config=test_config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=mock_provider,
+        )
+        loop1.run(max_iterations=2)
+        checkpoint_path = loop1.save_session()
+
+        # Use classmethod to resume
+        loop2 = RalphLoop.resume_from(
+            checkpoint_path=checkpoint_path,
+            config=test_config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=MockProvider(cycle=True),
+        )
+
+        assert loop2.iteration == loop1.iteration
+        assert loop2.library.size == loop1.library.size
+
+    def test_resume_restores_budget(
+        self, test_config, synthetic_data, mock_provider, tmp_dir
+    ):
+        """Verify that budget tracker state is preserved across resume."""
+        test_config.output_dir = tmp_dir
+        data_tensor, returns = synthetic_data
+
+        loop1 = RalphLoop(
+            config=test_config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=mock_provider,
+        )
+        loop1.run(max_iterations=2)
+        saved_llm_calls = loop1.budget.llm_calls
+        saved_compute = loop1.budget.compute_seconds
+        loop1.save_session()
+
+        loop2 = RalphLoop(
+            config=test_config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=MockProvider(cycle=True),
+        )
+        checkpoint_dir = os.path.join(tmp_dir, "checkpoint")
+        loop2.load_session(checkpoint_dir)
+
+        assert loop2.budget.llm_calls == saved_llm_calls
+        assert loop2.budget.compute_seconds == pytest.approx(
+            saved_compute, abs=0.1
+        )
+
+    def test_backward_compatible_no_checkpoint(
+        self, test_config, synthetic_data, mock_provider, tmp_dir
+    ):
+        """Verify run() works without checkpoint/resume (backward compat)."""
+        test_config.output_dir = tmp_dir
+        data_tensor, returns = synthetic_data
+
+        # Disable checkpointing entirely
+        loop = RalphLoop(
+            config=test_config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=mock_provider,
+            checkpoint_interval=0,
+        )
+        library = loop.run(max_iterations=2)
+
+        assert isinstance(library, FactorLibrary)
+        assert loop.iteration == 2
+
+    def test_resume_no_checkpoint_is_noop(
+        self, test_config, synthetic_data, mock_provider, tmp_dir
+    ):
+        """Verify resume=True with no existing checkpoint just starts fresh."""
+        test_config.output_dir = tmp_dir
+        data_tensor, returns = synthetic_data
+
+        loop = RalphLoop(
+            config=test_config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=mock_provider,
+        )
+        # resume=True but no checkpoint exists -- should work normally
+        library = loop.run(max_iterations=1, resume=True)
+        assert isinstance(library, FactorLibrary)
+        assert loop.iteration == 1

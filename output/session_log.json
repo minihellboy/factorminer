@@ -2,67 +2,306 @@
   "iterations": [
     {
       "iteration": 1,
-      "candidates_generated": 5,
-      "ic_passed": 5,
-      "correlation_passed": 5,
-      "admitted": 5,
-      "rejected": 0,
+      "candidates_generated": 10,
+      "ic_passed": 10,
+      "correlation_passed": 10,
+      "admitted": 8,
+      "rejected": 2,
       "replaced": 0,
-      "library_size": 5,
-      "best_ic": 0.285030303030303,
-      "mean_ic": 0.2634987012987013,
-      "elapsed_seconds": 0.11654281616210938,
-      "timestamp": 1771405061.188399,
-      "yield_rate": 1.0
+      "library_size": 8,
+      "best_ic": 0.09915475715908265,
+      "mean_ic": 0.08310766175212174,
+      "elapsed_seconds": 3.6131629943847656,
+      "timestamp": 1773479410.3166158,
+      "yield_rate": 0.8
+    },
+    {
+      "iteration": 2,
+      "candidates_generated": 10,
+      "ic_passed": 10,
+      "correlation_passed": 10,
+      "admitted": 8,
+      "rejected": 2,
+      "replaced": 0,
+      "library_size": 16,
+      "best_ic": 0.09696837419212863,
+      "mean_ic": 0.08311993806653753,
+      "elapsed_seconds": 12.328114032745361,
+      "timestamp": 1773479422.732955,
+      "yield_rate": 0.8
+    },
+    {
+      "iteration": 3,
+      "candidates_generated": 10,
+      "ic_passed": 10,
+      "correlation_passed": 10,
+      "admitted": 5,
+      "rejected": 5,
+      "replaced": 0,
+      "library_size": 21,
+      "best_ic": 0.10294606960696069,
+      "mean_ic": 0.08537808422773527,
+      "elapsed_seconds": 18.014026880264282,
+      "timestamp": 1773479440.960744,
+      "yield_rate": 0.5
     }
   ],
   "factors": [
     {
       "expression": "Neg(CsRank(Delta($close, 5)))",
-      "ic": 0.22024675324675325,
-      "icir": 0.050849307784560566,
+      "ic": 0.07927647825511297,
+      "icir": 0.031213926182396472,
       "max_correlation": 0.0,
       "admitted": true,
-      "timestamp": 1771405061.1885881
+      "timestamp": 1773479410.3167622
     },
     {
       "expression": "CsZScore(Div(Sub($volume, Mean($volume, 20)), Std($volume, 20)))",
-      "ic": 0.2614848484848485,
-      "icir": 0.0008583023863348376,
+      "ic": 0.07568904385428522,
+      "icir": 0.0171522894319022,
       "max_correlation": 0.0,
-      "admitted": true,
-      "timestamp": 1771405061.1886048
+      "admitted": false,
+      "rejection_reason": "Intra-batch deduplication (correlated with higher-IC batch member)",
+      "timestamp": 1773479410.3168051
     },
     {
       "expression": "Div(Sub($high, $low), Add($high, $low))",
-      "ic": 0.27042424242424246,
-      "icir": -0.11835911964357007,
+      "ic": 0.09915475715908265,
+      "icir": -0.0041156260805220715,
       "max_correlation": 0.0,
       "admitted": true,
-      "timestamp": 1771405061.1886132
+      "timestamp": 1773479410.316811
     },
     {
       "expression": "CsRank(Div(Sub($close, $vwap), $vwap))",
-      "ic": 0.28030735930735934,
-      "icir": -0.02848032909770418,
+      "ic": 0.09747973594954686,
+      "icir": 0.03875803986861778,
       "max_correlation": 0.0,
       "admitted": true,
-      "timestamp": 1771405061.188622
+      "timestamp": 1773479410.3168168
     },
     {
       "expression": "Neg(Skew($returns, 20))",
-      "ic": 0.285030303030303,
-      "icir": 0.16051442952397005,
+      "ic": 0.07962658765876587,
+      "icir": -0.008085918236420124,
       "max_correlation": 0.0,
       "admitted": true,
-      "timestamp": 1771405061.188639
+      "timestamp": 1773479410.316822
+    },
+    {
+      "expression": "CsRank(Div(Sub($close, $open), Sub($high, $low)))",
+      "ic": 0.07745415824147545,
+      "icir": 0.006762731939363697,
+      "max_correlation": 0.0,
+      "admitted": true,
+      "timestamp": 1773479410.3168268
+    },
+    {
+      "expression": "Neg(Corr($volume, $close, 10))",
+      "ic": 0.07934510185712448,
+      "icir": 0.055662654591397014,
+      "max_correlation": 0.0,
+      "admitted": true,
+      "timestamp": 1773479410.316833
+    },
+    {
+      "expression": "CsZScore(Delta(Mean($amt, 5), 5))",
+      "ic": 0.08295743860100295,
+      "icir": 0.02863886672618605,
+      "max_correlation": 0.0,
+      "admitted": true,
+      "timestamp": 1773479410.31684
+    },
+    {
+      "expression": "CsRank(Sub(Div($close, TsMax($high, 20)), 1))",
+      "ic": 0.08096327067576498,
+      "icir": -0.04010967432530774,
+      "max_correlation": 0.0,
+      "admitted": true,
+      "timestamp": 1773479410.316847
+    },
+    {
+      "expression": "Neg(CsRank(EMA($returns, 10)))",
+      "ic": 0.07913004526905595,
+      "icir": 0.04977756944845184,
+      "max_correlation": 0.0,
+      "admitted": false,
+      "rejection_reason": "Intra-batch deduplication (correlated with higher-IC batch member)",
+      "timestamp": 1773479410.3168519
+    },
+    {
+      "expression": "Div(Std($returns, 5), Std($returns, 20))",
+      "ic": 0.07860367599886241,
+      "icir": 0.006263002022476274,
+      "max_correlation": 0.08924850905048924,
+      "admitted": true,
+      "timestamp": 1773479422.733118
+    },
+    {
+      "expression": "Neg(CsZScore(Div(Sub($close, SMA($close, 20)), SMA($close, 20))))",
+      "ic": 0.09249899739472944,
+      "icir": 0.008122693414704119,
+      "max_correlation": 0.4419156759750822,
+      "admitted": true,
+      "timestamp": 1773479422.7331378
+    },
+    {
+      "expression": "CsRank(TsLinRegSlope($volume, 20))",
+      "ic": 0.08010661066106611,
+      "icir": 0.01422685778886948,
+      "max_correlation": 0.35576946468035575,
+      "admitted": true,
+      "timestamp": 1773479422.7331479
+    },
+    {
+      "expression": "CsRank(Div(Sub($close, TsMin($close, 20)), Sub(TsMax($close, 20), TsMin($close, 20))))",
+      "ic": 0.08025469480815817,
+      "icir": -0.07224764154408427,
+      "max_correlation": 0.7069206314570845,
+      "admitted": false,
+      "rejection_reason": "Max correlation 0.7069 >= threshold 0.5 with existing library factor",
+      "timestamp": 1773479422.7331572
+    },
+    {
+      "expression": "CsRank(Neg(Corr(CsRank($amt), CsRank($volume), 10)))",
+      "ic": 0.08304286755206133,
+      "icir": -0.02030896134903436,
+      "max_correlation": 0.10186320465040385,
+      "admitted": true,
+      "timestamp": 1773479422.733166
+    },
+    {
+      "expression": "CsZScore(WMA($returns, 10))",
+      "ic": 0.07914348169510828,
+      "icir": -0.04765262772921661,
+      "max_correlation": 0.8566012772356669,
+      "admitted": false,
+      "rejection_reason": "Max correlation 0.8566 >= threshold 0.5 with existing library factor",
+      "timestamp": 1773479422.7331789
+    },
+    {
+      "expression": "Neg(Decay(Div(Sub($high, $low), $close), 10))",
+      "ic": 0.09501386873381215,
+      "icir": 0.04014810634694955,
+      "max_correlation": 0.49241112298602563,
+      "admitted": true,
+      "timestamp": 1773479422.7331882
+    },
+    {
+      "expression": "CsRank(Std(Resid($close, $volume, 20), 10))",
+      "ic": 0.07687299836455462,
+      "icir": -0.02579043113444038,
+      "max_correlation": 0.2395318031803182,
+      "admitted": true,
+      "timestamp": 1773479422.733196
+    },
+    {
+      "expression": "CsZScore(Div(Sub($open, Delay($close, 1)), Delay($close, 1)))",
+      "ic": 0.09696837419212863,
+      "icir": -0.059935765978338565,
+      "max_correlation": 0.14002254734491493,
+      "admitted": true,
+      "timestamp": 1773479422.733205
+    },
+    {
+      "expression": "Neg(CsRank(Log(Div($amt, $volume))))",
+      "ic": 0.06869381126489403,
+      "icir": 0.049432829966832084,
+      "max_correlation": 0.08195284983043755,
+      "admitted": true,
+      "timestamp": 1773479422.733213
+    },
+    {
+      "expression": "CsRank(Mul(Beta($returns, $volume, 20), Delta($close, 10)))",
+      "ic": 0.08261848684868486,
+      "icir": 0.00800864867730355,
+      "max_correlation": 0.24706296825108712,
+      "admitted": true,
+      "timestamp": 1773479440.960876
+    },
+    {
+      "expression": "Neg(CsRank(Sum($returns, 5)))",
+      "ic": 0.07831197665221068,
+      "icir": 0.04331302671418986,
+      "max_correlation": 0.9523791409443975,
+      "admitted": false,
+      "rejection_reason": "Max correlation 0.9524 >= threshold 0.5 with existing library factor",
+      "timestamp": 1773479440.960893
+    },
+    {
+      "expression": "CsZScore(Neg(Kurt($returns, 20)))",
+      "ic": 0.08268914391439144,
+      "icir": 0.06413877290498726,
+      "max_correlation": 0.13133480848084808,
+      "admitted": true,
+      "timestamp": 1773479440.960901
+    },
+    {
+      "expression": "CsRank(TsLinRegSlope(Div($close, $vwap), 20))",
+      "ic": 0.10294606960696069,
+      "icir": 0.07115905628158137,
+      "max_correlation": 0.4306121921963507,
+      "admitted": true,
+      "timestamp": 1773479440.9609091
+    },
+    {
+      "expression": "CsRank(Div(Sub($close, KAMA($close, 10)), Std($close, 10)))",
+      "ic": 0.07870625138666171,
+      "icir": -0.06714201121776675,
+      "max_correlation": 0.8157194628553767,
+      "admitted": false,
+      "rejection_reason": "Max correlation 0.8157 >= threshold 0.5 with existing library factor",
+      "timestamp": 1773479440.960916
+    },
+    {
+      "expression": "CsZScore(CsRank(Delta(CumSum(Mul($volume, Sign(Delta($close, 1)))), 5)))",
+      "ic": 0.08291024244124819,
+      "icir": 0.06250587210927076,
+      "max_correlation": 0.16525168606473667,
+      "admitted": true,
+      "timestamp": 1773479440.960923
+    },
+    {
+      "expression": "CsRank(Div(Sub($close, TsMin($low, 10)), Std($close, 10)))",
+      "ic": 0.07919731452103126,
+      "icir": -0.04063943160360862,
+      "max_correlation": 0.7852904320735108,
+      "admitted": false,
+      "rejection_reason": "Max correlation 0.7853 >= threshold 0.5 with existing library factor",
+      "timestamp": 1773479440.96093
+    },
+    {
+      "expression": "Neg(CsRank(Div(Sub($close, HMA($close, 20)), $close)))",
+      "ic": 0.10030061070623192,
+      "icir": -0.01563695402937665,
+      "max_correlation": 0.5296565954382155,
+      "admitted": false,
+      "rejection_reason": "Max correlation 0.5297 >= threshold 0.5 with existing library factor",
+      "timestamp": 1773479440.960937
+    },
+    {
+      "expression": "CsZScore(IfElse(Greater($returns, 0), Std($returns, 10), Neg(Std($returns, 10))))",
+      "ic": 0.08313630546728142,
+      "icir": 0.026372477546576917,
+      "max_correlation": 0.2941163688670295,
+      "admitted": true,
+      "timestamp": 1773479440.9609442
+    },
+    {
+      "expression": "CsRank(Sub(DEMA($close, 5), DEMA($close, 20)))",
+      "ic": 0.08296444073265041,
+      "icir": -0.0035965167125777196,
+      "max_correlation": 0.805033424554577,
+      "admitted": false,
+      "rejection_reason": "Max correlation 0.8050 >= threshold 0.5 with existing library factor",
+      "timestamp": 1773479440.960951
     }
   ],
   "summary": {
-    "total_iterations": 1,
-    "total_candidates": 5,
-    "total_admitted": 5,
-    "overall_yield_rate": 1.0,
-    "final_library_size": 5
+    "total_iterations": 3,
+    "total_candidates": 30,
+    "total_admitted": 21,
+    "overall_yield_rate": 0.7,
+    "final_library_size": 21
   }
 }

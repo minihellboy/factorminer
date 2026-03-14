@@ -31,8 +31,11 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 
 from factorminer.core.factor_library import Factor, FactorLibrary
+from factorminer.core.library_io import save_library, load_library
 from factorminer.core.parser import try_parse
 from factorminer.core.session import MiningSession
+from factorminer.core.types import FEATURES
+from factorminer.memory.experience_memory import ExperienceMemoryManager
 from factorminer.memory.memory_store import ExperienceMemory
 from factorminer.memory.retrieval import retrieve_memory
 from factorminer.memory.formation import form_memory
@@ -476,18 +479,47 @@ class ValidationPipeline:
 
         return results
 
+    def _build_data_dict(self) -> Dict[str, np.ndarray]:
+        """Convert data_tensor to a dict mapping feature names to (M, T) arrays.
+
+        Handles two formats:
+          - dict: already maps ``"$close"`` etc. to ``(M, T)`` arrays.
+          - np.ndarray of shape ``(M, T, F)``: sliced along the last axis
+            using the canonical ``FEATURES`` ordering.
+        """
+        if isinstance(self.data_tensor, dict):
+            return self.data_tensor
+
+        # (M, T, F) numpy array — map each feature slice
+        data_dict: Dict[str, np.ndarray] = {}
+        n_features = self.data_tensor.shape[2] if self.data_tensor.ndim == 3 else 0
+        for i, feat_name in enumerate(FEATURES):
+            if i < n_features:
+                data_dict[feat_name] = self.data_tensor[:, :, i]
+        return data_dict
+
     def _compute_signals(self, tree) -> Optional[np.ndarray]:
         """Compute factor signals from expression tree on the data tensor.
 
-        Attempts to use the full operator backend.  Falls back to
-        deterministic pseudo-signals for end-to-end testing when operator
-        backends are not yet available.
+        Evaluates the parsed expression tree against the market data using
+        the tree's own ``evaluate()`` method which dispatches through the
+        numpy operator implementations.
+
+        Falls back to deterministic pseudo-signals only when evaluation
+        raises an unexpected error (and logs a warning).
         """
         try:
-            from factorminer.operators import evaluate_tree
-            return evaluate_tree(tree, self.data_tensor)
-        except (ImportError, AttributeError):
-            pass
+            data_dict = self._build_data_dict()
+            result = tree.evaluate(data_dict)
+            return result
+        except Exception as exc:
+            formula_str = tree.to_string()
+            logger.warning(
+                "Expression evaluation failed for '%s': %s  — "
+                "falling back to pseudo-signals",
+                formula_str,
+                exc,
+            )
 
         # Fallback: deterministic pseudo-signals from formula hash
         M, T = self.returns.shape
@@ -562,6 +594,7 @@ class RalphLoop:
         llm_provider: Optional[LLMProvider] = None,
         memory: Optional[ExperienceMemory] = None,
         library: Optional[FactorLibrary] = None,
+        checkpoint_interval: int = 1,
     ) -> None:
         """Initialize the Ralph Loop.
 
@@ -579,10 +612,14 @@ class RalphLoop:
             Pre-populated experience memory.  Defaults to empty memory.
         library : FactorLibrary, optional
             Pre-populated factor library.  Defaults to empty library.
+        checkpoint_interval : int
+            Save a checkpoint every N iterations.  Set to 0 to disable
+            automatic checkpointing.  Default is 1 (every iteration).
         """
         self.config = config
         self.data_tensor = data_tensor
         self.returns = returns
+        self.checkpoint_interval = checkpoint_interval
 
         # Core components
         self.library = library or FactorLibrary(
@@ -590,6 +627,7 @@ class RalphLoop:
             ic_threshold=getattr(config, "ic_threshold", 0.04),
         )
         self.memory = memory or ExperienceMemory()
+        self.memory_manager: Optional[ExperienceMemoryManager] = None
         self.generator = FactorGenerator(
             llm_provider=llm_provider,
             prompt_builder=PromptBuilder(),
@@ -624,6 +662,7 @@ class RalphLoop:
         target_size: Optional[int] = None,
         max_iterations: Optional[int] = None,
         callback: Optional[Callable[[int, Dict[str, Any]], None]] = None,
+        resume: bool = False,
     ) -> FactorLibrary:
         """Run the complete mining loop.
 
@@ -635,6 +674,9 @@ class RalphLoop:
             Maximum iterations before stopping.  Defaults to config value.
         callback : callable, optional
             Called after each iteration with (iteration_number, stats_dict).
+        resume : bool
+            If True, attempt to load the latest checkpoint from the output
+            directory before starting the loop.  Default is False.
 
         Returns
         -------
@@ -648,22 +690,35 @@ class RalphLoop:
             self.config, "max_iterations", 200
         )
         batch_size = getattr(self.config, "batch_size", 40)
+        output_dir = getattr(self.config, "output_dir", "./output")
+
+        # Resume from existing checkpoint if requested
+        if resume:
+            checkpoint_dir = Path(output_dir) / "checkpoint"
+            if checkpoint_dir.exists():
+                self.load_session(str(checkpoint_dir))
+                logger.info(
+                    "Resuming from iteration %d with %d factors",
+                    self.iteration,
+                    self.library.size,
+                )
 
         # Initialize session
-        session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self._session = MiningSession(
-            session_id=session_id,
-            config=self._serialize_config(),
-            output_dir=getattr(self.config, "output_dir", "./output"),
-        )
+        if self._session is None:
+            session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self._session = MiningSession(
+                session_id=session_id,
+                config=self._serialize_config(),
+                output_dir=output_dir,
+            )
 
         # Initialize session logger
-        output_dir = getattr(self.config, "output_dir", "./output")
         self._session_logger = MiningSessionLogger(output_dir)
         self._session_logger.log_session_start({
             "target_library_size": target_size,
             "batch_size": batch_size,
             "max_iterations": max_iterations,
+            "resumed_from_iteration": self.iteration if resume else 0,
         })
         self._session_logger.start_progress(max_iterations)
 
@@ -704,7 +759,10 @@ class RalphLoop:
                 )
 
                 # Periodic checkpoint
-                if self.iteration % 10 == 0:
+                if (
+                    self.checkpoint_interval > 0
+                    and self.iteration % self.checkpoint_interval == 0
+                ):
                     self._checkpoint()
 
             if self.budget.is_exhausted():
@@ -714,6 +772,8 @@ class RalphLoop:
             logger.warning("Mining interrupted by user at iteration %d", self.iteration)
             if self._session:
                 self._session.status = "interrupted"
+            # Save checkpoint on interrupt so session can be resumed
+            self._checkpoint()
         finally:
             elapsed = time.time() - loop_start
             if self._session_logger:
@@ -1010,42 +1070,64 @@ class RalphLoop:
     def save_session(self, path: Optional[str] = None) -> str:
         """Save the full mining session state for resume.
 
-        Saves the session metadata, library (as JSON), and memory (as JSON).
+        Saves the factor library (via ``save_library``), experience memory,
+        budget tracker state, session metadata, and the loop state to a
+        ``checkpoint`` directory inside the output directory.
 
         Parameters
         ----------
         path : str, optional
-            Directory for the checkpoint.  Defaults to config output_dir.
+            Directory for the checkpoint.  Defaults to
+            ``{output_dir}/checkpoint``.
 
         Returns
         -------
         str
-            Path to the saved session directory.
+            Path to the saved checkpoint directory.
         """
-        save_dir = Path(path or getattr(self.config, "output_dir", "./output"))
-        checkpoint_dir = save_dir / f"checkpoint_iter{self.iteration}"
+        if path is not None:
+            checkpoint_dir = Path(path)
+            # If caller passed a dir that doesn't end with "checkpoint*",
+            # nest inside it for backward compatibility
+            if not checkpoint_dir.name.startswith("checkpoint"):
+                checkpoint_dir = checkpoint_dir / f"checkpoint_iter{self.iteration}"
+        else:
+            output_dir = getattr(self.config, "output_dir", "./output")
+            checkpoint_dir = Path(output_dir) / "checkpoint"
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-        # Save library
-        lib_path = str(checkpoint_dir / "library.json")
-        self.reporter.export_library(self.library, lib_path)
+        # Save library using library_io (JSON + optional signal cache)
+        lib_base = str(checkpoint_dir / "library")
+        save_library(self.library, lib_base, save_signals=True)
 
-        # Save memory
+        # Save memory using ExperienceMemoryManager if available,
+        # otherwise fall back to raw ExperienceMemory serialization
         mem_path = str(checkpoint_dir / "memory.json")
-        with open(mem_path, "w") as f:
-            json.dump(self.memory.to_dict(), f, indent=2, default=str)
+        if self.memory_manager is not None:
+            self.memory_manager.save(mem_path)
+        else:
+            with open(mem_path, "w") as f:
+                json.dump(self.memory.to_dict(), f, indent=2, default=str)
 
-        # Save session
+        # Save session metadata
         if self._session:
-            self._session.library_path = lib_path
+            self._session.library_path = lib_base
             self._session.memory_path = mem_path
             self._session.save(checkpoint_dir / "session.json")
 
-        # Save loop state
-        loop_state = {
+        # Save loop state (iteration counter + budget tracker)
+        loop_state: Dict[str, Any] = {
             "iteration": self.iteration,
             "library_size": self.library.size,
             "memory_version": self.memory.version,
+            "budget": {
+                "llm_calls": self.budget.llm_calls,
+                "llm_prompt_tokens": self.budget.llm_prompt_tokens,
+                "llm_completion_tokens": self.budget.llm_completion_tokens,
+                "compute_seconds": self.budget.compute_seconds,
+                "max_llm_calls": self.budget.max_llm_calls,
+                "max_wall_seconds": self.budget.max_wall_seconds,
+            },
         }
         with open(checkpoint_dir / "loop_state.json", "w") as f:
             json.dump(loop_state, f, indent=2)
@@ -1056,6 +1138,10 @@ class RalphLoop:
     def load_session(self, path: str) -> None:
         """Resume a mining session from a saved checkpoint.
 
+        Restores the factor library (via ``load_library``), experience
+        memory, budget tracker state, iteration counter, and session
+        metadata from the checkpoint directory.
+
         Parameters
         ----------
         path : str
@@ -1063,12 +1149,35 @@ class RalphLoop:
         """
         checkpoint_dir = Path(path)
 
-        # Load loop state
+        # Load loop state (iteration counter + budget)
         loop_state_path = checkpoint_dir / "loop_state.json"
         if loop_state_path.exists():
             with open(loop_state_path) as f:
                 loop_state = json.load(f)
             self.iteration = loop_state.get("iteration", 0)
+
+            # Restore budget tracker state
+            budget_data = loop_state.get("budget", {})
+            if budget_data:
+                self.budget.llm_calls = budget_data.get(
+                    "llm_calls", self.budget.llm_calls
+                )
+                self.budget.llm_prompt_tokens = budget_data.get(
+                    "llm_prompt_tokens", self.budget.llm_prompt_tokens
+                )
+                self.budget.llm_completion_tokens = budget_data.get(
+                    "llm_completion_tokens", self.budget.llm_completion_tokens
+                )
+                self.budget.compute_seconds = budget_data.get(
+                    "compute_seconds", self.budget.compute_seconds
+                )
+                self.budget.max_llm_calls = budget_data.get(
+                    "max_llm_calls", self.budget.max_llm_calls
+                )
+                self.budget.max_wall_seconds = budget_data.get(
+                    "max_wall_seconds", self.budget.max_wall_seconds
+                )
+
             logger.info(
                 "Resuming from iteration %d (library=%d)",
                 self.iteration,
@@ -1078,9 +1187,13 @@ class RalphLoop:
         # Load memory
         mem_path = checkpoint_dir / "memory.json"
         if mem_path.exists():
-            with open(mem_path) as f:
-                mem_data = json.load(f)
-            self.memory = ExperienceMemory.from_dict(mem_data)
+            if self.memory_manager is not None:
+                self.memory_manager.load(mem_path)
+                self.memory = self.memory_manager.memory
+            else:
+                with open(mem_path) as f:
+                    mem_data = json.load(f)
+                self.memory = ExperienceMemory.from_dict(mem_data)
             logger.info(
                 "Loaded memory (version=%d, %d success, %d forbidden, %d insights)",
                 self.memory.version,
@@ -1089,20 +1202,18 @@ class RalphLoop:
                 len(self.memory.insights),
             )
 
-        # Load library from JSON and reconstruct
-        lib_path = checkpoint_dir / "library.json"
-        if lib_path.exists():
-            with open(lib_path) as f:
-                lib_data = json.load(f)
-            factors = lib_data.get("factors", [])
-            for f_dict in factors:
-                factor = Factor.from_dict(f_dict)
-                # Note: signals are not persisted, so correlation matrix
-                # cannot be rebuilt.  New admissions will work incrementally.
-                self.library.factors[factor.id] = factor
-                self.library._next_id = max(
-                    self.library._next_id, factor.id + 1
-                )
+        # Load library using library_io (supports signals + correlation matrix)
+        lib_json_path = checkpoint_dir / "library.json"
+        if lib_json_path.exists():
+            lib_base = str(checkpoint_dir / "library")
+            loaded_library = load_library(lib_base)
+            # Merge into current library (preserving thresholds from config)
+            self.library.factors = loaded_library.factors
+            self.library._next_id = loaded_library._next_id
+            self.library._id_to_index = loaded_library._id_to_index
+            self.library.correlation_matrix = loaded_library.correlation_matrix
+            # Update the pipeline reference so it uses the restored library
+            self.pipeline.library = self.library
             logger.info("Loaded library with %d factors", self.library.size)
 
         # Load session metadata
@@ -1110,6 +1221,40 @@ class RalphLoop:
         if session_path.exists():
             self._session = MiningSession.load(session_path)
             self._session.status = "running"
+
+    @classmethod
+    def resume_from(
+        cls,
+        checkpoint_path: str,
+        config: Any,
+        data_tensor: np.ndarray,
+        returns: np.ndarray,
+        llm_provider: Optional[LLMProvider] = None,
+        **kwargs: Any,
+    ) -> "RalphLoop":
+        """Create a RalphLoop and restore state from a checkpoint.
+
+        Parameters
+        ----------
+        checkpoint_path : str
+            Path to the checkpoint directory.
+        config, data_tensor, returns, llm_provider
+            Same as ``__init__``.
+
+        Returns
+        -------
+        RalphLoop
+            A loop ready to call ``run()`` that continues from the checkpoint.
+        """
+        loop = cls(
+            config=config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=llm_provider,
+            **kwargs,
+        )
+        loop.load_session(checkpoint_path)
+        return loop
 
     # ------------------------------------------------------------------
     # Internal helpers

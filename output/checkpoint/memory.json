@@ -1,0 +1,304 @@
+{
+  "state": {
+    "library_size": 21,
+    "recent_admissions": [
+      {
+        "factor_id": "beta_momentum",
+        "formula": "CsRank(Mul(Beta($returns, $volume, 20), Delta($close, 10)))",
+        "ic": 0.08261848684868486,
+        "batch": 3
+      },
+      {
+        "factor_id": "kurtosis_signal",
+        "formula": "CsZScore(Neg(Kurt($returns, 20)))",
+        "ic": 0.08268914391439144,
+        "batch": 3
+      },
+      {
+        "factor_id": "vwap_trend",
+        "formula": "CsRank(TsLinRegSlope(Div($close, $vwap), 20))",
+        "ic": 0.10294606960696069,
+        "batch": 3
+      },
+      {
+        "factor_id": "cumulative_flow",
+        "formula": "CsZScore(CsRank(Delta(CumSum(Mul($volume, Sign(Delta($close, 1)))), 5)))",
+        "ic": 0.08291024244124819,
+        "batch": 3
+      },
+      {
+        "factor_id": "conditional_vol",
+        "formula": "CsZScore(IfElse(Greater($returns, 0), Std($returns, 10), Neg(Std($returns, 10))))",
+        "ic": 0.08313630546728142,
+        "batch": 3
+      }
+    ],
+    "recent_rejections": [
+      {
+        "factor_id": "rank_reversal",
+        "formula": "Neg(CsRank(Sum($returns, 5)))",
+        "reason": "Max correlation 0.9524 >= threshold 0.5 with existing library factor",
+        "max_correlation": 0.9523791409443975,
+        "batch": 3
+      },
+      {
+        "factor_id": "adaptive_mean",
+        "formula": "CsRank(Div(Sub($close, KAMA($close, 10)), Std($close, 10)))",
+        "reason": "Max correlation 0.8157 >= threshold 0.5 with existing library factor",
+        "max_correlation": 0.8157194628553767,
+        "batch": 3
+      },
+      {
+        "factor_id": "range_breakout",
+        "formula": "CsRank(Div(Sub($close, TsMin($low, 10)), Std($close, 10)))",
+        "reason": "Max correlation 0.7853 >= threshold 0.5 with existing library factor",
+        "max_correlation": 0.7852904320735108,
+        "batch": 3
+      },
+      {
+        "factor_id": "hull_deviation",
+        "formula": "Neg(CsRank(Div(Sub($close, HMA($close, 20)), $close)))",
+        "reason": "Max correlation 0.5297 >= threshold 0.5 with existing library factor",
+        "max_correlation": 0.5296565954382155,
+        "batch": 3
+      },
+      {
+        "factor_id": "dema_crossover",
+        "formula": "CsRank(Sub(DEMA($close, 5), DEMA($close, 20)))",
+        "reason": "Max correlation 0.8050 >= threshold 0.5 with existing library factor",
+        "max_correlation": 0.805033424554577,
+        "batch": 3
+      }
+    ],
+    "domain_saturation": {
+      "Other": 0.31,
+      "PV Corr Interaction": 0.0,
+      "Smoothed Efficiency Rank": 0.3,
+      "Trend Regression Adaptive": 0.0,
+      "Amt Efficiency Rank Interaction": 0.0,
+      "Logical Or Extreme Regimes": 0.0
+    },
+    "admission_log": [
+      {
+        "batch": 1,
+        "admitted": 8,
+        "rejected": 2,
+        "admission_rate": 0.8
+      },
+      {
+        "batch": 2,
+        "admitted": 8,
+        "rejected": 2,
+        "admission_rate": 0.8
+      },
+      {
+        "batch": 3,
+        "admitted": 5,
+        "rejected": 5,
+        "admission_rate": 0.5
+      }
+    ]
+  },
+  "success_patterns": [
+    {
+      "name": "Novel: Neg+CsRank+Delta",
+      "description": "Pattern derived from admitted factor with IC=0.0793",
+      "template": "Neg(CsRank(Delta($close, 5)))",
+      "success_rate": "Low",
+      "example_factors": [
+        "momentum_reversal"
+      ],
+      "occurrence_count": 4
+    },
+    {
+      "name": "Novel: Div+Sub+Add",
+      "description": "Pattern derived from admitted factor with IC=0.0992",
+      "template": "Div(Sub($high, $low), Add($high, $low))",
+      "success_rate": "Low",
+      "example_factors": [
+        "price_range_ratio"
+      ],
+      "occurrence_count": 4
+    },
+    {
+      "name": "Novel: CsRank+Div+Sub",
+      "description": "Pattern derived from admitted factor with IC=0.0975",
+      "template": "CsRank(Div(Sub($close, $vwap), $vwap))",
+      "success_rate": "Medium",
+      "example_factors": [
+        "vwap_deviation",
+        "intraday_momentum"
+      ],
+      "occurrence_count": 8
+    },
+    {
+      "name": "Novel: Neg+Skew",
+      "description": "Pattern derived from admitted factor with IC=0.0796",
+      "template": "Neg(Skew($returns, 20))",
+      "success_rate": "Low",
+      "example_factors": [
+        "return_skew"
+      ],
+      "occurrence_count": 4
+    },
+    {
+      "name": "PV Corr Interaction",
+      "description": "Pattern derived from admitted factor with IC=0.0793",
+      "template": "Neg(Corr($volume, $close, 10))",
+      "success_rate": "High",
+      "example_factors": [
+        "volume_price_corr",
+        "amt_volume_div",
+        "residual_vol",
+        "beta_momentum",
+        "cumulative_flow"
+      ],
+      "occurrence_count": 10
+    },
+    {
+      "name": "Novel: CsZScore+Delta+Mean",
+      "description": "Pattern derived from admitted factor with IC=0.0830",
+      "template": "CsZScore(Delta(Mean($amt, 5), 5))",
+      "success_rate": "Low",
+      "example_factors": [
+        "amt_acceleration"
+      ],
+      "occurrence_count": 4
+    },
+    {
+      "name": "Novel: CsRank+Sub+Div",
+      "description": "Pattern derived from admitted factor with IC=0.0810",
+      "template": "CsRank(Sub(Div($close, TsMax($high, 20)), 1))",
+      "success_rate": "Low",
+      "example_factors": [
+        "close_high_ratio"
+      ],
+      "occurrence_count": 4
+    },
+    {
+      "name": "Novel: Div+Std+Std",
+      "description": "Pattern derived from admitted factor with IC=0.0786",
+      "template": "Div(Std($returns, 5), Std($returns, 20))",
+      "success_rate": "Low",
+      "example_factors": [
+        "volatility_ratio"
+      ],
+      "occurrence_count": 2
+    },
+    {
+      "name": "Novel: Neg+CsZScore+Div",
+      "description": "Pattern derived from admitted factor with IC=0.0925",
+      "template": "Neg(CsZScore(Div(Sub($close, SMA($close, 20)), SMA($close, 20))))",
+      "success_rate": "Low",
+      "example_factors": [
+        "mean_reversion"
+      ],
+      "occurrence_count": 2
+    },
+    {
+      "name": "Trend Regression Adaptive",
+      "description": "Pattern derived from admitted factor with IC=0.0801",
+      "template": "CsRank(TsLinRegSlope($volume, 20))",
+      "success_rate": "Low",
+      "example_factors": [
+        "volume_trend",
+        "vwap_trend"
+      ],
+      "occurrence_count": 3
+    },
+    {
+      "name": "Novel: Neg+Decay+Div",
+      "description": "Pattern derived from admitted factor with IC=0.0950",
+      "template": "Neg(Decay(Div(Sub($high, $low), $close), 10))",
+      "success_rate": "Low",
+      "example_factors": [
+        "high_low_decay"
+      ],
+      "occurrence_count": 2
+    },
+    {
+      "name": "Novel: CsZScore+Div+Sub",
+      "description": "Pattern derived from admitted factor with IC=0.0970",
+      "template": "CsZScore(Div(Sub($open, Delay($close, 1)), Delay($close, 1)))",
+      "success_rate": "Low",
+      "example_factors": [
+        "open_gap"
+      ],
+      "occurrence_count": 2
+    },
+    {
+      "name": "Amt Efficiency Rank Interaction",
+      "description": "Pattern derived from admitted factor with IC=0.0687",
+      "template": "Neg(CsRank(Log(Div($amt, $volume))))",
+      "success_rate": "Low",
+      "example_factors": [
+        "log_turnover"
+      ],
+      "occurrence_count": 2
+    },
+    {
+      "name": "Novel: CsZScore+Neg+Kurt",
+      "description": "Pattern derived from admitted factor with IC=0.0827",
+      "template": "CsZScore(Neg(Kurt($returns, 20)))",
+      "success_rate": "Low",
+      "example_factors": [
+        "kurtosis_signal"
+      ],
+      "occurrence_count": 1
+    },
+    {
+      "name": "Logical Or Extreme Regimes",
+      "description": "Pattern derived from admitted factor with IC=0.0831",
+      "template": "CsZScore(IfElse(Greater($returns, 0), Std($returns, 10), Neg(Std($returns, 10))))",
+      "success_rate": "Low",
+      "example_factors": [
+        "conditional_vol"
+      ],
+      "occurrence_count": 1
+    }
+  ],
+  "forbidden_directions": [
+    {
+      "name": "VWAP Deviation variants",
+      "description": "Rejected due to: Max correlation 0.7069 >= threshold 0.5 with existing library factor",
+      "correlated_factors": [],
+      "typical_correlation": 0.7249235296393082,
+      "reason": "Max correlation 0.7069 >= threshold 0.5 with existing library factor",
+      "occurrence_count": 6
+    },
+    {
+      "name": "Standardized Returns/Amount",
+      "description": "Rejected due to: Max correlation 0.8566 >= threshold 0.5 with existing library factor",
+      "correlated_factors": [],
+      "typical_correlation": 0.8566012772356669,
+      "reason": "Max correlation 0.8566 >= threshold 0.5 with existing library factor",
+      "occurrence_count": 2
+    },
+    {
+      "name": "Simple Delta Reversal",
+      "description": "Rejected due to: Max correlation 0.9524 >= threshold 0.5 with existing library factor",
+      "correlated_factors": [],
+      "typical_correlation": 0.9523791409443975,
+      "reason": "Max correlation 0.9524 >= threshold 0.5 with existing library factor",
+      "occurrence_count": 1
+    }
+  ],
+  "insights": [
+    {
+      "insight": "Current direction is productive with high admission rate",
+      "evidence": "Batch 3: 5/10 admitted (50%)",
+      "batch_source": 3
+    },
+    {
+      "insight": "Operator 'Delta' is highly productive in current search",
+      "evidence": "Appeared in 3 admitted vs 0 rejected factors",
+      "batch_source": 3
+    },
+    {
+      "insight": "Feature '$returns' appears frequently in successful factors",
+      "evidence": "Present in 5/5 admitted factors",
+      "batch_source": 3
+    }
+  ],
+  "version": 3
+}

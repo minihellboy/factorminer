@@ -318,13 +318,13 @@ class FactorKnowledgeGraph:
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to a JSON-compatible dict via ``nx.node_link_data``."""
-        return nx.node_link_data(self._graph)
+        return nx.node_link_data(self._graph, edges="links")
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> FactorKnowledgeGraph:
         """Deserialize from a dict produced by :meth:`to_dict`."""
         kg = cls()
-        kg._graph = nx.node_link_graph(data)
+        kg._graph = nx.node_link_graph(data, edges="links")
         return kg
 
     def save(self, path: str | Path) -> None:

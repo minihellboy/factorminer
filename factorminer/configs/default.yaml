@@ -1,41 +1,144 @@
+# =============================================================================
+# FactorMiner Default Configuration
+# =============================================================================
+# This file provides sensible defaults for the FactorMiner mining pipeline.
+# Override any setting by providing a user config file via --config flag,
+# or by passing CLI options directly.
+#
+# Resolution order: defaults -> user config -> CLI overrides
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Data paths
+# ---------------------------------------------------------------------------
+# Path to market data CSV/Parquet/HDF5 file. Set to null to use mock data.
+data_path: null
+
+# Directory for all output artifacts (libraries, plots, logs).
+output_dir: "./output"
+
+# ---------------------------------------------------------------------------
+# Mining parameters (Ralph Loop)
+# ---------------------------------------------------------------------------
 mining:
+  # Target number of factors in the final library (paper: 110)
   target_library_size: 110
+
+  # Number of candidate factors to generate per iteration (paper: 40)
   batch_size: 40
+
+  # Maximum number of Ralph Loop iterations before stopping
   max_iterations: 200
+
+  # Minimum absolute IC for a factor to pass Stage 1 screening (paper: 0.04)
   ic_threshold: 0.04
+
+  # Minimum ICIR for factor quality filtering
   icir_threshold: 0.5
+
+  # Maximum pairwise |rho| allowed between library factors (paper: 0.5)
   correlation_threshold: 0.5
+
+  # Minimum IC required for a candidate to replace an existing factor
   replacement_ic_min: 0.10
+
+  # Replacement IC ratio: candidate IC must be >= ratio * existing IC
   replacement_ic_ratio: 1.3
 
+# ---------------------------------------------------------------------------
+# Evaluation backend
+# ---------------------------------------------------------------------------
 evaluation:
+  # Number of parallel workers for factor evaluation
   num_workers: 40
-  fast_screen_assets: 100
-  gpu_device: "cuda:0"
-  backend: "gpu"  # gpu, numpy, c
 
+  # Number of assets used in fast IC screening (Stage 1)
+  fast_screen_assets: 100
+
+  # GPU device identifier (used when backend is "gpu")
+  gpu_device: "cuda:0"
+
+  # Computation backend: "gpu" (fastest), "numpy" (CPU), or "c" (C extension)
+  backend: "gpu"
+
+# ---------------------------------------------------------------------------
+# Data loading
+# ---------------------------------------------------------------------------
 data:
+  # Market type: "a_shares", "crypto", etc.
   market: "a_shares"
+
+  # Asset universe filter: "CSI500", "CSI1000", "HS300", "Binance"
   universe: "CSI500"
+
+  # Bar frequency: "10min", "30min", "1h", "1d"
   frequency: "10min"
-  features: ["$open", "$high", "$low", "$close", "$volume", "$amt", "$vwap", "$returns"]
+
+  # Feature columns available for factor construction
+  features:
+    - "$open"
+    - "$high"
+    - "$low"
+    - "$close"
+    - "$volume"
+    - "$amt"
+    - "$vwap"
+    - "$returns"
+
+  # Training period [start, end] in ISO format
   train_period: ["2024-01-01", "2024-12-31"]
+
+  # Out-of-sample test period [start, end] in ISO format
   test_period: ["2025-01-01", "2025-12-31"]
 
+# ---------------------------------------------------------------------------
+# LLM provider settings
+# ---------------------------------------------------------------------------
 llm:
+  # Provider name: "openai", "anthropic", "google", or "mock"
   provider: "google"
+
+  # Model identifier (provider-specific)
+  # OpenAI:    "gpt-4o", "gpt-4", etc.
+  # Anthropic: "claude-sonnet-4-6", "claude-opus-4-6", etc.
+  # Google:    "gemini-2.0-flash", etc.
   model: "gemini-2.0-flash"
+
+  # API key for the chosen provider.
+  # Can also be set via environment variables:
+  #   OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY
+  api_key: null
+
+  # Sampling temperature for factor generation (higher = more creative)
   temperature: 0.8
+
+  # Maximum tokens in LLM response
   max_tokens: 4096
+
+  # Number of candidate factors requested per LLM call
   batch_candidates: 40
 
+# ---------------------------------------------------------------------------
+# Experience memory system
+# ---------------------------------------------------------------------------
 memory:
+  # Maximum number of success patterns to retain in memory
   max_success_patterns: 50
+
+  # Maximum number of failure patterns to retain in memory
   max_failure_patterns: 100
+
+  # Maximum number of distilled insights in memory
   max_insights: 30
+
+  # How often (in iterations) to consolidate memory
   consolidation_interval: 10
 
+# ---------------------------------------------------------------------------
+# Phase 2 advanced features (disabled by default)
+# ---------------------------------------------------------------------------
 phase2:
+  # Causal validation: Granger causality + intervention tests
   causal:
     enabled: false
     granger_max_lag: 5
@@ -46,6 +149,8 @@ phase2:
     robustness_threshold: 0.4
     granger_weight: 0.4
     intervention_weight: 0.6
+
+  # Regime-conditional evaluation (bull/bear/high-vol/low-vol)
   regime:
     enabled: false
     lookback_window: 60
@@ -54,12 +159,16 @@ phase2:
     volatility_percentile: 0.7
     min_regime_ic: 0.03
     min_regimes_passing: 2
+
+  # Strategy capacity estimation
   capacity:
     enabled: false
     base_capital_usd: 100000000.0
     ic_degradation_limit: 0.20
     net_icir_threshold: 0.3
     sigma_annual: 0.25
+
+  # Statistical significance testing (bootstrap + FDR)
   significance:
     enabled: false
     bootstrap_n_samples: 1000
@@ -67,6 +176,8 @@ phase2:
     fdr_level: 0.05
     deflated_sharpe_enabled: true
     min_deflated_sharpe: 0.0
+
+  # Multi-specialist debate-based generation
   debate:
     enabled: false
     num_specialists: 3
@@ -74,12 +185,16 @@ phase2:
     enable_critic: true
     top_k_after_critic: 40
     critic_temperature: 0.3
+
+  # Automatic operator invention
   auto_inventor:
     enabled: false
     invention_interval: 10
     max_proposals_per_round: 5
     min_ic_contribution: 0.03
     store_dir: "./output/custom_operators"
+
+  # Helix knowledge and memory system
   helix:
     enabled: false
     enable_knowledge_graph: false

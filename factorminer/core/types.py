@@ -243,8 +243,11 @@ def _build_operator_registry() -> Dict[str, OperatorSpec]:
     # ---- Logical / conditional --------------------------------------------
     _reg("IfElse", 3, L, EW, desc="if cond > 0 then x else y")
     _reg("Greater", 2, L, EW, desc="1.0 where x > y else 0.0")
+    _reg("GreaterEqual", 2, L, EW, desc="1.0 where x >= y else 0.0")
     _reg("Less", 2, L, EW, desc="1.0 where x < y else 0.0")
+    _reg("LessEqual", 2, L, EW, desc="1.0 where x <= y else 0.0")
     _reg("Equal", 2, L, EW, desc="1.0 where x == y else 0.0")
+    _reg("Ne", 2, L, EW, desc="1.0 where x != y else 0.0")
     _reg("And", 2, L, EW, desc="logical and")
     _reg("Or", 2, L, EW, desc="logical or")
     _reg("Not", 1, L, EW, desc="logical not")
