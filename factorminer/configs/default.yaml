@@ -140,6 +140,46 @@ memory:
   consolidation_interval: 10
 
 # ---------------------------------------------------------------------------
+# Benchmarking and reporting
+# ---------------------------------------------------------------------------
+benchmark:
+  # Execution lane: "paper" for strict reproduction, "research" for Helix extensions
+  mode: "paper"
+
+  # Global RNG seed for deterministic benchmark selection and synthesis
+  seed: 42
+
+  # Number of frozen factors selected on the freeze universe/train split
+  freeze_top_k: 40
+
+  # Universe used for Top-K freeze selection
+  freeze_universe: "CSI500"
+
+  # Universes included in benchmark reporting
+  report_universes:
+    - "CSI500"
+    - "CSI1000"
+    - "HS300"
+    - "Binance"
+
+  # Baselines enabled in the benchmark suite
+  baselines:
+    - "alpha101_classic"
+    - "alpha101_adapted"
+    - "random_exploration"
+    - "gplearn"
+    - "alphaforge_style"
+    - "alphaagent_style"
+    - "factor_miner"
+    - "factor_miner_no_memory"
+
+  # Transaction-cost pressure settings in basis points
+  cost_bps: [1.0, 4.0, 7.0, 10.0, 11.0]
+
+  # Reference panel shape [periods, assets] used for efficiency benchmarks
+  efficiency_panel_shape: [12610, 500]
+
+# ---------------------------------------------------------------------------
 # Phase 2 advanced features (disabled by default)
 # ---------------------------------------------------------------------------
 phase2:

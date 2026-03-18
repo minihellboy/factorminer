@@ -1,0 +1,28 @@
+output_dir: "./output/demo_local"
+
+evaluation:
+  backend: "numpy"
+  signal_failure_policy: "synthetic"
+  num_workers: 4
+  fast_screen_assets: 20
+
+mining:
+  batch_size: 8
+  max_iterations: 4
+  target_library_size: 16
+
+benchmark:
+  mode: "research"
+  freeze_top_k: 10
+  report_universes:
+    - "CSI500"
+
+phase2:
+  debate:
+    enabled: true
+    num_specialists: 2
+    candidates_per_specialist: 4
+    top_k_after_critic: 8
+  helix:
+    enabled: true
+    enable_canonicalization: true

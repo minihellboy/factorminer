@@ -1,0 +1,21 @@
+output_dir: "./output/helix_research"
+
+benchmark:
+  mode: "research"
+
+phase2:
+  causal:
+    enabled: true
+  regime:
+    enabled: true
+  capacity:
+    enabled: true
+  significance:
+    enabled: true
+  debate:
+    enabled: true
+  helix:
+    enabled: true
+    enable_knowledge_graph: true
+    enable_embeddings: true
+    enable_canonicalization: true

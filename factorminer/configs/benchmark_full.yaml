@@ -1,0 +1,33 @@
+output_dir: "./output/benchmark_full"
+
+evaluation:
+  backend: "numpy"
+  signal_failure_policy: "reject"
+
+benchmark:
+  mode: "paper"
+  baselines:
+    - "alpha101_classic"
+    - "alpha101_adapted"
+    - "random_exploration"
+    - "gplearn"
+    - "alphaforge_style"
+    - "alphaagent_style"
+    - "factor_miner"
+    - "factor_miner_no_memory"
+
+phase2:
+  causal:
+    enabled: false
+  regime:
+    enabled: false
+  capacity:
+    enabled: false
+  significance:
+    enabled: false
+  debate:
+    enabled: false
+  auto_inventor:
+    enabled: false
+  helix:
+    enabled: false

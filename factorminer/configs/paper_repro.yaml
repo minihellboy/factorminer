@@ -1,0 +1,24 @@
+output_dir: "./output/paper_repro"
+
+evaluation:
+  backend: "numpy"
+  signal_failure_policy: "reject"
+
+benchmark:
+  mode: "paper"
+
+phase2:
+  causal:
+    enabled: false
+  regime:
+    enabled: false
+  capacity:
+    enabled: false
+  significance:
+    enabled: false
+  debate:
+    enabled: false
+  auto_inventor:
+    enabled: false
+  helix:
+    enabled: false

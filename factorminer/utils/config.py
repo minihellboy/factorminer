@@ -328,6 +328,53 @@ class Phase2Config:
 
 
 @dataclass
+class BenchmarkConfig:
+    """Parameters for paper/research benchmark execution."""
+
+    mode: str = "paper"
+    seed: int = 42
+    freeze_top_k: int = 40
+    freeze_universe: str = "CSI500"
+    report_universes: list[str] = field(
+        default_factory=lambda: ["CSI500", "CSI1000", "HS300", "Binance"]
+    )
+    baselines: list[str] = field(
+        default_factory=lambda: [
+            "alpha101_classic",
+            "alpha101_adapted",
+            "random_exploration",
+            "gplearn",
+            "alphaforge_style",
+            "alphaagent_style",
+            "factor_miner",
+            "factor_miner_no_memory",
+        ]
+    )
+    cost_bps: list[float] = field(default_factory=lambda: [1.0, 4.0, 7.0, 10.0, 11.0])
+    efficiency_panel_shape: list[int] = field(default_factory=lambda: [12610, 500])
+
+    def validate(self) -> None:
+        if self.mode not in ("paper", "research"):
+            raise ValueError("benchmark.mode must be one of: paper, research")
+        if self.freeze_top_k < 1:
+            raise ValueError("benchmark.freeze_top_k must be >= 1")
+        if not self.freeze_universe:
+            raise ValueError("benchmark.freeze_universe must not be empty")
+        if not self.report_universes:
+            raise ValueError("benchmark.report_universes must not be empty")
+        if any(not universe for universe in self.report_universes):
+            raise ValueError("benchmark.report_universes must not contain empty entries")
+        if not self.baselines:
+            raise ValueError("benchmark.baselines must not be empty")
+        if any(cost < 0 for cost in self.cost_bps):
+            raise ValueError("benchmark.cost_bps must be non-negative")
+        if len(self.efficiency_panel_shape) != 2:
+            raise ValueError("benchmark.efficiency_panel_shape must be [periods, assets]")
+        if any(dim < 1 for dim in self.efficiency_panel_shape):
+            raise ValueError("benchmark.efficiency_panel_shape values must be >= 1")
+
+
+@dataclass
 class Config:
     """Top-level configuration aggregating all sub-configs."""
 
@@ -337,6 +384,7 @@ class Config:
     llm: LLMConfig = field(default_factory=LLMConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     phase2: Phase2Config = field(default_factory=Phase2Config)
+    benchmark: BenchmarkConfig = field(default_factory=BenchmarkConfig)
 
     def validate(self) -> None:
         """Validate all sub-configurations."""
@@ -346,6 +394,7 @@ class Config:
         self.llm.validate()
         self.memory.validate()
         self.phase2.validate()
+        self.benchmark.validate()
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize config to a plain dictionary."""
@@ -366,6 +415,7 @@ _SECTION_MAP: dict[str, type] = {
     "llm": LLMConfig,
     "memory": MemoryConfig,
     "phase2": Phase2Config,
+    "benchmark": BenchmarkConfig,
 }
 
 _PHASE2_SECTION_MAP: dict[str, type] = {

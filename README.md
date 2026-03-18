@@ -9,6 +9,55 @@ FactorMiner is a research framework for discovering interpretable alpha factors 
 
 The implementation is based on *FactorMiner: A Self-Evolving Agent with Skills and Experience Memory for Financial Alpha Discovery* (Wang et al., 2026), with an extended Helix-style Phase 2 surface for canonicalization, knowledge-graph retrieval, debate generation, and deeper post-admission validation.
 
+## Architecture
+
+```text
+                               FactorMiner
+                                   |
+          +------------------------+------------------------+
+          |                                                 |
+          v                                                 v
+   Paper Reproduction Lane                           Helix Research Lane
+   (strict, benchmark-facing)                        (extended, experimental)
+          |                                                 |
+          |                                                 +--> KG retrieval
+          |                                                 +--> embeddings
+          |                                                 +--> debate / critic
+          |                                                 +--> canonicalization
+          |                                                 +--> causal / regime
+          |                                                 +--> capacity / significance
+          |
+          +--> Data loader -> preprocess -> target -> runtime recomputation
+                                   |
+                                   v
+                          Typed DSL + operator registry
+                                   |
+                                   v
+                      Ralph loop / candidate evaluation core
+                                   |
+               +-------------------+-------------------+
+               |                                       |
+               v                                       v
+      Experience memory                      Admission / replacement
+      (retrieve / distill)                   (IC, ICIR, orthogonality)
+               |                                       |
+               +-------------------+-------------------+
+                                   |
+                                   v
+                           Factor library / catalogs
+                                   |
+             +---------------------+----------------------+
+             |                                            |
+             v                                            v
+   Analysis commands                               Benchmark commands
+   evaluate / combine /                            table1 / ablation-memory /
+   visualize / export                              cost-pressure / efficiency / suite
+             |                                            |
+             v                                            v
+      recomputed metrics,                           manifests, frozen Top-K,
+      plots, tearsheets                             reports, machine-readable artifacts
+```
+
 ## What Is In The Repo
 
 - `RalphLoop` for iterative factor mining with retrieval, generation, evaluation, admission, and memory updates
@@ -79,6 +128,7 @@ Available commands:
 - `evaluate`: recompute and score a saved factor library on train/test/full splits
 - `combine`: fit a factor subset on one split and evaluate composites on another
 - `visualize`: generate recomputed correlation, IC, quintile, and tear sheet outputs
+- `benchmark`: run strict paper/research benchmark workflows
 - `export`: export a library as JSON, CSV, or formulas
 
 ## Common Workflows
@@ -144,6 +194,21 @@ Behavior:
 - IC plots use actual IC series from recomputed signals
 - quintile plots and tear sheets use actual returns, not library-level summary metadata
 
+### 6. Run the paper benchmark lane
+
+```bash
+uv run factorminer --cpu --config factorminer/configs/paper_repro.yaml \
+  benchmark table1 --mock --baseline factor_miner
+```
+
+Available benchmark commands:
+
+- `benchmark table1`: freeze Top-K on the configured freeze universe and report across universes
+- `benchmark ablation-memory`: compare FactorMiner against the relaxed no-memory lane
+- `benchmark cost-pressure`: run `1/4/7/10/11` bps stress tests
+- `benchmark efficiency`: benchmark operator-level and factor-level compute time
+- `benchmark suite`: run the full benchmark bundle
+
 ## Configuration
 
 The default config lives at [`factorminer/configs/default.yaml`](factorminer/configs/default.yaml).
@@ -171,6 +236,20 @@ Defaults:
 
 - analysis commands use `reject`
 - `mine --mock`, `helix --mock`, and `run_demo.py` use `synthetic`
+
+### Benchmark modes and profiles
+
+The repo now ships explicit benchmark/research profiles:
+
+- `factorminer/configs/paper_repro.yaml`: strict Ralph-only paper lane
+- `factorminer/configs/benchmark_full.yaml`: paper lane plus the full benchmark suite
+- `factorminer/configs/helix_research.yaml`: research lane with Helix features enabled
+- `factorminer/configs/demo_local.yaml`: smaller local/demo settings
+
+`benchmark.mode` controls artifact labeling:
+
+- `paper`: strict paper-reproduction lane
+- `research`: Helix-extended lane
 
 ### Split semantics
 
