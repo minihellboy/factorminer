@@ -3,6 +3,10 @@
 Loads OHLCV + amount data from CSV, Parquet, and HDF5 files. Supports
 A-share universes (CSI500, CSI1000, HS300) and Binance crypto data.
 Expected schema: datetime, asset_id, open, high, low, close, volume, amount.
+
+The loader also accepts a small set of common aliases used by broker/data-vendor
+exports, such as ``code``/``ticker`` for ``asset_id`` and ``amt`` for
+``amount``.
 """
 
 from __future__ import annotations
@@ -29,6 +33,17 @@ REQUIRED_COLUMNS = [
 ]
 
 OHLCV_COLUMNS = ["open", "high", "low", "close", "volume", "amount"]
+
+COLUMN_ALIASES = {
+    "datetime": ["timestamp", "date", "time", "trade_date"],
+    "asset_id": ["ticker", "symbol", "code", "stock_code", "ts_code", "instrument"],
+    "open": ["open_price"],
+    "high": ["high_price"],
+    "low": ["low_price"],
+    "close": ["close_price", "price"],
+    "volume": ["vol"],
+    "amount": ["amt", "turnover", "value", "traded_amount"],
+}
 
 # Well-known universe identifiers
 UNIVERSE_ALIASES = {
@@ -64,7 +79,7 @@ def _read_file(
 ) -> pd.DataFrame:
     """Read a single data file into a DataFrame."""
     if fmt == "csv":
-        df = pd.read_csv(path, parse_dates=["datetime"])
+        df = pd.read_csv(path)
     elif fmt == "parquet":
         df = pd.read_parquet(path)
     elif fmt == "hdf5":
@@ -82,10 +97,17 @@ def _validate_columns(df: pd.DataFrame, path: Path) -> pd.DataFrame:
     for req in REQUIRED_COLUMNS:
         if req in df.columns:
             continue
-        if req in cols_lower:
-            rename_map[cols_lower[req]] = req
-        else:
+        candidates = [req, *COLUMN_ALIASES.get(req, [])]
+        matched = None
+        for candidate in candidates:
+            original = cols_lower.get(candidate.lower().strip())
+            if original is not None:
+                matched = original
+                break
+        if matched is None:
             missing.append(req)
+            continue
+        rename_map[matched] = req
     if missing:
         raise ValueError(
             f"File {path} is missing required columns: {missing}. "

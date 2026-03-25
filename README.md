@@ -289,7 +289,13 @@ Input data is expected to contain market bars with at least:
 datetime, asset_id, open, high, low, close, volume, amount
 ```
 
-If `vwap` or `returns` are not present, the runtime layer derives them.
+`asset_id` is the instrument identifier, for example an A-share stock code
+(`600519.SH`), ticker, or crypto symbol. The loader also accepts common aliases
+such as `code`, `ticker`, `symbol`, `ts_code`, and `amt`.
+
+If your file only contains `open`, `high`, `low`, `close`, `volume`, and
+`amount` per bar, that is enough. If `vwap` or `returns` are not present, the
+runtime layer derives them automatically.
 
 Mock data generation is available through `--mock` and `run_demo.py`.
 

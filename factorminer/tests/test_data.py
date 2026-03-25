@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from factorminer.data.loader import load_market_data
 from factorminer.data.mock_data import MockConfig, generate_mock_data, generate_with_halts
 
 
@@ -196,3 +197,62 @@ class TestTensorBuilder:
         """Verify temporal_split is importable."""
         from factorminer.data.tensor_builder import temporal_split
         assert callable(temporal_split)
+
+
+# ---------------------------------------------------------------------------
+# Loader schema compatibility
+# ---------------------------------------------------------------------------
+
+class TestLoaderSchemaCompatibility:
+    """Test common market-data schema variants accepted by the loader."""
+
+    def test_accepts_common_column_aliases(self, tmp_path):
+        path = tmp_path / "alias_data.csv"
+        df = pd.DataFrame(
+            {
+                "timestamp": pd.to_datetime(
+                    ["2025-01-01 09:30:00", "2025-01-01 09:40:00"]
+                ),
+                "code": ["600519.SH", "600519.SH"],
+                "open": [10.0, 10.2],
+                "high": [10.3, 10.4],
+                "low": [9.9, 10.1],
+                "close": [10.1, 10.3],
+                "volume": [1000.0, 1200.0],
+                "amt": [10100.0, 12360.0],
+            }
+        )
+        df.to_csv(path, index=False)
+
+        loaded = load_market_data(path)
+
+        assert list(loaded.columns[:8]) == [
+            "datetime",
+            "asset_id",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "amount",
+        ]
+        assert loaded.loc[0, "asset_id"] == "600519.SH"
+        assert loaded.loc[1, "amount"] == 12360.0
+
+    def test_missing_asset_id_still_raises_clear_error(self, tmp_path):
+        path = tmp_path / "missing_asset_id.csv"
+        df = pd.DataFrame(
+            {
+                "datetime": pd.to_datetime(["2025-01-01 09:30:00"]),
+                "open": [10.0],
+                "high": [10.3],
+                "low": [9.9],
+                "close": [10.1],
+                "volume": [1000.0],
+                "amount": [10100.0],
+            }
+        )
+        df.to_csv(path, index=False)
+
+        with pytest.raises(ValueError, match="missing required columns: \\['asset_id'\\]"):
+            load_market_data(path)
