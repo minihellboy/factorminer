@@ -14,6 +14,10 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
+class MissingAPIKeyError(ValueError):
+    """Raised when a non-mock provider is used without a configured API key."""
+
+
 class LLMProvider(ABC):
     """Abstract base for LLM text-generation providers."""
 
@@ -64,6 +68,12 @@ class OpenAIProvider(LLMProvider):
 
     def _get_client(self) -> Any:
         if self._client is None:
+            if not self.api_key:
+                raise MissingAPIKeyError(
+                    "OpenAI provider requires an API key. "
+                    "Set OPENAI_API_KEY or configure llm.api_key. "
+                    "For local testing, use --mock."
+                )
             try:
                 from openai import OpenAI
             except ImportError:
@@ -119,6 +129,12 @@ class AnthropicProvider(LLMProvider):
 
     def _get_client(self) -> Any:
         if self._client is None:
+            if not self.api_key:
+                raise MissingAPIKeyError(
+                    "Anthropic provider requires an API key. "
+                    "Set ANTHROPIC_API_KEY or configure llm.api_key. "
+                    "For local testing, use --mock."
+                )
             try:
                 import anthropic
             except ImportError:
@@ -184,6 +200,12 @@ class GoogleProvider(LLMProvider):
 
     def _get_client(self) -> Any:
         if self._client is None:
+            if not self.api_key:
+                raise MissingAPIKeyError(
+                    "Google provider requires an API key. "
+                    "Set GOOGLE_API_KEY or configure llm.api_key. "
+                    "For local testing, use --mock."
+                )
             try:
                 import google.generativeai as genai
             except ImportError:

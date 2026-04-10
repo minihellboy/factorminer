@@ -165,7 +165,7 @@ def _prepare_data_arrays(df):
 
 def _create_llm_provider(cfg, mock: bool):
     """Create an LLM provider from config or use mock."""
-    from factorminer.agent.llm_interface import MockProvider, create_provider
+    from factorminer.agent.llm_interface import MissingAPIKeyError, MockProvider, create_provider
 
     if mock:
         click.echo("Using mock LLM provider (no API calls).")
@@ -180,7 +180,11 @@ def _create_llm_provider(cfg, mock: bool):
         llm_config["api_key"] = cfg._raw["llm"]["api_key"]
 
     click.echo(f"Using LLM provider: {cfg.llm.provider}/{cfg.llm.model}")
-    return create_provider(llm_config)
+    try:
+        return create_provider(llm_config)
+    except MissingAPIKeyError as exc:
+        click.echo(f"LLM configuration error: {exc}")
+        raise click.Abort() from exc
 
 
 def _build_core_mining_config(cfg, output_dir: Path, mock: bool = False):
