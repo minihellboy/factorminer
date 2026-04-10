@@ -10,3 +10,6 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+output/
+results/
+docs/_build/

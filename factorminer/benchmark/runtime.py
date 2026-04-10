@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
 import copy
 import hashlib
 import json
 import logging
 import time
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from types import SimpleNamespace
-from typing import Any, Iterable, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from factorminer.architecture import DatasetContract, PaperProtocol
 from factorminer.benchmark.catalogs import (
+    ALPHA101_CLASSIC,
     CandidateEntry,
     build_alpha101_adapted,
     build_alphaagent_style,
@@ -25,7 +27,6 @@ from factorminer.benchmark.catalogs import (
     build_random_exploration,
     dedupe_entries,
     entries_from_library,
-    ALPHA101_CLASSIC,
 )
 from factorminer.core.factor_library import Factor, FactorLibrary
 from factorminer.core.library_io import load_library
@@ -37,6 +38,7 @@ from factorminer.evaluation.runtime import (
     evaluate_factors,
     load_runtime_dataset,
 )
+from factorminer.operators.c_backend import backend_available as c_backend_available
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +83,7 @@ def _clone_cfg(cfg):
     return cloned
 
 
-def _cfg_with_overrides(cfg, universe: str, mode: Optional[str] = None):
+def _cfg_with_overrides(cfg, universe: str, mode: str | None = None):
     cloned = _clone_cfg(cfg)
     cloned.data.universe = universe
     if mode is not None:
@@ -221,8 +223,8 @@ def _saved_library_provenance(
 def _baseline_provenance(
     baseline: str,
     *,
-    factor_miner_library_path: Optional[str] = None,
-    factor_miner_no_memory_library_path: Optional[str] = None,
+    factor_miner_library_path: str | None = None,
+    factor_miner_no_memory_library_path: str | None = None,
     candidate_count: int = 0,
     seed: int = 0,
 ) -> dict[str, Any]:
@@ -237,7 +239,7 @@ def _baseline_provenance(
 
 
 def _runtime_manifest_value(
-    runtime_manifests: Optional[dict[str, dict[str, Any]]],
+    runtime_manifests: dict[str, dict[str, Any]] | None,
     baseline: str,
 ) -> dict[str, Any]:
     """Return the runtime manifest for one baseline if supplied."""
@@ -270,23 +272,19 @@ def _filter_dataclass_kwargs(source, target_cls):
 
     target_fields = {f.name for f in fields(target_cls)}
     source_fields = getattr(source, "__dataclass_fields__", {})
-    return {
-        name: getattr(source, name)
-        for name in source_fields
-        if name in target_fields
-    }
+    return {name: getattr(source, name) for name in source_fields if name in target_fields}
 
 
 def _build_phase2_runtime_kwargs(cfg) -> dict[str, Any]:
     """Build runtime Phase 2 configs from the hierarchical benchmark config."""
-    from factorminer.evaluation.causal import CausalConfig as RuntimeCausalConfig
+    from factorminer.agent.debate import DebateConfig as RuntimeDebateConfig
+    from factorminer.agent.specialists import DEFAULT_SPECIALISTS
     from factorminer.evaluation.capacity import CapacityConfig as RuntimeCapacityConfig
+    from factorminer.evaluation.causal import CausalConfig as RuntimeCausalConfig
     from factorminer.evaluation.regime import RegimeConfig as RuntimeRegimeConfig
     from factorminer.evaluation.significance import (
         SignificanceConfig as RuntimeSignificanceConfig,
     )
-    from factorminer.agent.debate import DebateConfig as RuntimeDebateConfig
-    from factorminer.agent.specialists import DEFAULT_SPECIALISTS
 
     debate_config = None
     if cfg.phase2.debate.enabled:
@@ -341,7 +339,7 @@ def _build_phase2_runtime_kwargs(cfg) -> dict[str, Any]:
     }
 
 
-def _extract_volume_panel(dataset: EvaluationDataset) -> Optional[np.ndarray]:
+def _extract_volume_panel(dataset: EvaluationDataset) -> np.ndarray | None:
     """Best-effort extraction of a dollar-volume panel for Helix capacity checks."""
     for key in ("$amt", "$volume"):
         panel = dataset.data_dict.get(key)
@@ -411,9 +409,7 @@ def _build_runtime_loop_config(
 
     loop_cfg = LoopMiningConfig(
         target_library_size=target_library_size,
-        batch_size=int(
-            runtime_manifest.get("batch_size", getattr(cfg.mining, "batch_size", 40))
-        ),
+        batch_size=int(runtime_manifest.get("batch_size", getattr(cfg.mining, "batch_size", 40))),
         max_iterations=max_iterations,
         ic_threshold=ic_threshold,
         icir_threshold=icir_threshold,
@@ -427,19 +423,17 @@ def _build_runtime_loop_config(
             )
         ),
         num_workers=int(
-            runtime_manifest.get(
-                "num_workers", getattr(cfg.evaluation, "num_workers", 1)
-            )
+            runtime_manifest.get("num_workers", getattr(cfg.evaluation, "num_workers", 1))
         ),
         output_dir=str(output_dir),
-        backend=str(
-            runtime_manifest.get(
-                "backend", getattr(cfg.evaluation, "backend", "numpy")
-            )
-        ),
+        backend=str(runtime_manifest.get("backend", getattr(cfg.evaluation, "backend", "numpy"))),
         gpu_device=str(
+            runtime_manifest.get("gpu_device", getattr(cfg.evaluation, "gpu_device", "cuda:0"))
+        ),
+        redundancy_metric=str(
             runtime_manifest.get(
-                "gpu_device", getattr(cfg.evaluation, "gpu_device", "cuda:0")
+                "redundancy_metric",
+                getattr(cfg.evaluation, "redundancy_metric", "spearman"),
             )
         ),
         signal_failure_policy=str(
@@ -448,14 +442,25 @@ def _build_runtime_loop_config(
                 "synthetic" if mock else getattr(cfg.evaluation, "signal_failure_policy", "reject"),
             )
         ),
+        memory_policy=str(
+            runtime_manifest.get(
+                "memory_policy",
+                getattr(getattr(cfg, "memory", None), "policy", "paper"),
+            )
+        ),
+        memory_regime_lookback_window=int(
+            runtime_manifest.get(
+                "memory_regime_lookback_window",
+                getattr(getattr(cfg, "memory", None), "regime_lookback_window", 60),
+            )
+        ),
     )
 
     loop_cfg.research = cfg.research
     loop_cfg.benchmark_mode = str(getattr(cfg.benchmark, "mode", "paper"))
     loop_cfg.target_panels = dataset.target_panels
     loop_cfg.target_horizons = {
-        name: max(int(spec.holding_bars), 1)
-        for name, spec in dataset.target_specs.items()
+        name: max(int(spec.holding_bars), 1) for name, spec in dataset.target_specs.items()
     }
     return loop_cfg
 
@@ -510,7 +515,14 @@ def _real_mining_loop_type(baseline: str, runtime_manifest: dict[str, Any]) -> s
     loop_type = str(runtime_manifest.get("loop_type", "")).strip().lower()
     if loop_type in {"ralph", "helix"}:
         return loop_type
-    if baseline in {"helix_phase2", "helix_no_memory", "helix_no_debate", "helix_no_significance", "helix_no_capacity", "helix_no_regime"}:
+    if baseline in {
+        "helix_phase2",
+        "helix_no_memory",
+        "helix_no_debate",
+        "helix_no_significance",
+        "helix_no_capacity",
+        "helix_no_regime",
+    }:
         return "helix"
     if baseline in {"factor_miner", "factor_miner_no_memory", "ralph_loop"}:
         return "ralph"
@@ -585,7 +597,7 @@ def _run_runtime_mining_loop(
     baseline: str,
     dataset: EvaluationDataset,
     output_dir: Path,
-    runtime_manifest: Optional[dict[str, Any]] = None,
+    runtime_manifest: dict[str, Any] | None = None,
     mock: bool = False,
 ) -> dict[str, Any]:
     """Run a real RalphLoop/HelixLoop and return its factor library."""
@@ -600,7 +612,9 @@ def _run_runtime_mining_loop(
         mock=mock or bool(runtime_manifest.get("mock", False)),
         runtime_manifest=runtime_manifest,
     )
-    provider = _build_runtime_provider(runtime_cfg, mock=mock or bool(runtime_manifest.get("mock", False)))
+    provider = _build_runtime_provider(
+        runtime_cfg, mock=mock or bool(runtime_manifest.get("mock", False))
+    )
 
     if loop_type == "helix":
         from factorminer.core.helix_loop import HelixLoop
@@ -636,7 +650,11 @@ def _run_runtime_mining_loop(
     provenance = _runtime_loop_provenance(
         baseline=baseline,
         loop_type=loop_type,
-        runtime_manifest={**runtime_manifest, "target_library_size": target_size, "max_iterations": max_iterations},
+        runtime_manifest={
+            **runtime_manifest,
+            "target_library_size": target_size,
+            "max_iterations": max_iterations,
+        },
         runtime_output_dir=runtime_output_dir,
     )
     return {
@@ -653,9 +671,9 @@ def _run_runtime_mining_loop(
 def load_benchmark_dataset(
     cfg,
     *,
-    data_path: Optional[str] = None,
-    raw_df: Optional[pd.DataFrame] = None,
-    universe: Optional[str] = None,
+    data_path: str | None = None,
+    raw_df: pd.DataFrame | None = None,
+    universe: str | None = None,
     mock: bool = False,
 ) -> tuple[EvaluationDataset, str]:
     """Load one universe into the canonical runtime dataset."""
@@ -711,8 +729,8 @@ def _get_baseline_entries(
     baseline: str,
     seed: int,
     *,
-    factor_miner_library_path: Optional[str] = None,
-    factor_miner_no_memory_library_path: Optional[str] = None,
+    factor_miner_library_path: str | None = None,
+    factor_miner_no_memory_library_path: str | None = None,
 ) -> list[CandidateEntry]:
     if baseline == "alpha101_classic":
         return dedupe_entries(ALPHA101_CLASSIC)
@@ -728,11 +746,15 @@ def _get_baseline_entries(
         return dedupe_entries(build_alphaagent_style())
     if baseline == "factor_miner":
         if factor_miner_library_path:
-            return dedupe_entries(entries_from_library(load_library(_base_path(factor_miner_library_path))))
+            return dedupe_entries(
+                entries_from_library(load_library(_base_path(factor_miner_library_path)))
+            )
         return dedupe_entries(build_factor_miner_catalog())
     if baseline == "factor_miner_no_memory":
         if factor_miner_no_memory_library_path:
-            return dedupe_entries(entries_from_library(load_library(_base_path(factor_miner_no_memory_library_path))))
+            return dedupe_entries(
+                entries_from_library(load_library(_base_path(factor_miner_no_memory_library_path)))
+            )
         return dedupe_entries(build_random_exploration(seed + 101, count=200))
     raise KeyError(f"Unknown benchmark baseline: {baseline}")
 
@@ -747,19 +769,18 @@ def build_benchmark_library(
     cfg,
     *,
     split_name: str = "train",
-    ic_threshold: Optional[float] = None,
-    correlation_threshold: Optional[float] = None,
+    ic_threshold: float | None = None,
+    correlation_threshold: float | None = None,
 ) -> tuple[FactorLibrary, dict[str, int]]:
     """Build a library from candidate artifacts under the paper admission rules."""
     ic_threshold = cfg.mining.ic_threshold if ic_threshold is None else ic_threshold
     correlation_threshold = (
-        cfg.mining.correlation_threshold
-        if correlation_threshold is None
-        else correlation_threshold
+        cfg.mining.correlation_threshold if correlation_threshold is None else correlation_threshold
     )
     library = FactorLibrary(
         correlation_threshold=correlation_threshold,
         ic_threshold=ic_threshold,
+        dependence_metric=getattr(cfg.evaluation, "redundancy_metric", "spearman"),
     )
 
     stats = {
@@ -852,9 +873,7 @@ def select_frozen_top_k(
 
     if len(selected) < top_k:
         remainder = [
-            artifact
-            for artifact in succeeded
-            if artifact.formula not in selected_formulas
+            artifact for artifact in succeeded if artifact.formula not in selected_formulas
         ]
         remainder.sort(
             key=lambda artifact: artifact.split_stats[split_name]["ic_abs_mean"],
@@ -918,7 +937,7 @@ def evaluate_frozen_set(
     *,
     split_name: str = "test",
     fit_split: str = "train",
-    cost_bps: Optional[list[float]] = None,
+    cost_bps: list[float] | None = None,
 ) -> dict:
     """Evaluate one frozen factor set on one universe."""
     if cost_bps is None:
@@ -951,14 +970,22 @@ def evaluate_frozen_set(
         return result
 
     result["library"] = {
-        "ic": float(np.mean([artifact.split_stats[split_name]["ic_abs_mean"] for artifact in succeeded])),
-        "icir": float(np.mean([abs(artifact.split_stats[split_name]["icir"]) for artifact in succeeded])),
+        "ic": float(
+            np.mean([artifact.split_stats[split_name]["ic_abs_mean"] for artifact in succeeded])
+        ),
+        "icir": float(
+            np.mean([abs(artifact.split_stats[split_name]["icir"]) for artifact in succeeded])
+        ),
         "avg_abs_rho": _avg_abs_rho(succeeded, split_name),
     }
 
     artifact_map = {artifact.factor_id: artifact for artifact in succeeded}
-    fit_signals = {artifact.factor_id: artifact.split_signals[fit_split].T for artifact in succeeded}
-    eval_signals = {artifact.factor_id: artifact.split_signals[split_name].T for artifact in succeeded}
+    fit_signals = {
+        artifact.factor_id: artifact.split_signals[fit_split].T for artifact in succeeded
+    }
+    eval_signals = {
+        artifact.factor_id: artifact.split_signals[split_name].T for artifact in succeeded
+    }
     fit_returns = dataset.get_split(fit_split).returns.T
     eval_returns = dataset.get_split(split_name).returns.T
 
@@ -971,8 +998,7 @@ def evaluate_frozen_set(
     selector = FactorSelector()
 
     fit_ic_values = {
-        artifact.factor_id: artifact.split_stats[fit_split]["ic_mean"]
-        for artifact in succeeded
+        artifact.factor_id: artifact.split_stats[fit_split]["ic_mean"] for artifact in succeeded
     }
 
     combos = {
@@ -1023,7 +1049,8 @@ def evaluate_frozen_set(
             composite = _weighted_composite(selected_eval, weights)
         elif name == "xgboost":
             weights = {
-                factor_id: score * np.sign(artifact_map[factor_id].split_stats[fit_split]["ic_mean"] or 1.0)
+                factor_id: score
+                * np.sign(artifact_map[factor_id].split_stats[fit_split]["ic_mean"] or 1.0)
                 for factor_id, score in ranking
             }
             composite = _weighted_composite(selected_eval, weights)
@@ -1063,26 +1090,77 @@ def _save_manifest(path: Path, manifest: BenchmarkManifest) -> None:
     _write_json(path, asdict(manifest))
 
 
+def _strategy_ablation_raw_config(cfg) -> dict[str, Any]:
+    raw = getattr(cfg, "_raw", {})
+    if not isinstance(raw, dict):
+        return {}
+    benchmark_raw = raw.get("benchmark", {})
+    if not isinstance(benchmark_raw, dict):
+        return {}
+    strategy_raw = benchmark_raw.get("strategy_ablation", {})
+    return dict(strategy_raw) if isinstance(strategy_raw, dict) else {}
+
+
+def _runtime_strategy_backends(
+    requested: list[str] | tuple[str, ...] | None,
+    *,
+    default_backend: str,
+) -> list[str]:
+    try:
+        from factorminer.operators import torch_available
+    except Exception:  # pragma: no cover - optional dependency
+        torch_available = lambda: False
+
+    available = {
+        "numpy": True,
+        "c": c_backend_available(),
+        "gpu": torch_available(),
+    }
+    candidates = list(requested or [default_backend, "c", "gpu"])
+    ordered: list[str] = []
+    for backend in candidates:
+        name = str(backend).strip().lower()
+        if not name or name in ordered:
+            continue
+        if available.get(name, False):
+            ordered.append(name)
+    return ordered or ["numpy"]
+
+
+def _mean_universe_metric(
+    payload: dict[str, Any],
+    metric_group: str,
+    metric_name: str,
+) -> float | None:
+    values: list[float] = []
+    for universe_payload in payload.get("universes", {}).values():
+        group = universe_payload.get(metric_group, {})
+        value = group.get(metric_name)
+        if value is not None:
+            values.append(float(value))
+    if not values:
+        return None
+    return float(np.mean(values))
+
+
 def run_table1_benchmark(
     cfg,
     output_dir: Path,
     *,
-    data_path: Optional[str] = None,
-    raw_df: Optional[pd.DataFrame] = None,
+    data_path: str | None = None,
+    raw_df: pd.DataFrame | None = None,
     mock: bool = False,
-    baseline_names: Optional[list[str]] = None,
-    factor_miner_library_path: Optional[str] = None,
-    factor_miner_no_memory_library_path: Optional[str] = None,
-    runtime_manifests: Optional[dict[str, dict[str, Any]]] = None,
+    baseline_names: list[str] | None = None,
+    factor_miner_library_path: str | None = None,
+    factor_miner_no_memory_library_path: str | None = None,
+    runtime_manifests: dict[str, dict[str, Any]] | None = None,
     use_runtime_loops: bool = False,
 ) -> dict:
     """Run the strict Top-K freeze benchmark across all configured universes."""
     if runtime_manifests is None:
         runtime_manifests = getattr(cfg.benchmark, "runtime_manifests", None)
     use_runtime_loops = bool(
-        use_runtime_loops
-        or getattr(cfg.benchmark, "runtime_loops", False)
-        or runtime_manifests
+        use_runtime_loops or getattr(cfg.benchmark, "runtime_loops", False) or runtime_manifests
     )
     benchmark_dir = _ensure_dir(output_dir / "benchmark" / "table1")
     baseline_names = baseline_names or list(cfg.benchmark.baselines)
@@ -1094,6 +1172,8 @@ def run_table1_benchmark(
         universe=cfg.benchmark.freeze_universe,
         mock=mock,
     )
+    paper_protocol = PaperProtocol.from_config(cfg)
+    freeze_dataset_contract = DatasetContract.from_runtime_dataset(freeze_cfg, freeze_dataset)
 
     summary: dict[str, dict] = {}
     for baseline in baseline_names:
@@ -1161,6 +1241,8 @@ def run_table1_benchmark(
             "mode": cfg.benchmark.mode,
             "freeze_universe": cfg.benchmark.freeze_universe,
             "candidate_count": candidate_count,
+            "paper_protocol": paper_protocol.runtime_contract(),
+            "freeze_dataset_contract": freeze_dataset_contract.to_dict(),
             "freeze_library_size": library.size,
             "freeze_stats": library_stats,
             "frozen_top_k": [
@@ -1218,7 +1300,11 @@ def run_table1_benchmark(
                 "result": str(result_path),
                 "manifest": str(manifest_path),
             },
-            runtime_contract=runtime_manifest,
+            runtime_contract={
+                **paper_protocol.runtime_contract(),
+                **runtime_manifest,
+                "freeze_dataset_contract": freeze_dataset_contract.to_dict(),
+            },
             baseline_provenance={baseline: provenance},
             warnings=[],
         )
@@ -1232,17 +1318,15 @@ def run_ablation_memory_benchmark(
     cfg,
     output_dir: Path,
     *,
-    data_path: Optional[str] = None,
-    raw_df: Optional[pd.DataFrame] = None,
+    data_path: str | None = None,
+    raw_df: pd.DataFrame | None = None,
     mock: bool = False,
-    factor_miner_library_path: Optional[str] = None,
-    factor_miner_no_memory_library_path: Optional[str] = None,
-    runtime_manifests: Optional[dict[str, dict[str, Any]]] = None,
+    factor_miner_library_path: str | None = None,
+    factor_miner_no_memory_library_path: str | None = None,
+    runtime_manifests: dict[str, dict[str, Any]] | None = None,
 ) -> dict:
     """Compare the default FactorMiner lane to the relaxed no-memory lane."""
-    use_runtime_loops = bool(
-        runtime_manifests or getattr(cfg.benchmark, "runtime_loops", False)
-    )
+    use_runtime_loops = bool(runtime_manifests or getattr(cfg.benchmark, "runtime_loops", False))
     comparison = run_table1_benchmark(
         cfg,
         output_dir,
@@ -1270,21 +1354,137 @@ def run_ablation_memory_benchmark(
     return result
 
 
+def run_ablation_strategy_benchmark(
+    cfg,
+    output_dir: Path,
+    *,
+    data_path: str | None = None,
+    raw_df: pd.DataFrame | None = None,
+    mock: bool = False,
+    baseline: str | None = None,
+    memory_policies: list[str] | None = None,
+    dependence_metrics: list[str] | None = None,
+    backends: list[str] | None = None,
+    runtime_manifests: dict[str, dict[str, Any]] | None = None,
+) -> dict:
+    """Compare runtime loop variants across memory policy × dependence × backend."""
+    strategy_cfg = _strategy_ablation_raw_config(cfg)
+    baseline_name = str(baseline or strategy_cfg.get("baseline", "factor_miner"))
+    memory_policies = list(
+        memory_policies
+        or strategy_cfg.get(
+            "memory_policies",
+            ["paper", "none", "kg", "family_aware", "regime_aware"],
+        )
+    )
+    dependence_metrics = list(
+        dependence_metrics
+        or strategy_cfg.get(
+            "dependence_metrics",
+            ["spearman", "pearson", "distance_correlation"],
+        )
+    )
+    backends = _runtime_strategy_backends(
+        backends or strategy_cfg.get("backends"),
+        default_backend=getattr(cfg.evaluation, "backend", "numpy"),
+    )
+    base_runtime_manifest = _runtime_manifest_value(runtime_manifests, baseline_name)
+
+    comparisons: list[dict[str, Any]] = []
+    for memory_policy in memory_policies:
+        for dependence_metric in dependence_metrics:
+            for backend in backends:
+                combo_name = f"{memory_policy}__{dependence_metric}__{backend}"
+                combo_output_dir = output_dir / "benchmark" / "ablation" / "strategy_grid" / combo_name
+                combo_manifest = {
+                    **base_runtime_manifest,
+                    "memory_policy": memory_policy,
+                    "redundancy_metric": dependence_metric,
+                    "backend": backend,
+                }
+                combo_payload = run_table1_benchmark(
+                    cfg,
+                    combo_output_dir,
+                    data_path=data_path,
+                    raw_df=raw_df,
+                    mock=mock,
+                    baseline_names=[baseline_name],
+                    runtime_manifests={baseline_name: combo_manifest},
+                    use_runtime_loops=True,
+                )[baseline_name]
+                freeze_stats = combo_payload.get("freeze_stats", {})
+                succeeded = max(int(freeze_stats.get("succeeded", 0)), 1)
+                comparisons.append(
+                    {
+                        "name": combo_name,
+                        "baseline": baseline_name,
+                        "memory_policy": memory_policy,
+                        "dependence_metric": dependence_metric,
+                        "backend": backend,
+                        "artifacts_root": str(combo_output_dir),
+                        "freeze_library_size": int(combo_payload.get("freeze_library_size", 0)),
+                        "freeze_stats": freeze_stats,
+                        "high_quality_yield": float(freeze_stats.get("admitted", 0)) / succeeded,
+                        "redundancy_rejection_rate": (
+                            float(freeze_stats.get("correlation_rejections", 0)) / succeeded
+                        ),
+                        "mean_test_library_ic": _mean_universe_metric(
+                            combo_payload,
+                            "library",
+                            "ic",
+                        ),
+                        "mean_test_library_icir": _mean_universe_metric(
+                            combo_payload,
+                            "library",
+                            "icir",
+                        ),
+                        "mean_test_library_rho": _mean_universe_metric(
+                            combo_payload,
+                            "library",
+                            "avg_abs_rho",
+                        ),
+                        "universes": combo_payload.get("universes", {}),
+                        "provenance": combo_payload.get("provenance", {}),
+                    }
+                )
+
+    leaderboard = sorted(
+        comparisons,
+        key=lambda item: (
+            item["mean_test_library_ic"] is not None,
+            item["mean_test_library_ic"] or float("-inf"),
+            item["mean_test_library_icir"] or float("-inf"),
+            -float(item["mean_test_library_rho"] or 1.0),
+        ),
+        reverse=True,
+    )
+    result = {
+        "baseline": baseline_name,
+        "memory_policies": memory_policies,
+        "dependence_metrics": dependence_metrics,
+        "backends": backends,
+        "comparisons": comparisons,
+        "leaderboard": leaderboard,
+        "best": leaderboard[0] if leaderboard else None,
+    }
+    out_path = _ensure_dir(output_dir / "benchmark" / "ablation") / "strategy_grid.json"
+    _write_json(out_path, result)
+    return result
+
+
 def run_cost_pressure_benchmark(
     cfg,
     output_dir: Path,
     *,
     baseline: str = "factor_miner",
-    data_path: Optional[str] = None,
-    raw_df: Optional[pd.DataFrame] = None,
+    data_path: str | None = None,
+    raw_df: pd.DataFrame | None = None,
     mock: bool = False,
-    factor_miner_library_path: Optional[str] = None,
-    runtime_manifests: Optional[dict[str, dict[str, Any]]] = None,
+    factor_miner_library_path: str | None = None,
+    runtime_manifests: dict[str, dict[str, Any]] | None = None,
 ) -> dict:
     """Run cost-pressure analysis for one baseline on the configured universes."""
-    use_runtime_loops = bool(
-        runtime_manifests or getattr(cfg.benchmark, "runtime_loops", False)
-    )
+    use_runtime_loops = bool(runtime_manifests or getattr(cfg.benchmark, "runtime_loops", False))
     payload = run_table1_benchmark(
         cfg,
         output_dir,
@@ -1331,6 +1531,7 @@ def run_efficiency_benchmark(cfg, output_dir: Path) -> dict:
     from factorminer.utils.visualization import plot_efficiency_benchmark
 
     operator_bench: dict[str, dict[str, float | None]] = {"numpy": {}, "c": {}, "gpu": {}}
+
     def _backend_inputs(backend: str):
         if backend == "gpu":
             return to_tensor(matrix), to_tensor(other)
@@ -1338,15 +1539,27 @@ def run_efficiency_benchmark(cfg, output_dir: Path) -> dict:
 
     operators = {
         "Add": lambda backend: execute_operator("Add", *_backend_inputs(backend), backend=backend),
-        "Mean": lambda backend: execute_operator("Mean", _backend_inputs(backend)[0], params={"window": 20}, backend=backend),
-        "Delta": lambda backend: execute_operator("Delta", _backend_inputs(backend)[0], params={"window": 5}, backend=backend),
-        "TsRank": lambda backend: execute_operator("TsRank", _backend_inputs(backend)[0], params={"window": 20}, backend=backend),
-        "Corr": lambda backend: execute_operator("Corr", *_backend_inputs(backend), params={"window": 20}, backend=backend),
-        "CsRank": lambda backend: execute_operator("CsRank", _backend_inputs(backend)[0], backend=backend),
+        "Mean": lambda backend: execute_operator(
+            "Mean", _backend_inputs(backend)[0], params={"window": 20}, backend=backend
+        ),
+        "Delta": lambda backend: execute_operator(
+            "Delta", _backend_inputs(backend)[0], params={"window": 5}, backend=backend
+        ),
+        "TsRank": lambda backend: execute_operator(
+            "TsRank", _backend_inputs(backend)[0], params={"window": 20}, backend=backend
+        ),
+        "Corr": lambda backend: execute_operator(
+            "Corr", *_backend_inputs(backend), params={"window": 20}, backend=backend
+        ),
+        "CsRank": lambda backend: execute_operator(
+            "CsRank", _backend_inputs(backend)[0], backend=backend
+        ),
     }
     for op_name, runner in operators.items():
         operator_bench["numpy"][op_name] = _time_callable(lambda r=runner: r("numpy"))
-        operator_bench["c"][op_name] = None
+        operator_bench["c"][op_name] = (
+            _time_callable(lambda r=runner: r("c")) if c_backend_available() else None
+        )
         if torch_available():
             operator_bench["gpu"][op_name] = _time_callable(lambda r=runner: r("gpu"))
         else:
@@ -1358,11 +1571,15 @@ def run_efficiency_benchmark(cfg, output_dir: Path) -> dict:
             "CsRank",
             execute_operator(
                 "Mul",
-                execute_operator("Return", _backend_inputs(backend)[0], params={"window": 5}, backend=backend),
+                execute_operator(
+                    "Return", _backend_inputs(backend)[0], params={"window": 5}, backend=backend
+                ),
                 execute_operator(
                     "Div",
                     _backend_inputs(backend)[1],
-                    execute_operator("Mean", _backend_inputs(backend)[1], params={"window": 20}, backend=backend),
+                    execute_operator(
+                        "Mean", _backend_inputs(backend)[1], params={"window": 20}, backend=backend
+                    ),
                     backend=backend,
                 ),
                 backend=backend,
@@ -1379,7 +1596,9 @@ def run_efficiency_benchmark(cfg, output_dir: Path) -> dict:
                     execute_operator(
                         "Add",
                         _backend_inputs(backend)[1],
-                        to_tensor(np.full_like(other, 1e-8)) if backend == "gpu" else np.full_like(other, 1e-8),
+                        to_tensor(np.full_like(other, 1e-8))
+                        if backend == "gpu"
+                        else np.full_like(other, 1e-8),
                         backend=backend,
                     ),
                     backend=backend,
@@ -1391,7 +1610,9 @@ def run_efficiency_benchmark(cfg, output_dir: Path) -> dict:
     }
     for formula_name, runner in factor_specs.items():
         factor_bench["numpy"][formula_name] = _time_callable(lambda r=runner: r("numpy"))
-        factor_bench["c"][formula_name] = None
+        factor_bench["c"][formula_name] = (
+            _time_callable(lambda r=runner: r("c")) if c_backend_available() else None
+        )
         if torch_available():
             factor_bench["gpu"][formula_name] = _time_callable(lambda r=runner: r("gpu"))
         else:
@@ -1399,11 +1620,17 @@ def run_efficiency_benchmark(cfg, output_dir: Path) -> dict:
 
     bench_dir = _ensure_dir(output_dir / "benchmark" / "efficiency")
     plot_efficiency_benchmark(
-        {backend: {k: v for k, v in values.items() if v is not None} for backend, values in operator_bench.items()},
+        {
+            backend: {k: v for k, v in values.items() if v is not None}
+            for backend, values in operator_bench.items()
+        },
         save_path=str(bench_dir / "operator_efficiency.png"),
     )
     plot_efficiency_benchmark(
-        {backend: {k: v for k, v in values.items() if v is not None} for backend, values in factor_bench.items()},
+        {
+            backend: {k: v for k, v in values.items() if v is not None}
+            for backend, values in factor_bench.items()
+        },
         save_path=str(bench_dir / "factor_efficiency.png"),
     )
     result = {
@@ -1412,7 +1639,7 @@ def run_efficiency_benchmark(cfg, output_dir: Path) -> dict:
         "factor_level_ms": factor_bench,
         "available_backends": {
             "numpy": True,
-            "c": False,
+            "c": c_backend_available(),
             "gpu": torch_available(),
         },
     }
@@ -1424,19 +1651,19 @@ def run_benchmark_suite(
     cfg,
     output_dir: Path,
     *,
-    data_path: Optional[str] = None,
-    raw_df: Optional[pd.DataFrame] = None,
+    data_path: str | None = None,
+    raw_df: pd.DataFrame | None = None,
     mock: bool = False,
-    factor_miner_library_path: Optional[str] = None,
-    factor_miner_no_memory_library_path: Optional[str] = None,
-    runtime_manifests: Optional[dict[str, dict[str, Any]]] = None,
+    factor_miner_library_path: str | None = None,
+    factor_miner_no_memory_library_path: str | None = None,
+    runtime_manifests: dict[str, dict[str, Any]] | None = None,
 ) -> dict:
     """Run the benchmark suite and return the artifact index."""
     if runtime_manifests is None:
         runtime_manifests = getattr(cfg.benchmark, "runtime_manifests", None)
-    use_runtime_loops = bool(
-        runtime_manifests or getattr(cfg.benchmark, "runtime_loops", False)
-    )
+    use_runtime_loops = bool(runtime_manifests or getattr(cfg.benchmark, "runtime_loops", False))
+    strategy_cfg = _strategy_ablation_raw_config(cfg)
+    run_strategy_ablation = bool(use_runtime_loops or strategy_cfg.get("enabled", False))
     results = {
         "table1": run_table1_benchmark(
             cfg,
@@ -1459,6 +1686,24 @@ def run_benchmark_suite(
             factor_miner_no_memory_library_path=factor_miner_no_memory_library_path,
             runtime_manifests=runtime_manifests,
         ),
+        "ablation_strategy": (
+            run_ablation_strategy_benchmark(
+                cfg,
+                output_dir,
+                data_path=data_path,
+                raw_df=raw_df,
+                mock=mock,
+                runtime_manifests=runtime_manifests,
+            )
+            if run_strategy_ablation
+            else {
+                "skipped": True,
+                "reason": (
+                    "runtime loops disabled; enable benchmark.strategy_ablation.enabled "
+                    "or supply runtime manifests"
+                ),
+            }
+        ),
         "cost_pressure": run_cost_pressure_benchmark(
             cfg,
             output_dir,
@@ -1478,12 +1723,12 @@ def run_runtime_mining_benchmark(
     cfg,
     output_dir: Path,
     *,
-    data_path: Optional[str] = None,
-    raw_df: Optional[pd.DataFrame] = None,
+    data_path: str | None = None,
+    raw_df: pd.DataFrame | None = None,
     mock: bool = False,
-    factor_miner_library_path: Optional[str] = None,
-    factor_miner_no_memory_library_path: Optional[str] = None,
-    runtime_manifests: Optional[dict[str, dict[str, Any]]] = None,
+    factor_miner_library_path: str | None = None,
+    factor_miner_no_memory_library_path: str | None = None,
+    runtime_manifests: dict[str, dict[str, Any]] | None = None,
 ) -> dict:
     """Run the benchmark suite with explicit real-loop manifests when provided."""
     return run_benchmark_suite(

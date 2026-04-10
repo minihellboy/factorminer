@@ -1,7 +1,0 @@
-{
-  "correlation_threshold": 0.5,
-  "ic_threshold": 0.04,
-  "next_id": 1,
-  "factors": [],
-  "id_to_index": {}
-}

@@ -51,6 +51,7 @@ def save_library(
     meta = {
         "correlation_threshold": library.correlation_threshold,
         "ic_threshold": library.ic_threshold,
+        "dependence_metric": library.dependence_metric.name,
         "next_id": library._next_id,
         "factors": [f.to_dict() for f in library.list_factors()],
     }
@@ -101,6 +102,7 @@ def load_library(path: Union[str, Path]) -> FactorLibrary:
     library = FactorLibrary(
         correlation_threshold=meta.get("correlation_threshold", 0.5),
         ic_threshold=meta.get("ic_threshold", 0.04),
+        dependence_metric=meta.get("dependence_metric", "spearman"),
     )
     library._next_id = meta.get("next_id", 1)
 

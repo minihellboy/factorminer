@@ -52,6 +52,7 @@ class EvaluationConfig:
     fast_screen_assets: int = 100
     gpu_device: str = "cuda:0"
     backend: str = "gpu"
+    redundancy_metric: str = "spearman"
     signal_failure_policy: str = "reject"
 
     def validate(self) -> None:
@@ -61,6 +62,10 @@ class EvaluationConfig:
             raise ValueError("fast_screen_assets must be >= 1")
         if self.backend not in ("gpu", "numpy", "c"):
             raise ValueError(f"backend must be one of: gpu, numpy, c (got '{self.backend}')")
+        if self.redundancy_metric not in ("spearman", "pearson", "distance_correlation"):
+            raise ValueError(
+                "redundancy_metric must be one of: spearman, pearson, distance_correlation"
+            )
         if self.signal_failure_policy not in ("reject", "synthetic", "raise"):
             raise ValueError(
                 "signal_failure_policy must be one of: reject, synthetic, raise"
@@ -170,12 +175,29 @@ class LLMConfig:
 class MemoryConfig:
     """Parameters for the experience memory system."""
 
+    policy: str = "paper"
     max_success_patterns: int = 50
     max_failure_patterns: int = 100
     max_insights: int = 30
     consolidation_interval: int = 10
+    regime_lookback_window: int = 60
 
     def validate(self) -> None:
+        if self.policy not in (
+            "paper",
+            "none",
+            "no_memory",
+            "kg",
+            "knowledge_graph",
+            "family_aware",
+            "family-aware",
+            "regime_aware",
+            "regime-aware",
+        ):
+            raise ValueError(
+                "memory.policy must be one of: paper, none, no_memory, kg, "
+                "family_aware, regime_aware"
+            )
         if self.max_success_patterns < 1:
             raise ValueError("max_success_patterns must be >= 1")
         if self.max_failure_patterns < 1:
@@ -184,6 +206,8 @@ class MemoryConfig:
             raise ValueError("max_insights must be >= 1")
         if self.consolidation_interval < 1:
             raise ValueError("consolidation_interval must be >= 1")
+        if self.regime_lookback_window < 5:
+            raise ValueError("regime_lookback_window must be >= 5")
 
 
 @dataclass

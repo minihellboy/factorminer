@@ -6,20 +6,21 @@ NumPy / PyTorch function implementations from each category module.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 
 from factorminer.core.types import OPERATOR_REGISTRY as SPEC_REGISTRY
-from factorminer.core.types import OperatorSpec, OperatorType
-
+from factorminer.core.types import OperatorSpec
 from factorminer.operators.arithmetic import ARITHMETIC_OPS
+from factorminer.operators.c_backend import C_BACKEND_IMPLS
+from factorminer.operators.crosssectional import CROSSSECTIONAL_OPS
+from factorminer.operators.logical import LOGICAL_OPS
+from factorminer.operators.regression import REGRESSION_OPS
+from factorminer.operators.smoothing import SMOOTHING_OPS
 from factorminer.operators.statistical import STATISTICAL_OPS
 from factorminer.operators.timeseries import TIMESERIES_OPS
-from factorminer.operators.crosssectional import CROSSSECTIONAL_OPS
-from factorminer.operators.smoothing import SMOOTHING_OPS
-from factorminer.operators.regression import REGRESSION_OPS
-from factorminer.operators.logical import LOGICAL_OPS
 
 try:
     import torch
@@ -33,7 +34,7 @@ except ImportError:
 # Build unified registry: name -> (OperatorSpec, np_fn, torch_fn)
 # ---------------------------------------------------------------------------
 
-_ALL_IMPL_TABLES: List[Dict[str, Tuple[Callable, Callable]]] = [
+_ALL_IMPL_TABLES: list[dict[str, tuple[Callable, Callable]]] = [
     ARITHMETIC_OPS,
     STATISTICAL_OPS,
     TIMESERIES_OPS,
@@ -44,12 +45,12 @@ _ALL_IMPL_TABLES: List[Dict[str, Tuple[Callable, Callable]]] = [
 ]
 
 # Merge implementation tables
-_IMPL: Dict[str, Tuple[Callable, Callable]] = {}
+_IMPL: dict[str, tuple[Callable, Callable]] = {}
 for table in _ALL_IMPL_TABLES:
     _IMPL.update(table)
 
 # The full registry: name -> (spec, numpy_fn, torch_fn)
-OPERATOR_REGISTRY: Dict[str, Tuple[OperatorSpec, Callable, Optional[Callable]]] = {}
+OPERATOR_REGISTRY: dict[str, tuple[OperatorSpec, Callable, Callable | None]] = {}
 
 for name, spec in SPEC_REGISTRY.items():
     if name in _IMPL:
@@ -64,13 +65,11 @@ for name, spec in SPEC_REGISTRY.items():
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def get_operator(name: str) -> OperatorSpec:
     """Look up an operator spec by name."""
     if name not in OPERATOR_REGISTRY:
-        raise KeyError(
-            f"Unknown operator '{name}'. "
-            f"Available: {sorted(OPERATOR_REGISTRY.keys())}"
-        )
+        raise KeyError(f"Unknown operator '{name}'. Available: {sorted(OPERATOR_REGISTRY.keys())}")
     return OPERATOR_REGISTRY[name][0]
 
 
@@ -79,6 +78,12 @@ def get_impl(name: str, backend: str = "numpy") -> Callable:
     if name not in OPERATOR_REGISTRY:
         raise KeyError(f"Unknown operator '{name}'")
     spec, np_fn, torch_fn = OPERATOR_REGISTRY[name]
+    if backend == "c":
+        if name in C_BACKEND_IMPLS:
+            return C_BACKEND_IMPLS[name]
+        if np_fn is None:
+            raise NotImplementedError(f"No C/NumPy implementation for '{name}'")
+        return np_fn
     if backend == "torch" or backend == "gpu":
         if torch_fn is None:
             raise NotImplementedError(f"No PyTorch implementation for '{name}'")
@@ -91,9 +96,9 @@ def get_impl(name: str, backend: str = "numpy") -> Callable:
 def execute_operator(
     name: str,
     *inputs: Any,
-    params: Optional[Dict[str, Any]] = None,
+    params: dict[str, Any] | None = None,
     backend: str = "numpy",
-) -> Union[np.ndarray, "torch.Tensor"]:
+) -> np.ndarray | torch.Tensor:
     """Execute an operator by name.
 
     Parameters
@@ -116,7 +121,7 @@ def execute_operator(
     return fn(*inputs, **kw)
 
 
-def list_operators(grouped: bool = True) -> Union[List[str], Dict[str, List[str]]]:
+def list_operators(grouped: bool = True) -> list[str] | dict[str, list[str]]:
     """List all registered operator names.
 
     Parameters
@@ -128,7 +133,7 @@ def list_operators(grouped: bool = True) -> Union[List[str], Dict[str, List[str]
     if not grouped:
         return sorted(OPERATOR_REGISTRY.keys())
 
-    groups: Dict[str, List[str]] = {}
+    groups: dict[str, list[str]] = {}
     for name, (spec, _, _) in OPERATOR_REGISTRY.items():
         cat = spec.category.name
         groups.setdefault(cat, []).append(name)
@@ -137,6 +142,6 @@ def list_operators(grouped: bool = True) -> Union[List[str], Dict[str, List[str]
     return groups
 
 
-def implemented_operators() -> List[str]:
+def implemented_operators() -> list[str]:
     """Return names of operators that have at least a NumPy implementation."""
     return sorted(name for name, (_, np_fn, _) in OPERATOR_REGISTRY.items() if np_fn is not None)

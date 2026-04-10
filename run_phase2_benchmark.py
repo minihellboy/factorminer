@@ -47,10 +47,9 @@ import pandas as pd
 
 warnings.filterwarnings("ignore")
 
-# Insert the repo root so that direct module imports bypass the package __init__
-# (the package __init__ chains through factorminer.agent which has a known
-#  import issue with build_critic_scoring_prompt; all benchmark code is
-#  self-contained in helix_benchmark.py)
+# Insert the repo root so the legacy Phase 2 report runner can import
+# `helix_benchmark.py` directly without depending on the canonical runtime
+# benchmark package surface.
 _REPO_ROOT = Path(__file__).parent
 sys.path.insert(0, str(_REPO_ROOT))
 

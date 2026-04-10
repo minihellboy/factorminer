@@ -18,26 +18,31 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 import numpy as np
 
-from factorminer.core.ralph_loop import (
-    BudgetTracker,
-    EvaluationResult,
-    FactorGenerator,
-    RalphLoop,
-    ValidationPipeline,
+from factorminer.agent.llm_interface import LLMProvider
+from factorminer.architecture import (
+    DistillStage,
+    EvaluateStage,
+    GenerateStage,
+    IterationPayload,
+    KnowledgeGraphService,
+    LibraryUpdateStage,
+    OnlineForgettingService,
+    RetrieveStage,
 )
-from factorminer.core.factor_library import Factor, FactorLibrary
+from factorminer.core.factor_library import FactorLibrary
 from factorminer.core.parser import try_parse
+from factorminer.core.ralph_loop import (
+    EvaluationResult,
+    RalphLoop,
+)
 from factorminer.evaluation.metrics import compute_ic
 from factorminer.memory.memory_store import ExperienceMemory
 from factorminer.memory.retrieval import retrieve_memory
-from factorminer.memory.formation import form_memory
-from factorminer.memory.evolution import evolve_memory
-from factorminer.agent.llm_interface import LLMProvider
-from factorminer.utils.logging import IterationRecord, FactorRecord
+from factorminer.utils.logging import FactorRecord, IterationRecord
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +51,11 @@ logger = logging.getLogger(__name__)
 # Optional imports -- resolved at call time with graceful fallback
 # ---------------------------------------------------------------------------
 
+
 def _try_import_debate():
     try:
-        from factorminer.agent.debate import DebateGenerator, DebateConfig
+        from factorminer.agent.debate import DebateConfig, DebateGenerator
+
         return DebateGenerator, DebateConfig
     except ImportError:
         return None, None
@@ -57,6 +64,7 @@ def _try_import_debate():
 def _try_import_canonicalizer():
     try:
         from factorminer.core.canonicalizer import FormulaCanonicalizer
+
         return FormulaCanonicalizer
     except ImportError:
         return None
@@ -64,7 +72,8 @@ def _try_import_canonicalizer():
 
 def _try_import_causal():
     try:
-        from factorminer.evaluation.causal import CausalValidator, CausalConfig
+        from factorminer.evaluation.causal import CausalConfig, CausalValidator
+
         return CausalValidator, CausalConfig
     except ImportError:
         return None, None
@@ -73,10 +82,11 @@ def _try_import_causal():
 def _try_import_regime():
     try:
         from factorminer.evaluation.regime import (
-            RegimeDetector,
             RegimeAwareEvaluator,
             RegimeConfig,
+            RegimeDetector,
         )
+
         return RegimeDetector, RegimeAwareEvaluator, RegimeConfig
     except ImportError:
         return None, None, None
@@ -84,7 +94,8 @@ def _try_import_regime():
 
 def _try_import_capacity():
     try:
-        from factorminer.evaluation.capacity import CapacityEstimator, CapacityConfig
+        from factorminer.evaluation.capacity import CapacityConfig, CapacityEstimator
+
         return CapacityEstimator, CapacityConfig
     except ImportError:
         return None, None
@@ -94,10 +105,11 @@ def _try_import_significance():
     try:
         from factorminer.evaluation.significance import (
             BootstrapICTester,
-            FDRController,
             DeflatedSharpeCalculator,
+            FDRController,
             SignificanceConfig,
         )
+
         return BootstrapICTester, FDRController, DeflatedSharpeCalculator, SignificanceConfig
     except ImportError:
         return None, None, None, None
@@ -106,6 +118,7 @@ def _try_import_significance():
 def _try_import_kg():
     try:
         from factorminer.memory.knowledge_graph import FactorKnowledgeGraph, FactorNode
+
         return FactorKnowledgeGraph, FactorNode
     except ImportError:
         return None, None
@@ -114,6 +127,7 @@ def _try_import_kg():
 def _try_import_kg_retrieval():
     try:
         from factorminer.memory.kg_retrieval import retrieve_memory_enhanced
+
         return retrieve_memory_enhanced
     except ImportError:
         return None
@@ -122,6 +136,7 @@ def _try_import_kg_retrieval():
 def _try_import_embedder():
     try:
         from factorminer.memory.embeddings import FormulaEmbedder
+
         return FormulaEmbedder
     except ImportError:
         return None
@@ -130,6 +145,7 @@ def _try_import_embedder():
 def _try_import_auto_inventor():
     try:
         from factorminer.operators.auto_inventor import OperatorInventor
+
         return OperatorInventor
     except ImportError:
         return None
@@ -138,6 +154,7 @@ def _try_import_auto_inventor():
 def _try_import_custom_store():
     try:
         from factorminer.operators.custom import CustomOperatorStore
+
         return CustomOperatorStore
     except ImportError:
         return None
@@ -146,6 +163,7 @@ def _try_import_custom_store():
 # ---------------------------------------------------------------------------
 # HelixLoop
 # ---------------------------------------------------------------------------
+
 
 class HelixLoop(RalphLoop):
     """Enhanced 5-stage Helix Loop for self-evolving factor discovery.
@@ -206,22 +224,22 @@ class HelixLoop(RalphLoop):
         config: Any,
         data_tensor: np.ndarray,
         returns: np.ndarray,
-        llm_provider: Optional[LLMProvider] = None,
-        memory: Optional[ExperienceMemory] = None,
-        library: Optional[FactorLibrary] = None,
+        llm_provider: LLMProvider | None = None,
+        memory: ExperienceMemory | None = None,
+        library: FactorLibrary | None = None,
         # Phase 2 extensions
-        debate_config: Optional[Any] = None,
+        debate_config: Any | None = None,
         enable_knowledge_graph: bool = False,
         enable_embeddings: bool = False,
         enable_auto_inventor: bool = False,
         auto_invention_interval: int = 10,
         canonicalize: bool = True,
         forgetting_lambda: float = 0.95,
-        causal_config: Optional[Any] = None,
-        regime_config: Optional[Any] = None,
-        capacity_config: Optional[Any] = None,
-        significance_config: Optional[Any] = None,
-        volume: Optional[np.ndarray] = None,
+        causal_config: Any | None = None,
+        regime_config: Any | None = None,
+        capacity_config: Any | None = None,
+        significance_config: Any | None = None,
+        volume: np.ndarray | None = None,
     ) -> None:
         # Initialize base RalphLoop
         super().__init__(
@@ -246,32 +264,43 @@ class HelixLoop(RalphLoop):
         self._capacity_config = capacity_config
         self._significance_config = significance_config
         self._volume = volume
+        self._kg_service = KnowledgeGraphService()
+        self._forgetting_service = OnlineForgettingService(forgetting_lambda=forgetting_lambda)
 
         # Track iterations without admissions for forgetting
         self._no_admission_streak: int = 0
 
         # Initialize Phase 2 components
-        self._debate_generator: Optional[Any] = None
-        self._canonicalizer: Optional[Any] = None
-        self._causal_validator: Optional[Any] = None
-        self._regime_detector: Optional[Any] = None
-        self._regime_evaluator: Optional[Any] = None
-        self._regime_classification: Optional[Any] = None
-        self._capacity_estimator: Optional[Any] = None
-        self._bootstrap_tester: Optional[Any] = None
-        self._fdr_controller: Optional[Any] = None
-        self._kg: Optional[Any] = None
-        self._embedder: Optional[Any] = None
-        self._auto_inventor: Optional[Any] = None
-        self._custom_op_store: Optional[Any] = None
+        self._debate_generator: Any | None = None
+        self._canonicalizer: Any | None = None
+        self._causal_validator: Any | None = None
+        self._regime_detector: Any | None = None
+        self._regime_evaluator: Any | None = None
+        self._regime_classification: Any | None = None
+        self._capacity_estimator: Any | None = None
+        self._bootstrap_tester: Any | None = None
+        self._fdr_controller: Any | None = None
+        self._kg: Any | None = None
+        self._embedder: Any | None = None
+        self._auto_inventor: Any | None = None
+        self._custom_op_store: Any | None = None
 
         self._init_phase2_components(llm_provider)
+        self.stages.update(
+            {
+                "retrieve": RetrieveStage(self._stage_retrieve_helix),
+                "generate": GenerateStage(self._stage_generate_helix),
+                "evaluate": EvaluateStage(self._stage_evaluate_helix),
+                "library_update": LibraryUpdateStage(self._stage_library_update_helix),
+                "distill": DistillStage(self._stage_distill_helix),
+            }
+        )
 
     # ------------------------------------------------------------------
     # Phase 2 component initialization
     # ------------------------------------------------------------------
 
-    def _init_phase2_components(self, llm_provider: Optional[LLMProvider]) -> None:
+    def _init_phase2_components(self, llm_provider: LLMProvider | None) -> None:
         """Initialize all Phase 2 components based on configuration."""
 
         # -- Debate generator --
@@ -287,9 +316,7 @@ class HelixLoop(RalphLoop):
                 except Exception as exc:
                     logger.warning("Helix: failed to init debate generator: %s", exc)
             else:
-                logger.warning(
-                    "Helix: debate_config provided but debate module unavailable"
-                )
+                logger.warning("Helix: debate_config provided but debate module unavailable")
 
         # -- Canonicalizer --
         if self._canonicalize:
@@ -301,9 +328,7 @@ class HelixLoop(RalphLoop):
                 except Exception as exc:
                     logger.warning("Helix: failed to init canonicalizer: %s", exc)
             else:
-                logger.warning(
-                    "Helix: canonicalize=True but sympy/canonicalizer unavailable"
-                )
+                logger.warning("Helix: canonicalize=True but sympy/canonicalizer unavailable")
 
         # -- Causal validator --
         if self._causal_config is not None:
@@ -311,9 +336,7 @@ class HelixLoop(RalphLoop):
             if CausalValidatorCls is not None:
                 logger.info("Helix: causal validation enabled")
             else:
-                logger.warning(
-                    "Helix: causal_config provided but causal module unavailable"
-                )
+                logger.warning("Helix: causal_config provided but causal module unavailable")
 
         # -- Regime evaluator --
         if self._regime_config is not None:
@@ -321,9 +344,7 @@ class HelixLoop(RalphLoop):
             if RegimeDetectorCls is not None and RegimeEvalCls is not None:
                 try:
                     self._regime_detector = RegimeDetectorCls(self._regime_config)
-                    self._regime_classification = self._regime_detector.classify(
-                        self.returns
-                    )
+                    self._regime_classification = self._regime_detector.classify(self.returns)
                     self._regime_evaluator = RegimeEvalCls(
                         returns=self.returns,
                         regime=self._regime_classification,
@@ -333,9 +354,7 @@ class HelixLoop(RalphLoop):
                 except Exception as exc:
                     logger.warning("Helix: failed to init regime evaluator: %s", exc)
             else:
-                logger.warning(
-                    "Helix: regime_config provided but regime module unavailable"
-                )
+                logger.warning("Helix: regime_config provided but regime module unavailable")
 
         # -- Capacity estimator --
         if self._capacity_config is not None:
@@ -350,17 +369,11 @@ class HelixLoop(RalphLoop):
                         )
                         logger.info("Helix: capacity-aware evaluation enabled")
                     except Exception as exc:
-                        logger.warning(
-                            "Helix: failed to init capacity estimator: %s", exc
-                        )
+                        logger.warning("Helix: failed to init capacity estimator: %s", exc)
                 else:
-                    logger.warning(
-                        "Helix: capacity_config provided but no volume data supplied"
-                    )
+                    logger.warning("Helix: capacity_config provided but no volume data supplied")
             else:
-                logger.warning(
-                    "Helix: capacity_config provided but capacity module unavailable"
-                )
+                logger.warning("Helix: capacity_config provided but capacity module unavailable")
 
         # -- Significance testing --
         if self._significance_config is not None:
@@ -371,9 +384,7 @@ class HelixLoop(RalphLoop):
                     self._fdr_controller = FDRCls(self._significance_config)
                     logger.info("Helix: significance testing enabled")
                 except Exception as exc:
-                    logger.warning(
-                        "Helix: failed to init significance testing: %s", exc
-                    )
+                    logger.warning("Helix: failed to init significance testing: %s", exc)
             else:
                 logger.warning(
                     "Helix: significance_config provided but significance module unavailable"
@@ -404,9 +415,7 @@ class HelixLoop(RalphLoop):
                 except Exception as exc:
                     logger.warning("Helix: failed to init embedder: %s", exc)
             else:
-                logger.warning(
-                    "Helix: enable_embeddings=True but embeddings module unavailable"
-                )
+                logger.warning("Helix: enable_embeddings=True but embeddings module unavailable")
 
         # -- Auto inventor --
         if self._enable_auto_inventor:
@@ -431,9 +440,7 @@ class HelixLoop(RalphLoop):
                     )
                     logger.info("Helix: custom operator store enabled")
                 except Exception as exc:
-                    logger.warning(
-                        "Helix: failed to init custom operator store: %s", exc
-                    )
+                    logger.warning("Helix: failed to init custom operator store: %s", exc)
             else:
                 logger.warning(
                     "Helix: enable_auto_inventor=True but custom operator store unavailable"
@@ -443,7 +450,7 @@ class HelixLoop(RalphLoop):
     # Override: _run_iteration with 5-stage Helix flow
     # ------------------------------------------------------------------
 
-    def _run_iteration(self, batch_size: int) -> Dict[str, Any]:
+    def _run_iteration(self, batch_size: int) -> dict[str, Any]:
         """Execute one iteration of the 5-stage Helix Loop.
 
         Stages:
@@ -459,106 +466,70 @@ class HelixLoop(RalphLoop):
             Iteration statistics.
         """
         t0 = time.time()
-        helix_stats: Dict[str, Any] = {}
+        payload = IterationPayload(iteration=self.iteration, batch_size=batch_size)
 
-        # ==================================================================
-        # Stage 1: RETRIEVE
-        # ==================================================================
-        library_state = self.library.get_state_summary()
-        memory_signal = self._helix_retrieve(library_state)
-
-        # ==================================================================
-        # Stage 2: PROPOSE
-        # ==================================================================
-        t_gen = time.time()
-        candidates = self._helix_propose(memory_signal, library_state, batch_size)
+        self.stages["retrieve"].run(self, payload)
+        self.stages["generate"].run(self, payload)
         self.budget.record_llm_call()
 
-        if not candidates:
+        if not payload.candidates:
             logger.warning(
                 "Helix iteration %d: generator produced 0 candidates",
                 self.iteration,
             )
             return self._empty_stats()
 
-        helix_stats["candidates_before_canon"] = len(candidates)
-
-        # ==================================================================
-        # Stage 3: SYNTHESIZE (canonicalize + dedup)
-        # ==================================================================
-        candidates, n_canon_dupes, n_semantic_dupes = self._canonicalize_and_dedup(candidates)
-        helix_stats["canonical_duplicates_removed"] = n_canon_dupes
-        helix_stats["semantic_duplicates_removed"] = n_semantic_dupes
-
-        if not candidates:
+        if not payload.candidates:
             logger.warning(
                 "Helix iteration %d: all candidates removed by canonicalization",
                 self.iteration,
             )
             return self._empty_stats()
 
-        # ==================================================================
-        # Stage 4: VALIDATE
-        # ==================================================================
-        results = self.pipeline.evaluate_batch(candidates)
-        admitted_results = self._update_library(results)
-
-        # Phase 2 extended validation on admitted candidates
-        rejected_by_phase2 = self._helix_validate(results, admitted_results)
-        helix_stats["phase2_rejections"] = rejected_by_phase2
-        surviving_admissions = [r for r in admitted_results if r.admitted]
+        self.stages["evaluate"].run(self, payload)
+        self.stages["library_update"].run(self, payload)
 
         provenance_library_state = {
-            **library_state,
+            **payload.library_state,
             "diagnostics": self.library.get_diagnostics(),
         }
 
         self._attach_factor_provenance(
-            surviving_admissions,
+            payload.admitted_results,
             library_state=provenance_library_state,
-            memory_signal=memory_signal,
+            memory_signal=payload.memory_signal,
             phase2_summary={
                 "enabled_features": self._phase2_features(),
-                "phase2_rejections": rejected_by_phase2,
+                "phase2_rejections": payload.stage_metrics.get("phase2_rejections", 0),
             },
             generator_family=self._generator_family(),
         )
 
-        # ==================================================================
-        # Stage 5: DISTILL
-        # ==================================================================
-        trajectory = self._build_trajectory(results)
-        formed = form_memory(self.memory, trajectory, self.iteration)
-        self.memory = evolve_memory(self.memory, formed)
-
-        # KG + embeddings + forgetting
-        self._helix_distill(results, admitted_results)
-
-        # Auto-invention check
-        if (
-            self._auto_inventor is not None
-            and self.iteration % self._auto_invention_interval == 0
-        ):
-            self._run_auto_invention()
+        self.stages["distill"].run(self, payload)
 
         # Build stats
         elapsed = time.time() - t0
         self.budget.record_compute(elapsed)
-        stats = self._compute_stats(results, surviving_admissions, elapsed)
-        stats.update(helix_stats)
+        stats = self._compute_stats(payload.results, payload.admitted_results, elapsed)
+        stats.update(payload.stage_metrics)
         stats["iteration"] = self.iteration
 
         # Log to reporter and session logger
         self.reporter.log_batch(**stats)
         if self._session_logger:
-            ic_values = [r.ic_mean for r in results if r.parse_ok]
+            ic_values = [r.ic_mean for r in payload.results if r.parse_ok]
             record = IterationRecord(
                 iteration=self.iteration,
-                candidates_generated=len(candidates) + n_canon_dupes + n_semantic_dupes,
+                candidates_generated=int(
+                    payload.stage_metrics.get("candidates_before_canon", len(payload.candidates))
+                ),
                 ic_passed=stats["ic_passed"],
                 correlation_passed=stats["corr_passed"],
                 admitted=stats["admitted"],
-                rejected=len(candidates) + n_canon_dupes + n_semantic_dupes - stats["admitted"],
+                rejected=int(
+                    payload.stage_metrics.get("candidates_before_canon", len(payload.candidates))
+                )
+                - stats["admitted"],
                 replaced=stats["replaced"],
                 library_size=self.library.size,
                 best_ic=max(ic_values) if ic_values else 0.0,
@@ -567,7 +538,7 @@ class HelixLoop(RalphLoop):
             )
             self._session_logger.log_iteration(record)
 
-            for r in results:
+            for r in payload.results:
                 factor_rec = FactorRecord(
                     expression=r.formula,
                     ic=r.ic_mean if r.parse_ok else None,
@@ -581,13 +552,67 @@ class HelixLoop(RalphLoop):
 
         return stats
 
+    def _stage_retrieve_helix(
+        self,
+        _loop: HelixLoop,
+        payload: IterationPayload,
+    ) -> dict[str, Any]:
+        return self._helix_retrieve(payload.library_state)
+
+    def _stage_generate_helix(
+        self,
+        _loop: HelixLoop,
+        payload: IterationPayload,
+    ) -> list[tuple[str, str]]:
+        payload.prompt_context = self.prompt_context_builder.build(
+            payload.memory_signal,
+            payload.library_state,
+            batch_size=payload.batch_size,
+            extras={"dataset_contract": self.dataset_contract.to_dict()},
+        )
+        proposed = self._helix_propose(
+            payload.prompt_context, payload.library_state, payload.batch_size
+        )
+        payload.stage_metrics["candidates_before_canon"] = len(proposed)
+        deduped, n_canon_dupes, n_semantic_dupes = self._canonicalize_and_dedup(proposed)
+        payload.stage_metrics["canonical_duplicates_removed"] = n_canon_dupes
+        payload.stage_metrics["semantic_duplicates_removed"] = n_semantic_dupes
+        return deduped
+
+    def _stage_evaluate_helix(
+        self,
+        _loop: HelixLoop,
+        payload: IterationPayload,
+    ) -> list[EvaluationResult]:
+        results = self.pipeline.evaluate_batch(payload.candidates)
+        self.lifecycle_store.record_batch_results(self.iteration, results)
+        return results
+
+    def _stage_library_update_helix(
+        self,
+        _loop: HelixLoop,
+        payload: IterationPayload,
+    ) -> list[EvaluationResult]:
+        admitted_results = self._update_library(payload.results)
+        rejected_by_phase2 = self._helix_validate(payload.results, admitted_results)
+        payload.stage_metrics["phase2_rejections"] = rejected_by_phase2
+        return [result for result in admitted_results if result.admitted]
+
+    def _stage_distill_helix(
+        self,
+        _loop: HelixLoop,
+        payload: IterationPayload,
+    ) -> None:
+        super()._stage_distill(self, payload)
+        self._helix_distill(payload.results, payload.admitted_results)
+        if self._auto_inventor is not None and self.iteration % self._auto_invention_interval == 0:
+            self._run_auto_invention()
+
     # ------------------------------------------------------------------
     # Stage 1: Enhanced retrieval
     # ------------------------------------------------------------------
 
-    def _helix_retrieve(
-        self, library_state: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def _helix_retrieve(self, library_state: dict[str, Any]) -> dict[str, Any]:
         """Stage 1 RETRIEVE: KG + embeddings + flat memory hybrid retrieval.
 
         Falls back to standard retrieve_memory if no KG/embedder is available.
@@ -605,9 +630,7 @@ class HelixLoop(RalphLoop):
                     embedder=self._embedder,
                 )
             except Exception as exc:
-                logger.warning(
-                    "Helix: enhanced retrieval failed, falling back: %s", exc
-                )
+                logger.warning("Helix: enhanced retrieval failed, falling back: %s", exc)
 
         return retrieve_memory(self.memory, library_state=library_state)
 
@@ -617,10 +640,10 @@ class HelixLoop(RalphLoop):
 
     def _helix_propose(
         self,
-        memory_signal: Dict[str, Any],
-        library_state: Dict[str, Any],
+        memory_signal: dict[str, Any],
+        library_state: dict[str, Any],
         batch_size: int,
-    ) -> List[Tuple[str, str]]:
+    ) -> list[tuple[str, str]]:
         """Stage 2 PROPOSE: Use debate generator or standard generator.
 
         Returns list of (name, formula) tuples compatible with the
@@ -634,7 +657,7 @@ class HelixLoop(RalphLoop):
                     batch_size=batch_size,
                 )
                 # Convert CandidateFactor objects to (name, formula) tuples
-                tuples: List[Tuple[str, str]] = []
+                tuples: list[tuple[str, str]] = []
                 for c in debate_candidates:
                     tuples.append((c.name, c.formula))
                 if tuples:
@@ -648,9 +671,7 @@ class HelixLoop(RalphLoop):
                     "falling back to standard generator"
                 )
             except Exception as exc:
-                logger.warning(
-                    "Helix: debate generation failed, falling back: %s", exc
-                )
+                logger.warning("Helix: debate generation failed, falling back: %s", exc)
 
         # Standard generation
         return self.generator.generate_batch(
@@ -664,8 +685,8 @@ class HelixLoop(RalphLoop):
     # ------------------------------------------------------------------
 
     def _canonicalize_and_dedup(
-        self, candidates: List[Tuple[str, str]]
-    ) -> Tuple[List[Tuple[str, str]], int, int]:
+        self, candidates: list[tuple[str, str]]
+    ) -> tuple[list[tuple[str, str]], int, int]:
         """Stage 3 SYNTHESIZE: Remove mathematically equivalent candidates.
 
         Uses SymPy-based canonicalization to detect algebraic duplicates
@@ -679,8 +700,8 @@ class HelixLoop(RalphLoop):
         if self._canonicalizer is None and self._embedder is None:
             return candidates, 0, 0
 
-        seen_hashes: Dict[str, str] = {}  # hash -> first factor name
-        unique: List[Tuple[str, str]] = []
+        seen_hashes: dict[str, str] = {}  # hash -> first factor name
+        unique: list[tuple[str, str]] = []
         n_canon_dupes = 0
         n_semantic_dupes = 0
 
@@ -690,9 +711,7 @@ class HelixLoop(RalphLoop):
                 try:
                     canon_hash = self._canonicalizer.canonicalize(tree)
                 except Exception as exc:
-                    logger.debug(
-                        "Helix: canonicalization failed for '%s': %s", name, exc
-                    )
+                    logger.debug("Helix: canonicalization failed for '%s': %s", name, exc)
                 else:
                     if canon_hash in seen_hashes:
                         n_canon_dupes += 1
@@ -738,8 +757,8 @@ class HelixLoop(RalphLoop):
 
     def _helix_validate(
         self,
-        results: List[EvaluationResult],
-        admitted_results: List[EvaluationResult],
+        results: list[EvaluationResult],
+        admitted_results: list[EvaluationResult],
     ) -> int:
         """Stage 4 extended VALIDATE: causal + regime + capacity + significance.
 
@@ -755,7 +774,9 @@ class HelixLoop(RalphLoop):
         # Collect admitted results that still have signals for extended checks
         to_check = [r for r in admitted_results if r.signals is not None]
         if not to_check:
-            self._no_admission_streak = 0 if any(r.admitted for r in admitted_results) else self._no_admission_streak + 1
+            self._no_admission_streak = (
+                0 if any(r.admitted for r in admitted_results) else self._no_admission_streak + 1
+            )
             return 0
 
         # -- Causal validation --
@@ -790,8 +811,8 @@ class HelixLoop(RalphLoop):
 
     def _validate_causal(
         self,
-        to_check: List[EvaluationResult],
-        all_results: List[EvaluationResult],
+        to_check: list[EvaluationResult],
+        all_results: list[EvaluationResult],
     ) -> int:
         """Run causal validation (Granger + intervention) on admitted candidates."""
         CausalValidatorCls, _ = _try_import_causal()
@@ -799,7 +820,7 @@ class HelixLoop(RalphLoop):
             return 0
 
         # Collect library signals for controls
-        library_signals: Dict[str, np.ndarray] = {}
+        library_signals: dict[str, np.ndarray] = {}
         for f in self.library.list_factors():
             if f.signals is not None:
                 library_signals[f.name] = f.signals
@@ -816,9 +837,7 @@ class HelixLoop(RalphLoop):
             return 0
 
         rejected = 0
-        threshold = getattr(
-            self._causal_config, "robustness_threshold", 0.4
-        )
+        threshold = getattr(self._causal_config, "robustness_threshold", 0.4)
 
         for r in to_check:
             if not r.admitted or r.signals is None:
@@ -826,8 +845,10 @@ class HelixLoop(RalphLoop):
             try:
                 result = validator.validate(r.factor_name, r.signals)
                 if not result.passes:
-                    self._revoke_admission(r, all_results,
-                        f"Causal: robustness_score={result.robustness_score:.3f} < {threshold}"
+                    self._revoke_admission(
+                        r,
+                        all_results,
+                        f"Causal: robustness_score={result.robustness_score:.3f} < {threshold}",
                     )
                     rejected += 1
                     logger.debug(
@@ -846,8 +867,8 @@ class HelixLoop(RalphLoop):
 
     def _validate_regime(
         self,
-        to_check: List[EvaluationResult],
-        all_results: List[EvaluationResult],
+        to_check: list[EvaluationResult],
+        all_results: list[EvaluationResult],
     ) -> int:
         """Run regime-aware IC evaluation on admitted candidates."""
         if self._regime_evaluator is None:
@@ -860,9 +881,11 @@ class HelixLoop(RalphLoop):
             try:
                 result = self._regime_evaluator.evaluate(r.factor_name, r.signals)
                 if not result.passes:
-                    self._revoke_admission(r, all_results,
+                    self._revoke_admission(
+                        r,
+                        all_results,
                         f"Regime: only {result.n_regimes_passing} regimes passing "
-                        f"(need {getattr(self._regime_config, 'min_regimes_passing', 2)})"
+                        f"(need {getattr(self._regime_config, 'min_regimes_passing', 2)})",
                     )
                     rejected += 1
                     logger.debug(
@@ -881,17 +904,15 @@ class HelixLoop(RalphLoop):
 
     def _validate_capacity(
         self,
-        to_check: List[EvaluationResult],
-        all_results: List[EvaluationResult],
+        to_check: list[EvaluationResult],
+        all_results: list[EvaluationResult],
     ) -> int:
         """Run capacity-aware cost evaluation on admitted candidates."""
         if self._capacity_estimator is None:
             return 0
 
         rejected = 0
-        net_icir_threshold = getattr(
-            self._capacity_config, "net_icir_threshold", 0.3
-        )
+        net_icir_threshold = getattr(self._capacity_config, "net_icir_threshold", 0.3)
 
         for r in to_check:
             if not r.admitted or r.signals is None:
@@ -902,8 +923,10 @@ class HelixLoop(RalphLoop):
                     signals=r.signals,
                 )
                 if not result.passes_net_threshold:
-                    self._revoke_admission(r, all_results,
-                        f"Capacity: net_icir={result.net_icir:.3f} < {net_icir_threshold}"
+                    self._revoke_admission(
+                        r,
+                        all_results,
+                        f"Capacity: net_icir={result.net_icir:.3f} < {net_icir_threshold}",
                     )
                     rejected += 1
                     logger.debug(
@@ -922,16 +945,16 @@ class HelixLoop(RalphLoop):
 
     def _validate_significance(
         self,
-        to_check: List[EvaluationResult],
-        all_results: List[EvaluationResult],
+        to_check: list[EvaluationResult],
+        all_results: list[EvaluationResult],
     ) -> int:
         """Run bootstrap CI + batch-level FDR correction on admitted candidates."""
         if self._bootstrap_tester is None or self._fdr_controller is None:
             return 0
 
         # Compute IC series for each admitted candidate and gather p-values
-        ic_series_map: Dict[str, np.ndarray] = {}
-        result_map: Dict[str, EvaluationResult] = {}
+        ic_series_map: dict[str, np.ndarray] = {}
+        result_map: dict[str, EvaluationResult] = {}
 
         for r in to_check:
             if not r.admitted or r.signals is None:
@@ -951,9 +974,7 @@ class HelixLoop(RalphLoop):
             return 0
 
         try:
-            fdr_result = self._fdr_controller.batch_evaluate(
-                ic_series_map, self._bootstrap_tester
-            )
+            fdr_result = self._fdr_controller.batch_evaluate(ic_series_map, self._bootstrap_tester)
         except Exception as exc:
             logger.warning("Helix: FDR batch evaluation failed: %s", exc)
             return 0
@@ -964,9 +985,11 @@ class HelixLoop(RalphLoop):
                 r = result_map.get(name)
                 if r is not None and r.admitted:
                     adj_p = fdr_result.adjusted_p_values.get(name, 1.0)
-                    self._revoke_admission(r, all_results,
+                    self._revoke_admission(
+                        r,
+                        all_results,
                         f"Significance: FDR-adjusted p={adj_p:.4f} > "
-                        f"{getattr(self._significance_config, 'fdr_level', 0.05)}"
+                        f"{getattr(self._significance_config, 'fdr_level', 0.05)}",
                     )
                     rejected += 1
                     logger.debug(
@@ -980,7 +1003,7 @@ class HelixLoop(RalphLoop):
     def _revoke_admission(
         self,
         result: EvaluationResult,
-        all_results: List[EvaluationResult],
+        all_results: list[EvaluationResult],
         reason: str,
     ) -> None:
         """Revoke a previously admitted candidate from the library.
@@ -993,10 +1016,7 @@ class HelixLoop(RalphLoop):
         # Find and remove from library by name+formula match
         try:
             for factor in self.library.list_factors():
-                if (
-                    factor.name == result.factor_name
-                    and factor.formula == result.formula
-                ):
+                if factor.name == result.factor_name and factor.formula == result.formula:
                     self.library.remove_factor(factor.id)
                     self._remove_semantic_artifacts(result.factor_name)
                     logger.debug(
@@ -1021,8 +1041,8 @@ class HelixLoop(RalphLoop):
 
     def _helix_distill(
         self,
-        results: List[EvaluationResult],
-        admitted_results: List[EvaluationResult],
+        results: list[EvaluationResult],
+        admitted_results: list[EvaluationResult],
     ) -> None:
         """Stage 5 DISTILL: KG update + embeddings + online forgetting."""
 
@@ -1044,170 +1064,33 @@ class HelixLoop(RalphLoop):
                         )
 
         # -- Online forgetting --
-        self._apply_forgetting()
+        self._forgetting_service.apply(self.memory, self._no_admission_streak)
 
     def _update_knowledge_graph(
         self,
-        results: List[EvaluationResult],
-        admitted_results: List[EvaluationResult],
+        results: list[EvaluationResult],
+        admitted_results: list[EvaluationResult],
     ) -> None:
         """Update the knowledge graph with new factor nodes and edges."""
-        _, FactorNodeCls = _try_import_kg()
-        if FactorNodeCls is None or self._kg is None:
+        if self._kg is None:
             return
 
         for r in admitted_results:
-            if not r.admitted:
-                continue
-
-            # Extract operators and features from formula
-            operators = self._extract_operators(r.formula)
-            features = self._extract_features(r.formula)
-
-            node = FactorNodeCls(
-                factor_id=r.factor_name,
-                formula=r.formula,
-                ic_mean=r.ic_mean,
-                category=self._infer_category(r.formula),
-                operators=operators,
-                features=features,
-                batch_number=self.iteration,
-                admitted=True,
-            )
-            if self._embedder is not None:
-                try:
-                    node.embedding = self._embedder.embed(r.factor_name, r.formula)
-                except Exception as exc:
-                    logger.debug(
-                        "Helix: failed to attach embedding for '%s': %s",
-                        r.factor_name,
-                        exc,
-                    )
-
             try:
-                self._kg.add_factor(node)
-            except Exception as exc:
-                logger.debug(
-                    "Helix: failed to add factor to KG: %s", exc
+                self._kg_service.add_result(
+                    kg=self._kg,
+                    result=r,
+                    library=self.library,
+                    iteration=self.iteration,
+                    embedder=self._embedder,
                 )
-                continue
-
-            # Add correlation edges with existing library factors
-            if r.signals is not None:
-                for factor in self.library.list_factors():
-                    if factor.name == r.factor_name:
-                        continue
-                    if factor.signals is not None:
-                        try:
-                            corr = self.library._compute_correlation_vectorized(
-                                r.signals, factor.signals
-                            )
-                            self._kg.add_correlation_edge(
-                                r.factor_name,
-                                factor.name,
-                                rho=corr,
-                                threshold=0.4,
-                            )
-                        except Exception:
-                            pass
-
-            # Detect derivation (mutation) relationships
-            self._detect_derivation(r, operators)
+            except Exception as exc:
+                logger.debug("Helix: failed to add factor to KG: %s", exc)
 
     def _remove_semantic_artifacts(self, factor_id: str) -> None:
         """Remove a factor from derived semantic stores if present."""
         if self._kg is not None:
-            try:
-                self._kg.remove_factor(factor_id)
-            except Exception as exc:
-                logger.debug(
-                    "Helix: failed to remove factor '%s' from KG: %s",
-                    factor_id,
-                    exc,
-                )
-
-        if self._embedder is not None:
-            try:
-                self._embedder.remove(factor_id)
-            except Exception as exc:
-                logger.debug(
-                    "Helix: failed to remove factor '%s' from embedder: %s",
-                    factor_id,
-                    exc,
-                )
-
-    def _detect_derivation(
-        self,
-        result: EvaluationResult,
-        new_operators: List[str],
-    ) -> None:
-        """Detect if a new factor is a mutation of an existing one.
-
-        Compares operator sets: if the new factor shares >50% of operators
-        with an existing factor but has at least one different operator,
-        it is considered a derivation (mutation).
-        """
-        if self._kg is None:
-            return
-
-        new_ops = set(new_operators)
-        if not new_ops:
-            return
-
-        for factor in self.library.list_factors():
-            if factor.name == result.factor_name:
-                continue
-
-            existing_ops = set(self._extract_operators(factor.formula))
-            if not existing_ops:
-                continue
-
-            shared = new_ops & existing_ops
-            if not shared:
-                continue
-
-            # More than 50% shared but not identical
-            overlap = len(shared) / max(len(new_ops), len(existing_ops))
-            if 0.5 <= overlap < 1.0:
-                diff_ops = (new_ops - existing_ops) | (existing_ops - new_ops)
-                mutation_type = f"operator_change:{','.join(sorted(diff_ops))}"
-                try:
-                    self._kg.add_derivation_edge(
-                        child=result.factor_name,
-                        parent=factor.name,
-                        mutation_type=mutation_type,
-                    )
-                except Exception:
-                    pass
-
-    def _apply_forgetting(self) -> None:
-        """Apply online forgetting: exponential decay on memory patterns.
-
-        - Decay occurrence_count of all success patterns by forgetting_lambda.
-        - If no admissions for 20+ consecutive iterations, demote success_rate.
-        """
-        lam = self._forgetting_lambda
-
-        for pattern in self.memory.success_patterns:
-            # Decay occurrence count
-            if hasattr(pattern, "occurrence_count"):
-                pattern.occurrence_count = int(
-                    pattern.occurrence_count * lam
-                )
-
-        # Demote success_rate after prolonged drought
-        if self._no_admission_streak >= 20:
-            for pattern in self.memory.success_patterns:
-                if hasattr(pattern, "success_rate"):
-                    current = pattern.success_rate
-                    if current == "High":
-                        pattern.success_rate = "Medium"
-                    elif current == "Medium":
-                        pattern.success_rate = "Low"
-            logger.info(
-                "Helix: demoted success rates after %d iterations without admissions",
-                self._no_admission_streak,
-            )
+            self._kg_service.remove_factor(kg=self._kg, embedder=self._embedder, factor_id=factor_id)
 
     # ------------------------------------------------------------------
     # Auto-invention
@@ -1228,6 +1111,7 @@ class HelixLoop(RalphLoop):
         # Gather existing operators
         try:
             from factorminer.core.types import OPERATOR_REGISTRY as SPEC_REG
+
             existing_ops = dict(SPEC_REG)
         except ImportError:
             existing_ops = {}
@@ -1288,8 +1172,8 @@ class HelixLoop(RalphLoop):
             return
 
         try:
-            from factorminer.operators.custom import CustomOperator
             from factorminer.core.types import OperatorSpec, OperatorType, SignatureType
+            from factorminer.operators.custom import CustomOperator
 
             spec = OperatorSpec(
                 name=proposal.name,
@@ -1298,14 +1182,13 @@ class HelixLoop(RalphLoop):
                 signature=SignatureType.TIME_SERIES_TO_TIME_SERIES,
                 param_names=proposal.param_names,
                 param_defaults=proposal.param_defaults,
-                param_ranges={
-                    k: tuple(v) for k, v in proposal.param_ranges.items()
-                },
+                param_ranges={k: tuple(v) for k, v in proposal.param_ranges.items()},
                 description=proposal.description,
             )
 
             # Compile the function
             from factorminer.operators.custom import _compile_operator_code
+
             fn = _compile_operator_code(proposal.numpy_code)
             if fn is None:
                 logger.warning(
@@ -1348,7 +1231,7 @@ class HelixLoop(RalphLoop):
         except Exception as exc:
             logger.warning("Helix: checkpoint failed: %s", exc)
 
-    def save_session(self, path: Optional[str] = None) -> str:
+    def save_session(self, path: str | None = None) -> str:
         """Save the full mining session state including Phase 2 components.
 
         Extends the base RalphLoop save with:
@@ -1449,18 +1332,14 @@ class HelixLoop(RalphLoop):
                             self._kg.get_edge_count(),
                         )
                     except Exception as exc:
-                        logger.warning(
-                            "Helix: failed to load knowledge graph: %s", exc
-                        )
+                        logger.warning("Helix: failed to load knowledge graph: %s", exc)
 
         # Load custom operators
         if self._custom_op_store is not None:
             try:
                 self._custom_op_store.load()
             except Exception as exc:
-                logger.warning(
-                    "Helix: failed to load custom operators: %s", exc
-                )
+                logger.warning("Helix: failed to load custom operators: %s", exc)
 
         # Load helix-specific state
         helix_state_path = checkpoint_dir / "helix_state.json"
@@ -1468,17 +1347,13 @@ class HelixLoop(RalphLoop):
             try:
                 with open(helix_state_path) as f:
                     helix_state = json.load(f)
-                self._no_admission_streak = helix_state.get(
-                    "no_admission_streak", 0
-                )
+                self._no_admission_streak = helix_state.get("no_admission_streak", 0)
                 logger.info(
                     "Helix: restored helix state (streak=%d)",
                     self._no_admission_streak,
                 )
             except Exception as exc:
-                logger.warning(
-                    "Helix: failed to load helix state: %s", exc
-                )
+                logger.warning("Helix: failed to load helix state: %s", exc)
 
         self._prime_embedder_from_library()
         if self._session is not None and self._session.run_manifest:
@@ -1490,17 +1365,15 @@ class HelixLoop(RalphLoop):
                     with open(run_manifest_path) as f:
                         self._run_manifest = json.load(f)
                 except Exception as exc:
-                    logger.warning(
-                        "Helix: failed to load run manifest: %s", exc
-                    )
+                    logger.warning("Helix: failed to load run manifest: %s", exc)
 
     def _loop_type(self) -> str:
         """Label the loop for provenance and manifests."""
         return "helix"
 
-    def _phase2_features(self) -> List[str]:
+    def _phase2_features(self) -> list[str]:
         """List the enabled Helix Phase 2 features."""
-        features: List[str] = []
+        features: list[str] = []
         if self._debate_generator is not None:
             features.append("debate")
         if self._canonicalizer is not None:
@@ -1532,12 +1405,12 @@ class HelixLoop(RalphLoop):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _extract_operators(formula: str) -> List[str]:
+    def _extract_operators(formula: str) -> list[str]:
         """Extract operator names from a DSL formula string."""
         return re.findall(r"([A-Z][a-zA-Z]+)\(", formula)
 
     @staticmethod
-    def _extract_features(formula: str) -> List[str]:
+    def _extract_features(formula: str) -> list[str]:
         """Extract feature names (e.g. $close, $volume) from a formula."""
         return re.findall(r"\$[a-zA-Z_]+", formula)
 
@@ -1564,7 +1437,7 @@ class HelixLoop(RalphLoop):
                     exc,
                 )
 
-    def _semantic_duplicate_target(self, formula: str) -> Optional[str]:
+    def _semantic_duplicate_target(self, formula: str) -> str | None:
         """Return the matched library factor if embeddings flag a near-duplicate."""
         if self._embedder is None or self.library.size == 0:
             return None

@@ -190,6 +190,7 @@ def _build_core_mining_config(cfg, output_dir: Path, mock: bool = False):
     signal_failure_policy = (
         "synthetic" if mock else cfg.evaluation.signal_failure_policy
     )
+    memory_cfg = getattr(cfg, "memory", None)
 
     mining_cfg = CoreMiningConfig(
         target_library_size=cfg.mining.target_library_size,
@@ -205,7 +206,10 @@ def _build_core_mining_config(cfg, output_dir: Path, mock: bool = False):
         output_dir=str(output_dir),
         backend=cfg.evaluation.backend,
         gpu_device=cfg.evaluation.gpu_device,
+        redundancy_metric=getattr(cfg.evaluation, "redundancy_metric", "spearman"),
         signal_failure_policy=signal_failure_policy,
+        memory_policy=getattr(memory_cfg, "policy", "paper"),
+        memory_regime_lookback_window=getattr(memory_cfg, "regime_lookback_window", 60),
     )
     mining_cfg.research = getattr(cfg, "research", None)
     benchmark_cfg = getattr(cfg, "benchmark", None)
@@ -1340,6 +1344,32 @@ def benchmark_ablation_memory(
         factor_miner_no_memory_library_path=factor_miner_no_memory_library,
     )
     _print_benchmark_summary("FactorMiner -- Memory Ablation", payload)
+
+
+@benchmark.command("ablation-strategy")
+@click.option("--baseline", default="factor_miner", help="Runtime baseline id to evaluate.")
+@_benchmark_common_options
+def benchmark_ablation_strategy(
+    ctx: click.Context,
+    data_path: str | None,
+    mock: bool,
+    factor_miner_library: str | None,
+    factor_miner_no_memory_library: str | None,
+    baseline: str,
+) -> None:
+    """Run runtime ablations across memory policy, dependence metric, and backend."""
+    from factorminer.benchmark.runtime import run_ablation_strategy_benchmark
+
+    cfg = ctx.obj["config"]
+    output_dir = ctx.obj["output_dir"]
+    payload = run_ablation_strategy_benchmark(
+        cfg,
+        output_dir,
+        baseline=baseline,
+        data_path=data_path,
+        mock=mock,
+    )
+    _print_benchmark_summary("FactorMiner -- Strategy Ablation", payload)
 
 
 @benchmark.command("cost-pressure")

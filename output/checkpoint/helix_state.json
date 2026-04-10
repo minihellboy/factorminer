@@ -1,8 +1,0 @@
-{
-  "no_admission_streak": 1,
-  "forgetting_lambda": 0.95,
-  "canonicalize": false,
-  "enable_knowledge_graph": false,
-  "enable_embeddings": false,
-  "enable_auto_inventor": false
-}

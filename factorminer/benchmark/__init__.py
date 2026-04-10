@@ -1,4 +1,8 @@
-"""Benchmark runners for paper-faithful and Helix research evaluation."""
+"""Benchmark runners for paper-faithful and Helix research evaluation.
+
+`factorminer.benchmark.runtime` is the canonical benchmark surface.
+`helix_benchmark` remains available as a legacy report/analysis module.
+"""
 
 from factorminer.benchmark.runtime import (
     BenchmarkManifest,
@@ -6,6 +10,7 @@ from factorminer.benchmark.runtime import (
     evaluate_frozen_set,
     load_benchmark_dataset,
     run_ablation_memory_benchmark,
+    run_ablation_strategy_benchmark,
     run_benchmark_suite,
     run_cost_pressure_benchmark,
     run_efficiency_benchmark,
@@ -48,6 +53,7 @@ __all__ = [
     "evaluate_frozen_set",
     "load_benchmark_dataset",
     "run_ablation_memory_benchmark",
+    "run_ablation_strategy_benchmark",
     "run_benchmark_suite",
     "run_cost_pressure_benchmark",
     "run_efficiency_benchmark",

@@ -17,7 +17,11 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-from scipy.stats import spearmanr
+
+from factorminer.architecture.dependence import (
+    DependenceMetric,
+    build_dependence_metric,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,12 +99,17 @@ class FactorLibrary:
         self,
         correlation_threshold: float = 0.5,
         ic_threshold: float = 0.04,
+        dependence_metric: str | DependenceMetric | None = None,
     ) -> None:
         self.factors: Dict[int, Factor] = {}
         self.correlation_matrix: Optional[np.ndarray] = None  # Pairwise |rho|
         self._next_id: int = 1
         self.correlation_threshold = correlation_threshold
         self.ic_threshold = ic_threshold
+        if isinstance(dependence_metric, DependenceMetric):
+            self.dependence_metric = dependence_metric
+        else:
+            self.dependence_metric = build_dependence_metric(dependence_metric)
         # Maps factor_id -> index in the correlation matrix
         self._id_to_index: Dict[int, int] = {}
 
@@ -111,9 +120,10 @@ class FactorLibrary:
     def compute_correlation(
         self, signals_a: np.ndarray, signals_b: np.ndarray
     ) -> float:
-        """Compute time-average cross-sectional Spearman correlation rho(alpha, beta).
+        """Compute time-average dependence rho(alpha, beta) under the active metric.
 
-        rho(alpha, beta) = (1/|T|) * sum_t Corr_rank(s_t^(alpha), s_t^(beta))
+        By default this is the paper's mean absolute Spearman rank correlation,
+        but the library can now be configured with alternative dependence metrics.
 
         Parameters
         ----------
@@ -125,62 +135,13 @@ class FactorLibrary:
         float
             Mean absolute Spearman rank correlation across time steps.
         """
-        if signals_a.shape != signals_b.shape:
-            raise ValueError(
-                f"Signal shapes must match: {signals_a.shape} vs {signals_b.shape}"
-            )
-        M, T = signals_a.shape
-        correlations = np.empty(T, dtype=np.float64)
-
-        for t in range(T):
-            col_a = signals_a[:, t]
-            col_b = signals_b[:, t]
-            # Mask NaNs from both columns
-            valid = ~(np.isnan(col_a) | np.isnan(col_b))
-            n_valid = valid.sum()
-            if n_valid < 3:
-                correlations[t] = np.nan
-                continue
-            rho, _ = spearmanr(col_a[valid], col_b[valid])
-            correlations[t] = rho
-
-        return float(np.nanmean(np.abs(correlations)))
+        return float(self.dependence_metric.compute(signals_a, signals_b))
 
     def _compute_correlation_vectorized(
         self, signals_a: np.ndarray, signals_b: np.ndarray
     ) -> float:
-        """Faster vectorized Spearman correlation using rankdata.
-
-        For large M and T this avoids per-timestep Python loops by ranking
-        each column and computing Pearson on the ranks.
-        """
-        from scipy.stats import rankdata
-
-        M, T = signals_a.shape
-        # Mask invalid entries
-        mask = ~(np.isnan(signals_a) | np.isnan(signals_b))
-
-        corr_sum = 0.0
-        n_valid_t = 0
-        for t in range(T):
-            valid = mask[:, t]
-            n = valid.sum()
-            if n < 3:
-                continue
-            ra = rankdata(signals_a[valid, t])
-            rb = rankdata(signals_b[valid, t])
-            # Pearson on ranks == Spearman
-            ra_c = ra - ra.mean()
-            rb_c = rb - rb.mean()
-            denom = np.sqrt((ra_c ** 2).sum() * (rb_c ** 2).sum())
-            if denom < 1e-12:
-                continue
-            corr_sum += abs((ra_c * rb_c).sum() / denom)
-            n_valid_t += 1
-
-        if n_valid_t == 0:
-            return 0.0
-        return corr_sum / n_valid_t
+        """Compatibility alias for the active dependence metric implementation."""
+        return self.compute_correlation(signals_a, signals_b)
 
     # ------------------------------------------------------------------
     # Admission and replacement
@@ -217,7 +178,7 @@ class FactorLibrary:
 
         if max_corr >= self.correlation_threshold:
             return False, (
-                f"Max correlation {max_corr:.4f} >= threshold "
+                f"Max correlation/{self.dependence_metric.name} dependence {max_corr:.4f} >= threshold "
                 f"{self.correlation_threshold} with existing library factor"
             )
 
@@ -278,8 +239,8 @@ class FactorLibrary:
 
         if len(correlated_factors) != 1:
             return False, None, (
-                f"Found {len(correlated_factors)} correlated factors "
-                f"(need exactly 1 for replacement)"
+                f"Found {len(correlated_factors)} correlated/conflicting factors "
+                "(need exactly 1 for replacement)"
             )
 
         fid, corr, existing_ic = correlated_factors[0]
@@ -591,6 +552,7 @@ class FactorLibrary:
                 {
                     "id": f.id,
                     "name": f.name,
+                    "formula": f.formula,
                     "category": f.category,
                     "ic_mean": f.ic_mean,
                     "batch": f.batch_number,
@@ -599,4 +561,5 @@ class FactorLibrary:
             ],
             "correlation_threshold": self.correlation_threshold,
             "ic_threshold": self.ic_threshold,
+            "dependence_metric": self.dependence_metric.name,
         }

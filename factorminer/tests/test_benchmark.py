@@ -10,6 +10,7 @@ import numpy as np
 
 from factorminer.benchmark.runtime import (
     build_benchmark_library,
+    run_ablation_strategy_benchmark,
     run_table1_benchmark,
     select_frozen_top_k,
 )
@@ -482,3 +483,56 @@ def test_table1_runtime_methods_fail_loudly_without_catalog_fallback(monkeypatch
         assert "runtime loop failed" in str(exc)
 
     assert fallback_called["value"] is False
+
+
+def test_strategy_ablation_benchmark_expands_runtime_grid(monkeypatch, tmp_path):
+    cfg = load_config()
+    calls = []
+
+    def _fake_run_table1(*args, **kwargs):
+        runtime_manifest = kwargs["runtime_manifests"]["factor_miner"]
+        calls.append(runtime_manifest)
+        memory_policy = runtime_manifest["memory_policy"]
+        dependence_metric = runtime_manifest["redundancy_metric"]
+        backend = runtime_manifest["backend"]
+        score = {
+            ("paper", "spearman", "numpy"): 0.05,
+            ("paper", "pearson", "numpy"): 0.06,
+            ("kg", "spearman", "numpy"): 0.07,
+            ("kg", "pearson", "numpy"): 0.09,
+        }[(memory_policy, dependence_metric, backend)]
+        return {
+            "factor_miner": {
+                "freeze_library_size": 5,
+                "freeze_stats": {
+                    "succeeded": 10,
+                    "admitted": 4,
+                    "correlation_rejections": 2,
+                    "replaced": 1,
+                },
+                "universes": {
+                    "CSI500": {
+                        "library": {"ic": score, "icir": score * 10.0, "avg_abs_rho": 0.2}
+                    }
+                },
+                "provenance": {"requested_runtime_manifest": dict(runtime_manifest)},
+            }
+        }
+
+    monkeypatch.setattr("factorminer.benchmark.runtime.run_table1_benchmark", _fake_run_table1)
+
+    payload = run_ablation_strategy_benchmark(
+        cfg,
+        tmp_path,
+        mock=True,
+        baseline="factor_miner",
+        memory_policies=["paper", "kg"],
+        dependence_metrics=["spearman", "pearson"],
+        backends=["numpy"],
+    )
+
+    assert len(calls) == 4
+    assert payload["best"]["memory_policy"] == "kg"
+    assert payload["best"]["dependence_metric"] == "pearson"
+    assert payload["leaderboard"][0]["mean_test_library_ic"] == 0.09
+    assert (tmp_path / "benchmark" / "ablation" / "strategy_grid.json").exists()

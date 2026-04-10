@@ -53,6 +53,9 @@ class _TestConfig:
     fast_screen_assets: int = 0  # No fast screening for deterministic tests
     num_workers: int = 1
     output_dir: str = ""
+    redundancy_metric: str = "spearman"
+    memory_policy: str = "paper"
+    memory_regime_lookback_window: int = 10
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -64,6 +67,8 @@ class _TestConfig:
             "correlation_threshold": self.correlation_threshold,
             "replacement_ic_min": self.replacement_ic_min,
             "replacement_ic_ratio": self.replacement_ic_ratio,
+            "redundancy_metric": self.redundancy_metric,
+            "memory_policy": self.memory_policy,
         }
 
 
@@ -1074,3 +1079,21 @@ class TestCheckpointResume:
         assert factor_payload["provenance"]["run_id"] == loop._session.session_id
         assert factor_payload["provenance"]["loop_type"] == "ralph"
         assert factor_payload["provenance"]["generator_family"]
+
+    def test_loop_uses_configured_memory_policy_and_dependence_metric(
+        self, test_config, synthetic_data, mock_provider, tmp_dir
+    ):
+        test_config.output_dir = tmp_dir
+        test_config.memory_policy = "none"
+        test_config.redundancy_metric = "pearson"
+        data_tensor, returns = synthetic_data
+
+        loop = RalphLoop(
+            config=test_config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=mock_provider,
+        )
+
+        assert loop.memory_policy.schema()["policy"] == "none"
+        assert loop.library.dependence_metric.name == "pearson"

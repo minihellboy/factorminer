@@ -58,8 +58,13 @@ evaluation:
   # GPU device identifier (used when backend is "gpu")
   gpu_device: "cuda:0"
 
-  # Computation backend: "gpu" (fastest), "numpy" (CPU), or "c" (C extension)
+  # Computation backend: "gpu" (fastest), "numpy" (portable CPU),
+  # or "c" (compiled CPU kernels via Bottleneck)
   backend: "gpu"
+
+  # Redundancy/dependence metric used for admission, replacement,
+  # and library geometry diagnostics.
+  redundancy_metric: "spearman"
 
   # How to handle factor expression failures during evaluation/mining:
   # "reject" = fail the factor/command, "synthetic" = deterministic fallback,
@@ -139,6 +144,10 @@ llm:
 # Experience memory system
 # ---------------------------------------------------------------------------
 memory:
+  # Retrieval/distillation policy: "paper", "none", "kg",
+  # "family_aware", or "regime_aware"
+  policy: "paper"
+
   # Maximum number of success patterns to retain in memory
   max_success_patterns: 50
 
@@ -150,6 +159,9 @@ memory:
 
   # How often (in iterations) to consolidate memory
   consolidation_interval: 10
+
+  # Rolling window used when policy == "regime_aware"
+  regime_lookback_window: 60
 
 # ---------------------------------------------------------------------------
 # Benchmarking and reporting
@@ -190,6 +202,15 @@ benchmark:
 
   # Reference panel shape [periods, assets] used for efficiency benchmarks
   efficiency_panel_shape: [12610, 500]
+
+  # Optional runtime ablation grid over memory policy × dependence metric × backend.
+  # This is only used by the canonical runtime benchmark surface.
+  strategy_ablation:
+    enabled: false
+    baseline: "factor_miner"
+    memory_policies: ["paper", "none", "kg", "family_aware", "regime_aware"]
+    dependence_metrics: ["spearman", "pearson", "distance_correlation"]
+    backends: ["numpy", "c", "gpu"]
 
 # ---------------------------------------------------------------------------
 # Research-first multi-horizon scoring
