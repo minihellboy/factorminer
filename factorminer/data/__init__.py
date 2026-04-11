@@ -12,6 +12,12 @@ from factorminer.data.mock_data import (
     generate_mock_data,
     generate_with_halts,
 )
+from factorminer.data.validation import (
+    DataValidationReport,
+    ValidationIssue,
+    render_validation_report,
+    validate_market_data,
+)
 from factorminer.data.preprocessor import (
     PreprocessConfig,
     compute_derived_features,
@@ -49,6 +55,11 @@ __all__ = [
     "MockConfig",
     "generate_mock_data",
     "generate_with_halts",
+    # validation
+    "DataValidationReport",
+    "ValidationIssue",
+    "render_validation_report",
+    "validate_market_data",
     # preprocessor
     "PreprocessConfig",
     "compute_derived_features",

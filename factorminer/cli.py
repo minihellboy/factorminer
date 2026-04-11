@@ -594,6 +594,56 @@ def main(ctx: click.Context, config: str | None, gpu: bool, verbose: bool, outpu
 
 
 # ---------------------------------------------------------------------------
+# validate-data
+# ---------------------------------------------------------------------------
+
+@main.command("validate-data")
+@click.argument("path", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--strict",
+    is_flag=True,
+    help="Treat warnings as failures.",
+)
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Emit machine-readable JSON instead of text.",
+)
+@click.option(
+    "--hdf-key",
+    default="data",
+    show_default=True,
+    help="HDF5 key to read when validating .h5/.hdf5 files.",
+)
+@click.pass_context
+def validate_data(
+    ctx: click.Context,
+    path: str,
+    strict: bool,
+    json_output: bool,
+    hdf_key: str,
+) -> None:
+    """Validate a market-data file before mining."""
+    from factorminer.data.validation import render_validation_report, validate_market_data
+
+    try:
+        report = validate_market_data(path, hdf_key=hdf_key)
+    except Exception as exc:  # noqa: BLE001 - surfaced to CLI
+        click.echo(f"Validation error: {exc}")
+        raise click.Abort() from exc
+
+    if json_output:
+        click.echo(json.dumps(report.to_dict(strict=strict), indent=2, sort_keys=True))
+    else:
+        click.echo(render_validation_report(report, strict=strict))
+
+    code = report.exit_code(strict=strict)
+    if code != 0:
+        ctx.exit(code)
+
+
+# ---------------------------------------------------------------------------
 # mine
 # ---------------------------------------------------------------------------
 
