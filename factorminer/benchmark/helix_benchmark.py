@@ -1,13 +1,7 @@
-"""HelixBenchmark — rigorous comparison of HelixFactor vs FactorMiner.
+"""Legacy HelixBenchmark reports.
 
-Provides five inter-operating classes that together form a complete
-benchmarking suite for the HelixFactor vs FactorMiner (Ralph Loop) paper:
-
-  HelixBenchmark          — main comparison class (Table 1 style)
-  StatisticalComparisonTests — DM test, paired t-test, block bootstrap
-  SpeedBenchmark          — operator / factor / pipeline timing
-  BenchmarkResult         — aggregate result container + report generators
-  DMTestResult / MethodResult — individual result containers
+`factorminer.benchmark.runtime` is the canonical benchmark engine.
+This module remains only for backward-compatible reports and CLI entry points.
 
 CLI usage:
   python -m factorminer.benchmark.helix_benchmark --mock --n-factors 40 --output results/
@@ -31,8 +25,16 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ttest_rel, wilcoxon
 
-warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
+
+_LEGACY_RUNTIME_MESSAGE = (
+    "factorminer.benchmark.helix_benchmark is legacy; use "
+    "factorminer.benchmark.runtime for the canonical benchmark path"
+)
+
+
+def _warn_legacy_runtime() -> None:
+    warnings.warn(_LEGACY_RUNTIME_MESSAGE, DeprecationWarning, stacklevel=3)
 
 
 # ---------------------------------------------------------------------------
@@ -879,6 +881,7 @@ class HelixBenchmark:
         correlation_threshold: float = 0.5,
         seed: int = 42,
     ) -> None:
+        _warn_legacy_runtime()
         self.ic_threshold = ic_threshold
         self.correlation_threshold = correlation_threshold
         self.seed = seed
@@ -2082,6 +2085,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    _warn_legacy_runtime()
     args = _parse_args()
     logging.basicConfig(
         level=getattr(logging, args.log_level.upper(), logging.WARNING),

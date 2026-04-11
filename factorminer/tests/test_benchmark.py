@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import json
+import warnings
 from types import SimpleNamespace
 
 from click.testing import CliRunner
 import numpy as np
+import pandas as pd
 
 from factorminer.benchmark.runtime import (
     build_benchmark_library,
+    build_benchmark_runtime_contract,
+    evaluate_frozen_set,
     run_ablation_strategy_benchmark,
     run_table1_benchmark,
     select_frozen_top_k,
@@ -19,7 +23,7 @@ from factorminer.cli import main
 from factorminer.core.factor_library import Factor, FactorLibrary
 from factorminer.core.library_io import save_library
 from factorminer.core.session import MiningSession
-from factorminer.evaluation.runtime import FactorEvaluationArtifact
+from factorminer.evaluation.runtime import DatasetSplit, EvaluationDataset, FactorEvaluationArtifact
 from factorminer.utils.config import load_config
 from run_phase2_benchmark import (
     _build_phase2_manifest,
@@ -72,6 +76,97 @@ def _artifact(
                 "ic_win_rate": 0.6,
             },
         },
+    )
+
+
+def _benchmark_dataset() -> EvaluationDataset:
+    timestamps = np.arange(4)
+    asset_ids = np.array(["A", "B"])
+    close = np.array(
+        [
+            [10.0, 10.2, 10.4, 10.6],
+            [20.0, 19.9, 20.2, 20.4],
+        ],
+        dtype=np.float64,
+    )
+    open_ = close - 0.05
+    high = close + 0.1
+    low = close - 0.1
+    volume = np.array(
+        [
+            [1000.0, 1100.0, 1200.0, 1300.0],
+            [900.0, 950.0, 980.0, 1000.0],
+        ],
+        dtype=np.float64,
+    )
+    amount = volume * close
+    returns = np.array(
+        [
+            [0.01, 0.02, 0.015, 0.01],
+            [-0.01, 0.005, 0.012, 0.02],
+        ],
+        dtype=np.float64,
+    )
+    data_dict = {
+        "$open": open_,
+        "$high": high,
+        "$low": low,
+        "$close": close,
+        "$volume": volume,
+        "$amt": amount,
+        "$vwap": close,
+        "$returns": returns,
+    }
+    tensor = np.stack(
+        [
+            data_dict[key]
+            for key in (
+                "$open",
+                "$high",
+                "$low",
+                "$close",
+                "$volume",
+                "$amt",
+                "$vwap",
+                "$returns",
+            )
+        ],
+        axis=2,
+    )
+    train_split = DatasetSplit(
+        name="train",
+        indices=np.array([0, 1]),
+        timestamps=timestamps[:2],
+        returns=returns[:, :2],
+        target_returns={"target": returns[:, :2]},
+        default_target="target",
+    )
+    test_split = DatasetSplit(
+        name="test",
+        indices=np.array([2, 3]),
+        timestamps=timestamps[2:],
+        returns=returns[:, 2:],
+        target_returns={"target": returns[:, 2:]},
+        default_target="target",
+    )
+    full_split = DatasetSplit(
+        name="full",
+        indices=timestamps,
+        timestamps=timestamps,
+        returns=returns,
+        target_returns={"target": returns},
+        default_target="target",
+    )
+    return EvaluationDataset(
+        data_dict=data_dict,
+        data_tensor=tensor,
+        returns=returns,
+        timestamps=timestamps,
+        asset_ids=asset_ids,
+        splits={"train": train_split, "test": test_split, "full": full_split},
+        processed_df=pd.DataFrame(),
+        target_panels={"target": returns},
+        default_target="target",
     )
 
 
@@ -232,6 +327,71 @@ def test_table1_manifest_includes_saved_library_provenance(monkeypatch, tmp_path
     assert manifest["artifact_paths"]["result"] == str(result_path)
     assert manifest["artifact_paths"]["manifest"] == str(manifest_path)
     assert result["provenance"]["kind"] == "saved_library"
+
+
+def test_benchmark_runtime_contract_includes_walk_forward_cost_and_strategy_grid():
+    cfg = load_config()
+    contract = build_benchmark_runtime_contract(
+        cfg,
+        {"splits": {"train": {"rows": 12}, "test": {"rows": 8}, "full": {"rows": 20}}},
+        baseline="factor_miner",
+        runtime_manifest={
+            "memory_policy": "kg",
+            "redundancy_metric": "pearson",
+            "backend": "numpy",
+        },
+    )
+
+    payload = contract.to_dict()
+    assert payload["walk_forward"]["freeze_top_k"] == cfg.benchmark.freeze_top_k
+    assert payload["walk_forward"]["dataset_contract"]["splits"]["train"]["rows"] == 12
+    assert payload["stress"]["cost_bps"] == [float(v) for v in cfg.benchmark.cost_bps]
+    assert payload["strategy_grid"]["selected_memory_policy"] == "kg"
+    assert payload["strategy_grid"]["selected_dependence_metric"] == "pearson"
+    assert payload["strategy_grid"]["selected_backend"] == "numpy"
+
+
+def test_evaluate_frozen_set_records_cost_and_capacity_stress():
+    dataset = _benchmark_dataset()
+    frozen = [
+        _artifact(1, "Neg($close)", 0.07, 0.8, 1.0),
+        _artifact(2, "Neg($open)", 0.06, 0.7, 0.7),
+    ]
+
+    payload = evaluate_frozen_set(
+        frozen,
+        dataset,
+        split_name="test",
+        fit_split="train",
+        cost_bps=[1.0, 5.0],
+        capacity_levels=[1e6, 2e6],
+    )
+
+    combo = payload["combinations"]["equal_weight"]
+    assert set(combo["cost_pressure"]) == {"1.0", "5.0"}
+    assert "capacity_pressure" in combo
+    assert combo["capacity_pressure"]["capacity_curve"]
+
+
+def test_legacy_helix_benchmark_emits_deprecation_warning():
+    from factorminer.benchmark.helix_benchmark import HelixBenchmark
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _ = HelixBenchmark()
+
+    assert any("canonical benchmark path" in str(item.message) for item in caught)
+
+
+def test_benchmark_package_lazy_exports_warn_on_legacy_access():
+    import factorminer.benchmark as benchmark_pkg
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        klass = benchmark_pkg.HelixBenchmark
+
+    assert klass.__name__ == "HelixBenchmark"
+    assert any("legacy" in str(item.message).lower() for item in caught)
 
 
 def test_phase2_manifest_references_runtime_manifest_and_sanitizes_stats(tmp_path):
@@ -535,4 +695,6 @@ def test_strategy_ablation_benchmark_expands_runtime_grid(monkeypatch, tmp_path)
     assert payload["best"]["memory_policy"] == "kg"
     assert payload["best"]["dependence_metric"] == "pearson"
     assert payload["leaderboard"][0]["mean_test_library_ic"] == 0.09
+    assert payload["strategy_grid_contract"]["memory_policies"] == ["paper", "kg"]
+    assert payload["comparisons"][0]["runtime_contract"]["strategy_grid"]["selected_backend"] == "numpy"
     assert (tmp_path / "benchmark" / "ablation" / "strategy_grid.json").exists()

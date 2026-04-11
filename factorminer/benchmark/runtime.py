@@ -15,7 +15,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from factorminer.architecture import DatasetContract, PaperProtocol
+from factorminer.architecture import PaperProtocol
 from factorminer.benchmark.catalogs import (
     ALPHA101_CLASSIC,
     CandidateEntry,
@@ -75,6 +75,78 @@ class BenchmarkManifest:
     runtime_contract: dict[str, Any] = field(default_factory=dict)
     baseline_provenance: dict[str, dict[str, Any]] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class WalkForwardBenchmarkContract:
+    """Canonical train/test freeze contract used by the benchmark runtime."""
+
+    freeze_universe: str
+    report_universes: list[str]
+    train_period: list[str]
+    test_period: list[str]
+    freeze_top_k: int
+    fit_split: str = "train"
+    eval_split: str = "test"
+    default_target: str = "paper"
+    signal_failure_policy: str = "reject"
+    dataset_contract: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _json_safe(asdict(self))
+
+
+@dataclass(frozen=True)
+class StressBenchmarkContract:
+    """Canonical transaction-cost and capacity stress contract."""
+
+    cost_bps: list[float]
+    capacity_levels: list[float]
+    base_capacity_usd: float
+    net_icir_threshold: float
+    ic_degradation_limit: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return _json_safe(asdict(self))
+
+
+@dataclass(frozen=True)
+class StrategyGridBenchmarkContract:
+    """Canonical strategy grid for benchmark ablations."""
+
+    baseline: str
+    enabled: bool
+    memory_policies: list[str]
+    dependence_metrics: list[str]
+    backends: list[str]
+    selected_memory_policy: str | None = None
+    selected_dependence_metric: str | None = None
+    selected_backend: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return _json_safe(asdict(self))
+
+
+@dataclass(frozen=True)
+class BenchmarkRuntimeContract:
+    """Complete runtime benchmark contract emitted to manifests/results."""
+
+    paper_protocol: dict[str, Any]
+    walk_forward: WalkForwardBenchmarkContract
+    stress: StressBenchmarkContract
+    strategy_grid: StrategyGridBenchmarkContract
+    runtime_manifest: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _json_safe(
+            {
+                "paper_protocol": self.paper_protocol,
+                "walk_forward": self.walk_forward.to_dict(),
+                "stress": self.stress.to_dict(),
+                "strategy_grid": self.strategy_grid.to_dict(),
+                "runtime_manifest": self.runtime_manifest,
+            }
+        )
 
 
 def _clone_cfg(cfg):
@@ -249,6 +321,177 @@ def _runtime_manifest_value(
     return dict(value) if isinstance(value, dict) else {}
 
 
+def _default_capacity_levels() -> list[float]:
+    from factorminer.evaluation.capacity import CapacityConfig as RuntimeCapacityConfig
+
+    return list(RuntimeCapacityConfig().capacity_levels)
+
+
+def _safe_len(value: Any) -> int:
+    if value is None:
+        return 0
+    try:
+        return len(value)
+    except TypeError:
+        return 0
+
+
+def _build_walk_forward_contract(
+    cfg,
+    freeze_dataset_contract: dict[str, Any],
+) -> WalkForwardBenchmarkContract:
+    """Build the canonical walk-forward benchmark contract."""
+    return WalkForwardBenchmarkContract(
+        freeze_universe=str(cfg.benchmark.freeze_universe),
+        report_universes=list(cfg.benchmark.report_universes),
+        train_period=list(cfg.data.train_period),
+        test_period=list(cfg.data.test_period),
+        freeze_top_k=int(cfg.benchmark.freeze_top_k),
+        fit_split="train",
+        eval_split="test",
+        default_target=str(cfg.data.default_target),
+        signal_failure_policy="reject",
+        dataset_contract=dict(freeze_dataset_contract),
+    )
+
+
+def _build_stress_contract(cfg, runtime_manifest: dict[str, Any] | None = None) -> StressBenchmarkContract:
+    """Build the canonical cost/capacity stress contract."""
+    runtime_manifest = dict(runtime_manifest or {})
+    cost_bps = runtime_manifest.get("cost_bps", getattr(cfg.benchmark, "cost_bps", [1.0]))
+    capacity_levels = runtime_manifest.get("capacity_levels", _default_capacity_levels())
+    from factorminer.evaluation.capacity import CapacityConfig as RuntimeCapacityConfig
+
+    capacity_cfg = RuntimeCapacityConfig()
+    return StressBenchmarkContract(
+        cost_bps=[float(value) for value in cost_bps],
+        capacity_levels=[float(value) for value in capacity_levels],
+        base_capacity_usd=float(
+            runtime_manifest.get("base_capacity_usd", capacity_cfg.base_capital_usd)
+        ),
+        net_icir_threshold=float(
+            runtime_manifest.get("net_icir_threshold", capacity_cfg.net_icir_threshold)
+        ),
+        ic_degradation_limit=float(
+            runtime_manifest.get("ic_degradation_limit", capacity_cfg.ic_degradation_limit)
+        ),
+    )
+
+
+def _build_strategy_grid_contract(
+    cfg,
+    *,
+    baseline: str,
+    runtime_manifest: dict[str, Any] | None = None,
+) -> StrategyGridBenchmarkContract:
+    """Build the canonical memory-policy / dependence / backend strategy grid."""
+    runtime_manifest = dict(runtime_manifest or {})
+    raw_strategy = _strategy_ablation_raw_config(cfg)
+    return StrategyGridBenchmarkContract(
+        baseline=baseline,
+        enabled=bool(raw_strategy.get("enabled", False)),
+        memory_policies=[
+            str(value)
+            for value in runtime_manifest.get(
+                "memory_policies",
+                raw_strategy.get(
+                    "memory_policies",
+                    ["paper", "none", "kg", "family_aware", "regime_aware"],
+                ),
+            )
+        ],
+        dependence_metrics=[
+            str(value)
+            for value in runtime_manifest.get(
+                "dependence_metrics",
+                raw_strategy.get(
+                    "dependence_metrics",
+                    ["spearman", "pearson", "distance_correlation"],
+                ),
+            )
+        ],
+        backends=[
+            str(value)
+            for value in runtime_manifest.get(
+                "backends",
+                raw_strategy.get("backends", ["numpy", "c", "gpu"]),
+            )
+        ],
+        selected_memory_policy=(
+            str(runtime_manifest["memory_policy"])
+            if runtime_manifest.get("memory_policy") is not None
+            else None
+        ),
+        selected_dependence_metric=(
+            str(runtime_manifest["redundancy_metric"])
+            if runtime_manifest.get("redundancy_metric") is not None
+            else None
+        ),
+        selected_backend=(
+            str(runtime_manifest["backend"]) if runtime_manifest.get("backend") is not None else None
+        ),
+    )
+
+
+def _benchmark_dataset_contract(cfg, dataset: Any) -> dict[str, Any]:
+    """Build a safe, benchmark-local summary of the frozen dataset."""
+    data_dict = getattr(dataset, "data_dict", {}) or {}
+    target_panels = getattr(dataset, "target_panels", {}) or {}
+    target_specs = getattr(dataset, "target_specs", {}) or {}
+    splits = getattr(dataset, "splits", {}) or {}
+
+    if isinstance(target_panels, dict):
+        target_names = list(target_panels.keys())
+    else:
+        target_names = [str(getattr(cfg.data, "default_target", "paper"))]
+
+    split_sizes: dict[str, int] = {}
+    if isinstance(splits, dict):
+        for name, split in splits.items():
+            split_sizes[name] = int(getattr(split, "size", 0))
+
+    return {
+        "feature_names": list(getattr(data_dict, "keys", lambda: [])()),
+        "data_shape": tuple(np.shape(getattr(dataset, "data_tensor", ()))),
+        "returns_shape": tuple(np.shape(getattr(dataset, "returns", ()))),
+        "default_target": str(
+            getattr(dataset, "default_target", getattr(cfg.data, "default_target", "paper"))
+        ),
+        "target_names": target_names,
+        "target_horizons": {
+            name: max(int(getattr(spec, "holding_bars", 1)), 1)
+            for name, spec in target_specs.items()
+        },
+        "train_period": list(getattr(cfg.data, "train_period", [])),
+        "test_period": list(getattr(cfg.data, "test_period", [])),
+        "asset_count": int(_safe_len(getattr(dataset, "asset_ids", None))),
+        "period_count": int(_safe_len(getattr(dataset, "timestamps", None))),
+        "split_sizes": split_sizes,
+    }
+
+
+def build_benchmark_runtime_contract(
+    cfg,
+    freeze_dataset_contract: dict[str, Any],
+    *,
+    baseline: str,
+    runtime_manifest: dict[str, Any] | None = None,
+) -> BenchmarkRuntimeContract:
+    """Build the canonical benchmark runtime contract for one baseline."""
+    paper_protocol = PaperProtocol.from_config(cfg).runtime_contract()
+    return BenchmarkRuntimeContract(
+        paper_protocol=paper_protocol,
+        walk_forward=_build_walk_forward_contract(cfg, freeze_dataset_contract),
+        stress=_build_stress_contract(cfg, runtime_manifest),
+        strategy_grid=_build_strategy_grid_contract(
+            cfg,
+            baseline=baseline,
+            runtime_manifest=runtime_manifest,
+        ),
+        runtime_manifest=dict(runtime_manifest or {}),
+    )
+
+
 def _build_runtime_provider(cfg, *, mock: bool):
     """Create the benchmark-time LLM provider."""
     from factorminer.agent.llm_interface import MockProvider, create_provider
@@ -346,6 +589,52 @@ def _extract_volume_panel(dataset: EvaluationDataset) -> np.ndarray | None:
         if panel is not None and np.any(np.isfinite(panel)):
             return np.asarray(panel, dtype=np.float64)
     return None
+
+
+def _split_volume_panel(
+    dataset: EvaluationDataset,
+    split_name: str,
+) -> np.ndarray | None:
+    """Align the available volume panel to one dataset split."""
+    panel = _extract_volume_panel(dataset)
+    if panel is None:
+        return None
+    split = dataset.get_split(split_name)
+    if panel.ndim != 2 or panel.shape[1] < len(split.indices):
+        return None
+    return np.asarray(panel[:, split.indices], dtype=np.float64)
+
+
+def _capacity_pressure_summary(
+    *,
+    factor_name: str,
+    signals: np.ndarray,
+    returns: np.ndarray,
+    volume: np.ndarray,
+    capacity_levels: list[float],
+) -> dict[str, Any]:
+    """Compute a compact capacity-stress summary for one factor/composite."""
+    from factorminer.evaluation.capacity import CapacityConfig as RuntimeCapacityConfig
+    from factorminer.evaluation.capacity import CapacityEstimator
+
+    cap_cfg = RuntimeCapacityConfig(capacity_levels=list(capacity_levels))
+    estimate = CapacityEstimator(
+        np.asarray(returns, dtype=np.float64).T,
+        np.asarray(volume, dtype=np.float64).T,
+        cap_cfg,
+    ).estimate(
+        factor_name,
+        np.asarray(signals, dtype=np.float64).T,
+    )
+    return {
+        "factor_name": factor_name,
+        "max_capacity_usd": float(estimate.max_capacity_usd),
+        "break_even_cost_bps": float(estimate.break_even_cost_bps),
+        "capacity_curve": {
+            str(capital): float(degradation)
+            for capital, degradation in estimate.capacity_curve.items()
+        },
+    }
 
 
 def _build_runtime_loop_config(
@@ -938,10 +1227,13 @@ def evaluate_frozen_set(
     split_name: str = "test",
     fit_split: str = "train",
     cost_bps: list[float] | None = None,
+    capacity_levels: list[float] | None = None,
 ) -> dict:
     """Evaluate one frozen factor set on one universe."""
     if cost_bps is None:
         cost_bps = [1.0, 4.0, 7.0, 10.0, 11.0]
+    if capacity_levels is None:
+        capacity_levels = _default_capacity_levels()
 
     factors = _factors_from_entries(
         CandidateEntry(
@@ -963,6 +1255,10 @@ def evaluate_frozen_set(
         },
         "combinations": {},
         "selections": {},
+        "stress": {
+            "cost_bps": [float(value) for value in cost_bps],
+            "capacity_levels": [float(value) for value in capacity_levels],
+        },
         "warnings": [],
     }
     if not succeeded:
@@ -988,6 +1284,7 @@ def evaluate_frozen_set(
     }
     fit_returns = dataset.get_split(fit_split).returns.T
     eval_returns = dataset.get_split(split_name).returns.T
+    eval_volume = _split_volume_panel(dataset, split_name)
 
     from factorminer.evaluation.combination import FactorCombiner
     from factorminer.evaluation.portfolio import PortfolioBacktester
@@ -1023,6 +1320,14 @@ def evaluate_frozen_set(
             )
             for cost in cost_bps
         }
+        if eval_volume is not None:
+            result["combinations"][name]["capacity_pressure"] = _capacity_pressure_summary(
+                factor_name=name,
+                signals=composite,
+                returns=eval_returns,
+                volume=eval_volume,
+                capacity_levels=capacity_levels,
+            )
 
     selection_specs = {}
     try:
@@ -1172,12 +1477,17 @@ def run_table1_benchmark(
         universe=cfg.benchmark.freeze_universe,
         mock=mock,
     )
-    paper_protocol = PaperProtocol.from_config(cfg)
-    freeze_dataset_contract = DatasetContract.from_runtime_dataset(freeze_cfg, freeze_dataset)
+    freeze_dataset_contract = _benchmark_dataset_contract(freeze_cfg, freeze_dataset)
 
     summary: dict[str, dict] = {}
     for baseline in baseline_names:
         runtime_manifest = _runtime_manifest_value(runtime_manifests, baseline)
+        runtime_contract = build_benchmark_runtime_contract(
+            cfg,
+            freeze_dataset_contract,
+            baseline=baseline,
+            runtime_manifest=runtime_manifest,
+        )
         runtime_baseline = bool(runtime_manifest) or (
             use_runtime_loops
             and baseline in (RUNTIME_LOOP_BASELINES | {"factor_miner", "factor_miner_no_memory"})
@@ -1241,8 +1551,12 @@ def run_table1_benchmark(
             "mode": cfg.benchmark.mode,
             "freeze_universe": cfg.benchmark.freeze_universe,
             "candidate_count": candidate_count,
-            "paper_protocol": paper_protocol.runtime_contract(),
-            "freeze_dataset_contract": freeze_dataset_contract.to_dict(),
+            "runtime_contract": runtime_contract.to_dict(),
+            "paper_protocol": runtime_contract.paper_protocol,
+            "walk_forward_contract": runtime_contract.walk_forward.to_dict(),
+            "stress_contract": runtime_contract.stress.to_dict(),
+            "strategy_grid_contract": runtime_contract.strategy_grid.to_dict(),
+            "freeze_dataset_contract": dict(freeze_dataset_contract),
             "freeze_library_size": library.size,
             "freeze_stats": library_stats,
             "frozen_top_k": [
@@ -1274,7 +1588,8 @@ def run_table1_benchmark(
                 dataset,
                 split_name="test",
                 fit_split="train",
-                cost_bps=list(cfg.benchmark.cost_bps),
+                cost_bps=list(runtime_contract.stress.cost_bps),
+                capacity_levels=list(runtime_contract.stress.capacity_levels),
             )
 
         result_path = benchmark_dir / f"{baseline}.json"
@@ -1300,11 +1615,7 @@ def run_table1_benchmark(
                 "result": str(result_path),
                 "manifest": str(manifest_path),
             },
-            runtime_contract={
-                **paper_protocol.runtime_contract(),
-                **runtime_manifest,
-                "freeze_dataset_contract": freeze_dataset_contract.to_dict(),
-            },
+            runtime_contract=runtime_contract.to_dict(),
             baseline_provenance={baseline: provenance},
             warnings=[],
         )
@@ -1389,6 +1700,25 @@ def run_ablation_strategy_benchmark(
         default_backend=getattr(cfg.evaluation, "backend", "numpy"),
     )
     base_runtime_manifest = _runtime_manifest_value(runtime_manifests, baseline_name)
+    freeze_cfg = _cfg_with_overrides(cfg, cfg.benchmark.freeze_universe)
+    freeze_dataset, _ = load_benchmark_dataset(
+        freeze_cfg,
+        data_path=data_path,
+        raw_df=raw_df,
+        universe=cfg.benchmark.freeze_universe,
+        mock=mock,
+    )
+    freeze_dataset_contract = _benchmark_dataset_contract(freeze_cfg, freeze_dataset)
+    strategy_contract = _build_strategy_grid_contract(
+        cfg,
+        baseline=baseline_name,
+        runtime_manifest={
+            "memory_policies": memory_policies,
+            "dependence_metrics": dependence_metrics,
+            "backends": backends,
+            **base_runtime_manifest,
+        },
+    )
 
     comparisons: list[dict[str, Any]] = []
     for memory_policy in memory_policies:
@@ -1421,6 +1751,12 @@ def run_ablation_strategy_benchmark(
                         "memory_policy": memory_policy,
                         "dependence_metric": dependence_metric,
                         "backend": backend,
+                        "runtime_contract": build_benchmark_runtime_contract(
+                            cfg,
+                            freeze_dataset_contract,
+                            baseline=baseline_name,
+                            runtime_manifest=combo_manifest,
+                        ).to_dict(),
                         "artifacts_root": str(combo_output_dir),
                         "freeze_library_size": int(combo_payload.get("freeze_library_size", 0)),
                         "freeze_stats": freeze_stats,
@@ -1463,6 +1799,7 @@ def run_ablation_strategy_benchmark(
         "memory_policies": memory_policies,
         "dependence_metrics": dependence_metrics,
         "backends": backends,
+        "strategy_grid_contract": strategy_contract.to_dict(),
         "comparisons": comparisons,
         "leaderboard": leaderboard,
         "best": leaderboard[0] if leaderboard else None,
@@ -1499,7 +1836,10 @@ def run_cost_pressure_benchmark(
     result = {
         universe: {
             "combinations": {
-                name: metrics.get("cost_pressure", {})
+                name: {
+                    "cost_pressure": metrics.get("cost_pressure", {}),
+                    "capacity_pressure": metrics.get("capacity_pressure"),
+                }
                 for name, metrics in universe_payload["combinations"].items()
             }
         }
