@@ -1,5 +1,7 @@
 """FactorMiner core: expression trees, types, factor DSL parser, and Ralph Loop."""
 
+from importlib import import_module
+
 from factorminer.core.expression_tree import (
     ConstantNode,
     ExpressionTree,
@@ -16,8 +18,6 @@ from factorminer.core.library_io import (
     save_library,
 )
 from factorminer.core.parser import parse, try_parse
-from factorminer.core.ralph_loop import RalphLoop
-from factorminer.core.helix_loop import HelixLoop
 from factorminer.core.session import MiningSession
 from factorminer.core.config import MiningConfig as CoreMiningConfig
 from factorminer.core.types import (
@@ -30,6 +30,21 @@ from factorminer.core.types import (
     get_operator,
 )
 from factorminer.core.canonicalizer import FormulaCanonicalizer
+
+_LAZY_EXPORTS = {
+    "RalphLoop": ("factorminer.core.ralph_loop", "RalphLoop"),
+    "HelixLoop": ("factorminer.core.helix_loop", "HelixLoop"),
+}
+
+
+def __getattr__(name: str):
+    if name not in _LAZY_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attr_name = _LAZY_EXPORTS[name]
+    module = import_module(module_name)
+    value = getattr(module, attr_name)
+    globals()[name] = value
+    return value
 
 __all__ = [
     # Expression tree
