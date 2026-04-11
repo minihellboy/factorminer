@@ -32,7 +32,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Dict, List, Optional, Tuple
 
 from factorminer.core.expression_tree import (
     ConstantNode,
@@ -41,8 +40,7 @@ from factorminer.core.expression_tree import (
     Node,
     OperatorNode,
 )
-from factorminer.core.types import FEATURE_SET, OPERATOR_REGISTRY, OperatorSpec
-
+from factorminer.core.types import FEATURE_SET, OPERATOR_REGISTRY
 
 # ---------------------------------------------------------------------------
 # Tokenizer
@@ -83,7 +81,7 @@ _FEATURE_RE = re.compile(r"\$[A-Za-z_]\w*")
 _WS_RE = re.compile(r"\s+")
 
 
-def tokenize(source: str) -> List[Token]:
+def tokenize(source: str) -> list[Token]:
     """Convert a formula string into a list of ``Token`` objects.
 
     Raises
@@ -91,7 +89,7 @@ def tokenize(source: str) -> List[Token]:
     SyntaxError
         If the string contains characters that cannot be tokenized.
     """
-    tokens: List[Token] = []
+    tokens: list[Token] = []
     pos = 0
     length = len(source)
 
@@ -176,7 +174,7 @@ class Parser:
     in a single pass.
     """
 
-    def __init__(self, tokens: List[Token], source: str) -> None:
+    def __init__(self, tokens: list[Token], source: str) -> None:
         self.tokens = tokens
         self.source = source
         self.pos = 0
@@ -254,8 +252,7 @@ class Parser:
         self._expect(TokenType.LPAREN)
 
         # Collect arguments (mix of sub-expressions and trailing numeric params)
-        args: List[Node] = []
-        raw_args: List = []  # (Node | float) to separate children from params
+        raw_args: list = []  # (Node | float) to separate children from params
 
         if self._peek().type != TokenType.RPAREN:
             raw_args.append(self._parse_arg())
@@ -268,8 +265,8 @@ class Parser:
         # Separate expression children from trailing numeric parameters.
         # Strategy: the first ``spec.arity`` arguments that are Nodes are
         # the children.  Remaining numeric values fill param slots in order.
-        children: List[Node] = []
-        trailing_numbers: List[float] = []
+        children: list[Node] = []
+        trailing_numbers: list[float] = []
 
         for arg in raw_args:
             if isinstance(arg, Node) and len(children) < spec.arity:
@@ -295,7 +292,7 @@ class Parser:
             )
 
         # Map trailing numbers to parameter names
-        params: Dict[str, float] = {}
+        params: dict[str, float] = {}
         for i, pname in enumerate(spec.param_names):
             if i < len(trailing_numbers):
                 params[pname] = trailing_numbers[i]
@@ -366,7 +363,7 @@ def parse(source: str) -> ExpressionTree:
     return ExpressionTree(root)
 
 
-def try_parse(source: str) -> Optional[ExpressionTree]:
+def try_parse(source: str) -> ExpressionTree | None:
     """Like :func:`parse` but returns ``None`` on failure instead of raising."""
     try:
         return parse(source)

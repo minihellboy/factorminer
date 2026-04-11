@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 
-from click.testing import CliRunner
 import numpy as np
 import pandas as pd
+from click.testing import CliRunner
 
 from factorminer.cli import _build_core_mining_config, _prepare_data_arrays, main
 from factorminer.utils.config import load_config

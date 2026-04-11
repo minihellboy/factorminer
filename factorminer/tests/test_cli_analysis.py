@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from click.testing import CliRunner
 import numpy as np
+from click.testing import CliRunner
 
 from factorminer.cli import main
 from factorminer.core.factor_library import Factor, FactorLibrary

@@ -72,7 +72,7 @@ def corr_np(x: np.ndarray, y: np.ndarray, window: int = 10) -> np.ndarray:
     if T < window:
         return np.full_like(x, np.nan)
 
-    from factorminer.operators.statistical import _rolling_np, _pad_front
+    from factorminer.operators.statistical import _pad_front, _rolling_np
 
     wx = _rolling_np(x, window)
     wy = _rolling_np(y, window)
@@ -98,7 +98,7 @@ def cov_np(x: np.ndarray, y: np.ndarray, window: int = 10) -> np.ndarray:
     if T < window:
         return np.full_like(x, np.nan)
 
-    from factorminer.operators.statistical import _rolling_np, _pad_front
+    from factorminer.operators.statistical import _pad_front, _rolling_np
 
     wx = _rolling_np(x, window)
     wy = _rolling_np(y, window)
@@ -118,7 +118,7 @@ def beta_np(x: np.ndarray, y: np.ndarray, window: int = 10) -> np.ndarray:
     if T < window:
         return np.full_like(x, np.nan)
 
-    from factorminer.operators.statistical import _rolling_np, _pad_front
+    from factorminer.operators.statistical import _pad_front, _rolling_np
 
     wx = _rolling_np(x, window)
     wy = _rolling_np(y, window)
@@ -143,7 +143,7 @@ def resid_np(x: np.ndarray, y: np.ndarray, window: int = 10) -> np.ndarray:
     if T < window:
         return np.full_like(x, np.nan)
 
-    from factorminer.operators.statistical import _rolling_np, _pad_front
+    from factorminer.operators.statistical import _pad_front, _rolling_np
 
     wx = _rolling_np(x, window)
     wy = _rolling_np(y, window)
@@ -168,7 +168,7 @@ def wma_np(x: np.ndarray, window: int = 10) -> np.ndarray:
     """Linearly weighted moving average."""
     window = int(window)
     M, T = x.shape
-    from factorminer.operators.statistical import _rolling_np, _pad_front
+    from factorminer.operators.statistical import _pad_front, _rolling_np
 
     w = _rolling_np(x, window)
     if w is None:
@@ -211,7 +211,7 @@ def cummin_np(x: np.ndarray) -> np.ndarray:
 # PyTorch implementations
 # ===========================================================================
 
-def delta_torch(x: "torch.Tensor", window: int = 1) -> "torch.Tensor":
+def delta_torch(x: torch.Tensor, window: int = 1) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     out = torch.full_like(x, float("nan"))
@@ -220,7 +220,7 @@ def delta_torch(x: "torch.Tensor", window: int = 1) -> "torch.Tensor":
     return out
 
 
-def delay_torch(x: "torch.Tensor", window: int = 1) -> "torch.Tensor":
+def delay_torch(x: torch.Tensor, window: int = 1) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     out = torch.full_like(x, float("nan"))
@@ -229,7 +229,7 @@ def delay_torch(x: "torch.Tensor", window: int = 1) -> "torch.Tensor":
     return out
 
 
-def return_torch(x: "torch.Tensor", window: int = 1) -> "torch.Tensor":
+def return_torch(x: torch.Tensor, window: int = 1) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     out = torch.full_like(x, float("nan"))
@@ -242,7 +242,7 @@ def return_torch(x: "torch.Tensor", window: int = 1) -> "torch.Tensor":
     return out
 
 
-def log_return_torch(x: "torch.Tensor", window: int = 1) -> "torch.Tensor":
+def log_return_torch(x: torch.Tensor, window: int = 1) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     out = torch.full_like(x, float("nan"))
@@ -259,10 +259,10 @@ def log_return_torch(x: "torch.Tensor", window: int = 1) -> "torch.Tensor":
     return out
 
 
-def corr_torch(x: "torch.Tensor", y: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def corr_torch(x: torch.Tensor, y: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
-    from factorminer.operators.statistical import _unfold_torch, _pad_front_torch
+    from factorminer.operators.statistical import _pad_front_torch, _unfold_torch
 
     wx = _unfold_torch(x, window)
     wy = _unfold_torch(y, window)
@@ -280,10 +280,10 @@ def corr_torch(x: "torch.Tensor", y: "torch.Tensor", window: int = 10) -> "torch
     return _pad_front_torch(result, window, T)
 
 
-def cov_torch(x: "torch.Tensor", y: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def cov_torch(x: torch.Tensor, y: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
-    from factorminer.operators.statistical import _unfold_torch, _pad_front_torch
+    from factorminer.operators.statistical import _pad_front_torch, _unfold_torch
 
     wx = _unfold_torch(x, window)
     wy = _unfold_torch(y, window)
@@ -297,10 +297,10 @@ def cov_torch(x: "torch.Tensor", y: "torch.Tensor", window: int = 10) -> "torch.
     return _pad_front_torch(result, window, T)
 
 
-def beta_torch(x: "torch.Tensor", y: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def beta_torch(x: torch.Tensor, y: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
-    from factorminer.operators.statistical import _unfold_torch, _pad_front_torch
+    from factorminer.operators.statistical import _pad_front_torch, _unfold_torch
 
     wx = _unfold_torch(x, window)
     wy = _unfold_torch(y, window)
@@ -317,10 +317,10 @@ def beta_torch(x: "torch.Tensor", y: "torch.Tensor", window: int = 10) -> "torch
     return _pad_front_torch(result, window, T)
 
 
-def resid_torch(x: "torch.Tensor", y: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def resid_torch(x: torch.Tensor, y: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
-    from factorminer.operators.statistical import _unfold_torch, _pad_front_torch
+    from factorminer.operators.statistical import _pad_front_torch, _unfold_torch
 
     wx = _unfold_torch(x, window)
     wy = _unfold_torch(y, window)
@@ -338,10 +338,10 @@ def resid_torch(x: "torch.Tensor", y: "torch.Tensor", window: int = 10) -> "torc
     return _pad_front_torch(result, window, T)
 
 
-def wma_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def wma_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
-    from factorminer.operators.statistical import _unfold_torch, _pad_front_torch
+    from factorminer.operators.statistical import _pad_front_torch, _unfold_torch
 
     w = _unfold_torch(x, window)
     weights = torch.arange(1, window + 1, dtype=x.dtype, device=x.device).float()
@@ -351,24 +351,24 @@ def wma_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
     return _pad_front_torch(result, window, T)
 
 
-def decay_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def decay_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     return wma_torch(x, window)
 
 
-def cumsum_torch(x: "torch.Tensor") -> "torch.Tensor":
+def cumsum_torch(x: torch.Tensor) -> torch.Tensor:
     return x.nan_to_num(0.0).cumsum(dim=1)
 
 
-def cumprod_torch(x: "torch.Tensor") -> "torch.Tensor":
+def cumprod_torch(x: torch.Tensor) -> torch.Tensor:
     return x.nan_to_num(1.0).cumprod(dim=1)
 
 
-def cummax_torch(x: "torch.Tensor") -> "torch.Tensor":
+def cummax_torch(x: torch.Tensor) -> torch.Tensor:
     filled = x.nan_to_num(float("-inf"))
     return filled.cummax(dim=1).values
 
 
-def cummin_torch(x: "torch.Tensor") -> "torch.Tensor":
+def cummin_torch(x: torch.Tensor) -> torch.Tensor:
     filled = x.nan_to_num(float("inf"))
     return filled.cummin(dim=1).values
 

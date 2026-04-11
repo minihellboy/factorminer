@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import warnings
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -78,7 +78,7 @@ class CausalTestResult:
     robustness_score: float  # 0-1
     passes: bool
 
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -106,8 +106,8 @@ class CausalValidator:
     def __init__(
         self,
         returns: np.ndarray,
-        data_tensor: Optional[np.ndarray],
-        library_signals: Dict[str, np.ndarray],
+        data_tensor: np.ndarray | None,
+        library_signals: dict[str, np.ndarray],
         config: CausalConfig | None = None,
     ) -> None:
         self.returns = returns
@@ -135,7 +135,7 @@ class CausalValidator:
         CausalTestResult
         """
         cfg = self.config
-        details: Dict[str, Any] = {}
+        details: dict[str, Any] = {}
         control_library = {
             name: lib_signals
             for name, lib_signals in self.library_signals.items()
@@ -179,8 +179,8 @@ class CausalValidator:
         )
 
     def validate_batch(
-        self, candidates: List[Tuple[str, np.ndarray]]
-    ) -> Dict[str, CausalTestResult]:
+        self, candidates: list[tuple[str, np.ndarray]]
+    ) -> dict[str, CausalTestResult]:
         """Validate a batch of candidate factors.
 
         Parameters
@@ -194,7 +194,7 @@ class CausalValidator:
         dict
             Mapping from factor name to its :class:`CausalTestResult`.
         """
-        results: Dict[str, CausalTestResult] = {}
+        results: dict[str, CausalTestResult] = {}
         for name, signals in candidates:
             results[name] = self.validate(name, signals)
         return results
@@ -207,8 +207,8 @@ class CausalValidator:
         self,
         signals: np.ndarray,
         returns: np.ndarray,
-        library_signals: Dict[str, np.ndarray],
-    ) -> Tuple[float, float, bool]:
+        library_signals: dict[str, np.ndarray],
+    ) -> tuple[float, float, bool]:
         """Granger causality test for factor -> returns.
 
         Averages signals and returns across the top-20 assets (by signal
@@ -242,8 +242,6 @@ class CausalValidator:
 
         # --- Attempt statsmodels-based Granger test ---
         try:
-            from statsmodels.tsa.stattools import grangercausalitytests  # noqa: F811
-
             p_value, f_stat = self._run_granger_bivariate(
                 sig_series, ret_series, cfg.granger_max_lag
             )
@@ -276,7 +274,7 @@ class CausalValidator:
         sig_series: np.ndarray,
         ret_series: np.ndarray,
         max_lag: int,
-    ) -> Tuple[float, float]:
+    ) -> tuple[float, float]:
         """Bivariate Granger test using statsmodels."""
         from statsmodels.tsa.stattools import grangercausalitytests
 
@@ -314,9 +312,9 @@ class CausalValidator:
         self,
         sig_series: np.ndarray,
         ret_series: np.ndarray,
-        library_signals: Dict[str, np.ndarray],
+        library_signals: dict[str, np.ndarray],
         max_lag: int,
-    ) -> Tuple[Optional[float], Optional[float]]:
+    ) -> tuple[float | None, float | None]:
         """Multivariate Granger via VAR, controlling for library factors.
 
         If the library has >10 factors the controls are PCA-reduced to
@@ -380,8 +378,8 @@ class CausalValidator:
         self,
         signals: np.ndarray,
         returns: np.ndarray,
-        data_tensor: Optional[np.ndarray],
-    ) -> Tuple[float, bool]:
+        data_tensor: np.ndarray | None,
+    ) -> tuple[float, bool]:
         """Intervention-based robustness test.
 
         Three perturbation scenarios are applied; the factor passes if
@@ -403,7 +401,7 @@ class CausalValidator:
             # Zero IC baseline: interventions cannot degrade further
             return 1.0, True
 
-        ratios: List[float] = []
+        ratios: list[float] = []
         pass_count = 0
 
         scenarios = self._build_intervention_scenarios(
@@ -434,8 +432,8 @@ class CausalValidator:
         self,
         signals: np.ndarray,
         returns: np.ndarray,
-        data_tensor: Optional[np.ndarray],
-    ) -> List[Tuple[str, np.ndarray, np.ndarray]]:
+        data_tensor: np.ndarray | None,
+    ) -> list[tuple[str, np.ndarray, np.ndarray]]:
         """Construct the three intervention scenarios.
 
         Returns a list of ``(name, perturbed_signals, perturbed_returns)``.
@@ -444,7 +442,7 @@ class CausalValidator:
         cfg = self.config
         rng = self._rng
 
-        scenarios: List[Tuple[str, np.ndarray, np.ndarray]] = []
+        scenarios: list[tuple[str, np.ndarray, np.ndarray]] = []
 
         if data_tensor is not None and data_tensor.shape[:2] == (M, T):
             # --- Volume shock: 2x on random 30% of periods ---

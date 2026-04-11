@@ -374,7 +374,7 @@ def _print_stat_tests(stat_tests: dict) -> None:
         sig_dm = "  *" if float(dm_p) < 0.05 else ""
     except (TypeError, ValueError):
         sig_dm = ""
-    print(f"  Diebold-Mariano test:")
+    print("  Diebold-Mariano test:")
     print(f"    DM statistic = {_fmt_stat(dm_stat_val)}{sig_dm}")
     print(f"    p-value      = {_fmt_stat(dm_p)}")
     print(f"    Direction    = {dm.get('direction', '?')}")
@@ -385,7 +385,7 @@ def _print_stat_tests(stat_tests: dict) -> None:
         sig_tt = "  *" if float(tt_p) < 0.05 else ""
     except (TypeError, ValueError):
         sig_tt = ""
-    print(f"  Paired t-test:")
+    print("  Paired t-test:")
     print(f"    t-stat  = {_fmt_stat(tt.get('t_stat', float('nan')))}{sig_tt}")
     print(f"    p-value = {_fmt_stat(tt_p)}")
     print(f"    n       = {tt.get('n', 0)}")
@@ -393,7 +393,7 @@ def _print_stat_tests(stat_tests: dict) -> None:
 
     lo = boot.get("lower", 0.0)
     hi = boot.get("upper", 0.0)
-    print(f"  Block-bootstrap 95% CI on IC difference:")
+    print("  Block-bootstrap 95% CI on IC difference:")
     print(f"    [{_fmt_stat(lo)}, {_fmt_stat(hi)}]  "
           f"{'(excludes zero **)' if boot.get('excludes_zero') else ''}")
     print()
@@ -403,7 +403,7 @@ def _print_stat_tests(stat_tests: dict) -> None:
         sig_wil = "  *" if float(wil_p) < 0.05 else ""
     except (TypeError, ValueError):
         sig_wil = ""
-    print(f"  Wilcoxon signed-rank:")
+    print("  Wilcoxon signed-rank:")
     print(f"    stat    = {_fmt_stat(wil.get('statistic', 0.0), '.1f')}{sig_wil}")
     print(f"    p-value = {_fmt_stat(wil_p)}")
 
@@ -447,7 +447,7 @@ def _generate_markdown_report(bench_result, ablation_result, output_dir: Path) -
         dm = stat.get("diebold_mariano", {})
         boot = stat.get("bootstrap_ci_95", {})
         tt = stat.get("paired_t_test", {})
-        md.append(f"| Test | Statistic | p-value | Significant |\n|---|---|---|---|\n")
+        md.append("| Test | Statistic | p-value | Significant |\n|---|---|---|---|\n")
         md.append(f"| Diebold-Mariano | {dm.get('dm_stat', 0):.4f} | {dm.get('p_value', 1):.4f} | {dm.get('significant', False)} |\n")
         md.append(f"| Paired t-test | {tt.get('t_stat', 0):.4f} | {tt.get('p_value', 1):.4f} | {tt.get('p_value', 1) < 0.05} |\n")
         md.append(f"| Bootstrap CI (95%) | [{boot.get('lower', 0):.4f}, {boot.get('upper', 0):.4f}] | — | {boot.get('excludes_zero', False)} |\n")
@@ -707,7 +707,7 @@ def main() -> None:
     # Bar chart comparison
     try:
         bench_result.plot_comparison(str(output_dir / "comparison_plot.png"))
-        print(f"  comparison_plot.png saved")
+        print("  comparison_plot.png saved")
     except Exception as exc:
         print(f"  (Plot skipped: {exc})")
 

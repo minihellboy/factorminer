@@ -19,7 +19,7 @@ import concurrent.futures
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from factorminer.agent.critic import CriticAgent, CriticScore
 from factorminer.agent.factor_generator import FactorGenerator
@@ -70,7 +70,7 @@ class DebateConfig:
         Maximum number of parallel threads for specialist generation.
     """
 
-    specialists: List[SpecialistConfig] = field(
+    specialists: list[SpecialistConfig] = field(
         default_factory=lambda: list(DEFAULT_SPECIALISTS)
     )
     enable_critic: bool = True
@@ -110,13 +110,13 @@ class DebateResult:
         n_duplicates_removed, specialist_counts.
     """
 
-    all_proposals: List[str] = field(default_factory=list)
-    after_dedup: List[str] = field(default_factory=list)
-    after_critic: List[str] = field(default_factory=list)
-    critic_scores: List[CriticScore] = field(default_factory=list)
-    specialist_proposals: Dict[str, List[str]] = field(default_factory=dict)
-    specialist_success_rates: Dict[str, float] = field(default_factory=dict)
-    debate_stats: Dict[str, Any] = field(default_factory=dict)
+    all_proposals: list[str] = field(default_factory=list)
+    after_dedup: list[str] = field(default_factory=list)
+    after_critic: list[str] = field(default_factory=list)
+    critic_scores: list[CriticScore] = field(default_factory=list)
+    specialist_proposals: dict[str, list[str]] = field(default_factory=dict)
+    specialist_success_rates: dict[str, float] = field(default_factory=dict)
+    debate_stats: dict[str, Any] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -136,23 +136,23 @@ class DebateMemory:
         Names of all participating specialists.
     """
 
-    _ALL_OP_FAMILIES: List[str] = [
+    _ALL_OP_FAMILIES: list[str] = [
         "arithmetic", "statistical", "timeseries", "smoothing",
         "cross_sectional", "regression", "logical",
     ]
 
-    def __init__(self, specialist_names: List[str]) -> None:
+    def __init__(self, specialist_names: list[str]) -> None:
         self._specialist_names = list(specialist_names)
-        self._proposal_history: Dict[str, List[tuple]] = {
+        self._proposal_history: dict[str, list[tuple]] = {
             name: [] for name in specialist_names
         }
-        self._rounds: List[Dict[str, Any]] = []
-        self._best_critic_patterns: List[str] = []
+        self._rounds: list[dict[str, Any]] = []
+        self._best_critic_patterns: list[str] = []
 
     def record_round(
         self,
         debate_result: DebateResult,
-        admissions: Optional[List[str]] = None,
+        admissions: list[str] | None = None,
     ) -> None:
         """Record outcome of one debate round.
 
@@ -188,7 +188,7 @@ class DebateMemory:
             },
         })
 
-    def get_specialist_leaderboard(self) -> List[Dict[str, Any]]:
+    def get_specialist_leaderboard(self) -> list[dict[str, Any]]:
         """Return specialist performance sorted by admission rate.
 
         Returns
@@ -197,7 +197,7 @@ class DebateMemory:
             Each dict has keys: ``name``, ``proposed``, ``admitted``,
             ``admission_rate``.  Sorted by ``admission_rate`` descending.
         """
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for name in self._specialist_names:
             history = self._proposal_history.get(name, [])
             proposed = len(history)
@@ -212,11 +212,11 @@ class DebateMemory:
         rows.sort(key=lambda r: r["admission_rate"], reverse=True)
         return rows
 
-    def get_best_critic_patterns(self) -> List[str]:
+    def get_best_critic_patterns(self) -> list[str]:
         """Return formula patterns the critic loved that were also admitted."""
         return list(self._best_critic_patterns[-20:])
 
-    def get_blind_spots(self) -> Dict[str, List[str]]:
+    def get_blind_spots(self) -> dict[str, list[str]]:
         """Detect operator families that no specialist is proposing.
 
         Returns
@@ -304,9 +304,9 @@ class DebateOrchestrator:
 
     def __init__(
         self,
-        specialists: List[SpecialistAgent],
+        specialists: list[SpecialistAgent],
         critic: CriticAgent,
-        canonicalizer: Optional[Any] = None,
+        canonicalizer: Any | None = None,
         parallel_specialists: bool = True,
         max_workers: int = 4,
     ) -> None:
@@ -319,11 +319,11 @@ class DebateOrchestrator:
     def run_debate_round(
         self,
         n_per_specialist: int = 15,
-        memory_signal: Optional[Dict[str, Any]] = None,
-        library_diagnostics: Optional[Dict[str, Any]] = None,
+        memory_signal: dict[str, Any] | None = None,
+        library_diagnostics: dict[str, Any] | None = None,
         regime_context: str = "",
-        forbidden_patterns: Optional[List[str]] = None,
-        existing_factors: Optional[List[str]] = None,
+        forbidden_patterns: list[str] | None = None,
+        existing_factors: list[str] | None = None,
     ) -> DebateResult:
         """Run one full debate round and return structured results.
 
@@ -364,7 +364,7 @@ class DebateOrchestrator:
                 existing_factors=existing_factors,
             )
         else:
-            specialist_proposals: Dict[str, List[str]] = {}
+            specialist_proposals: dict[str, list[str]] = {}
             for spec in self.specialists:
                 formulas = spec.generate_proposals(
                     n_proposals=n_per_specialist,
@@ -380,8 +380,8 @@ class DebateOrchestrator:
                 )
 
         # Step 2: Merge all proposals
-        all_proposals: List[str] = []
-        formula_to_specialist: Dict[str, str] = {}
+        all_proposals: list[str] = []
+        formula_to_specialist: dict[str, str] = {}
         for spec_name, formulas in specialist_proposals.items():
             for f in formulas:
                 if f not in formula_to_specialist:
@@ -404,7 +404,7 @@ class DebateOrchestrator:
         )
 
         # Step 4: Build CandidateFactor proposals for critic
-        proposals_cf: Dict[str, List[CandidateFactor]] = {}
+        proposals_cf: dict[str, list[CandidateFactor]] = {}
         for formula in after_dedup:
             spec_name = formula_to_specialist.get(formula, "unknown")
             from factorminer.agent.output_parser import _try_build_candidate
@@ -457,14 +457,14 @@ class DebateOrchestrator:
     def _generate_parallel(
         self,
         n_per_specialist: int,
-        memory_signal: Dict[str, Any],
-        library_diagnostics: Dict[str, Any],
+        memory_signal: dict[str, Any],
+        library_diagnostics: dict[str, Any],
         regime_context: str,
-        forbidden_patterns: List[str],
-        existing_factors: List[str],
-    ) -> Dict[str, List[str]]:
+        forbidden_patterns: list[str],
+        existing_factors: list[str],
+    ) -> dict[str, list[str]]:
         """Generate from all specialists concurrently using a thread pool."""
-        results: Dict[str, List[str]] = {}
+        results: dict[str, list[str]] = {}
 
         def _run_specialist(spec: SpecialistAgent) -> tuple:
             formulas = spec.generate_proposals(
@@ -503,11 +503,11 @@ class DebateOrchestrator:
 
         return results
 
-    def _deduplicate(self, formulas: List[str]) -> List[str]:
+    def _deduplicate(self, formulas: list[str]) -> list[str]:
         """Remove algebraic duplicates using SymPy canonicalizer if available."""
         if self.canonicalizer is None:
             seen: set = set()
-            unique: List[str] = []
+            unique: list[str] = []
             for f in formulas:
                 if f not in seen:
                     unique.append(f)
@@ -516,7 +516,7 @@ class DebateOrchestrator:
 
         from factorminer.core.parser import try_parse
         seen_hashes: set = set()
-        unique: List[str] = []
+        unique: list[str] = []
         for formula in formulas:
             tree = try_parse(formula)
             if tree is None:
@@ -558,8 +558,8 @@ class DebateGenerator:
     def __init__(
         self,
         llm_provider: LLMProvider,
-        debate_config: Optional[DebateConfig] = None,
-        prompt_builder: Optional[PromptBuilder] = None,
+        debate_config: DebateConfig | None = None,
+        prompt_builder: PromptBuilder | None = None,
     ) -> None:
         self.llm_provider = llm_provider
         self.config = debate_config or DebateConfig()
@@ -569,8 +569,8 @@ class DebateGenerator:
         )
 
         # Build SpecialistAgent instances
-        self._specialist_agents: List[SpecialistAgent] = []
-        self._specialist_generators: Dict[str, FactorGenerator] = {}
+        self._specialist_agents: list[SpecialistAgent] = []
+        self._specialist_generators: dict[str, FactorGenerator] = {}
 
         for spec in self.config.specialists:
             agent = SpecialistAgent(
@@ -592,7 +592,7 @@ class DebateGenerator:
             self._specialist_generators[spec.name] = gen
 
         # Build critic
-        self._critic: Optional[CriticAgent] = None
+        self._critic: CriticAgent | None = None
         if self.config.enable_critic:
             self._critic = CriticAgent(
                 llm_provider=self.llm_provider,
@@ -614,7 +614,7 @@ class DebateGenerator:
 
         # Debate orchestrator
         if self._critic is not None:
-            self._orchestrator: Optional[DebateOrchestrator] = DebateOrchestrator(
+            self._orchestrator: DebateOrchestrator | None = DebateOrchestrator(
                 specialists=self._specialist_agents,
                 critic=self._critic,
                 canonicalizer=self._canonicalizer,
@@ -625,20 +625,20 @@ class DebateGenerator:
             self._orchestrator = None
 
         # Debate memory
-        self._debate_memory: Optional[DebateMemory] = None
+        self._debate_memory: DebateMemory | None = None
         if self.config.enable_debate_memory:
             specialist_names = [s.name for s in self.config.specialists]
             self._debate_memory = DebateMemory(specialist_names=specialist_names)
 
-        self._last_debate_result: Optional[DebateResult] = None
+        self._last_debate_result: DebateResult | None = None
         self._generation_count = 0
 
     def generate_batch(
         self,
-        memory_signal: Optional[Dict[str, Any]] = None,
-        library_state: Optional[Dict[str, Any]] = None,
+        memory_signal: dict[str, Any] | None = None,
+        library_state: dict[str, Any] | None = None,
         batch_size: int = 40,
-    ) -> List[CandidateFactor]:
+    ) -> list[CandidateFactor]:
         """Generate a batch of candidate factors via multi-agent debate.
 
         Signature is identical to ``FactorGenerator.generate_batch``
@@ -697,7 +697,7 @@ class DebateGenerator:
 
         else:
             # No critic: run specialist generators and merge
-            proposals: Dict[str, List[CandidateFactor]] = {}
+            proposals: dict[str, list[CandidateFactor]] = {}
             for spec_name, generator in self._specialist_generators.items():
                 candidates = generator.generate_batch(
                     memory_signal=memory_signal,
@@ -747,22 +747,22 @@ class DebateGenerator:
     # ------------------------------------------------------------------
 
     @property
-    def last_debate_result(self) -> Optional[DebateResult]:
+    def last_debate_result(self) -> DebateResult | None:
         """The ``DebateResult`` from the most recent ``generate_batch`` call."""
         return self._last_debate_result
 
     @property
-    def debate_memory(self) -> Optional[DebateMemory]:
+    def debate_memory(self) -> DebateMemory | None:
         """The ``DebateMemory`` tracking history across rounds."""
         return self._debate_memory
 
-    def get_specialist_leaderboard(self) -> Optional[List[Dict[str, Any]]]:
+    def get_specialist_leaderboard(self) -> list[dict[str, Any]] | None:
         """Return specialist admission leaderboard if memory is enabled."""
         if self._debate_memory is not None:
             return self._debate_memory.get_specialist_leaderboard()
         return None
 
-    def get_blind_spots(self) -> Optional[Dict[str, List[str]]]:
+    def get_blind_spots(self) -> dict[str, list[str]] | None:
         """Return operator family blind spots if memory is enabled."""
         if self._debate_memory is not None:
             return self._debate_memory.get_blind_spots()
@@ -770,9 +770,9 @@ class DebateGenerator:
 
     def update_specialist_admissions(
         self,
-        admitted_formulas: List[str],
-        rejected_formulas: Optional[List[str]] = None,
-        rejection_reasons: Optional[List[str]] = None,
+        admitted_formulas: list[str],
+        rejected_formulas: list[str] | None = None,
+        rejection_reasons: list[str] | None = None,
     ) -> None:
         """Feed evaluation results back to specialist agents and debate memory.
 
@@ -806,7 +806,7 @@ class DebateGenerator:
                     spec_agent.name, []
                 )
             ]
-            spec_reasons: List[str] = []
+            spec_reasons: list[str] = []
             for f in spec_rejected:
                 try:
                     idx = rejected_formulas.index(f)
@@ -837,7 +837,7 @@ class DebateGenerator:
         self,
         debate_result: DebateResult,
         top_k: int,
-    ) -> List[CandidateFactor]:
+    ) -> list[CandidateFactor]:
         """Convert DebateResult critic scores into CandidateFactor objects."""
         from factorminer.agent.output_parser import _try_build_candidate
 
@@ -845,7 +845,7 @@ class DebateGenerator:
         kept_scores.sort(key=lambda cs: cs.composite_score, reverse=True)
         kept_scores = kept_scores[:top_k]
 
-        result: List[CandidateFactor] = []
+        result: list[CandidateFactor] = []
         seen_formulas: set = set()
 
         for cs in kept_scores:
@@ -872,8 +872,8 @@ class DebateGenerator:
 
     def _tag_specialist_source_from_agents(
         self,
-        candidates: List[CandidateFactor],
-    ) -> List[CandidateFactor]:
+        candidates: list[CandidateFactor],
+    ) -> list[CandidateFactor]:
         """Tag candidate source if not already embedded in category."""
         for c in candidates:
             if not c.category.startswith("specialist:"):
@@ -892,16 +892,16 @@ class DebateGenerator:
 
     @staticmethod
     def _scores_to_candidates(
-        scores: List[CriticScore],
-        proposals: Dict[str, List[CandidateFactor]],
-    ) -> List[CandidateFactor]:
+        scores: list[CriticScore],
+        proposals: dict[str, list[CandidateFactor]],
+    ) -> list[CandidateFactor]:
         """Map CriticScore objects back to CandidateFactor instances."""
-        lookup: Dict[str, CandidateFactor] = {}
+        lookup: dict[str, CandidateFactor] = {}
         for candidates in proposals.values():
             for c in candidates:
                 lookup[c.name] = c
 
-        result: List[CandidateFactor] = []
+        result: list[CandidateFactor] = []
         seen: set = set()
         for score in scores:
             candidate = lookup.get(score.factor_name)
@@ -913,11 +913,11 @@ class DebateGenerator:
 
     @staticmethod
     def _tag_specialist_source(
-        candidates: List[CandidateFactor],
-        proposals: Dict[str, List[CandidateFactor]],
-    ) -> List[CandidateFactor]:
+        candidates: list[CandidateFactor],
+        proposals: dict[str, list[CandidateFactor]],
+    ) -> list[CandidateFactor]:
         """Add specialist source information to each candidate's category."""
-        source_map: Dict[str, str] = {}
+        source_map: dict[str, str] = {}
         for spec_name, spec_candidates in proposals.items():
             for c in spec_candidates:
                 source_map[c.name] = spec_name
@@ -934,9 +934,9 @@ class DebateGenerator:
 # Utility
 # ---------------------------------------------------------------------------
 
-def _flatten_memory_signal(memory_signal: Dict[str, Any]) -> str:
+def _flatten_memory_signal(memory_signal: dict[str, Any]) -> str:
     """Flatten a memory signal dict to a compact string."""
-    parts: List[str] = []
+    parts: list[str] = []
     for key in (
         "recommended_directions", "strategic_insights",
         "complementary_patterns", "prompt_text",

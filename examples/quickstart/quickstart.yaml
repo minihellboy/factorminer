@@ -1,0 +1,59 @@
+output_dir: "./output/quickstart"
+
+evaluation:
+  backend: "numpy"
+  signal_failure_policy: "reject"
+  num_workers: 1
+  fast_screen_assets: 3
+
+mining:
+  batch_size: 6
+  max_iterations: 3
+  target_library_size: 3
+  ic_threshold: 0.001
+  icir_threshold: 0.001
+  correlation_threshold: 1.0
+  replacement_ic_min: 0.01
+  replacement_ic_ratio: 1.1
+
+llm:
+  provider: "mock"
+  model: "mock"
+  api_key: null
+  temperature: 0.2
+  max_tokens: 1024
+
+data:
+  train_period: ["2026-01-02", "2026-01-05"]
+  test_period: ["2026-01-06", "2026-01-07"]
+  default_target: "paper"
+
+memory:
+  policy: "paper"
+
+benchmark:
+  mode: "paper"
+  freeze_top_k: 5
+  report_universes:
+    - "CSI500"
+  baselines:
+    - "factor_miner"
+
+research:
+  enabled: false
+
+phase2:
+  causal:
+    enabled: false
+  regime:
+    enabled: false
+  capacity:
+    enabled: false
+  significance:
+    enabled: false
+  debate:
+    enabled: false
+  auto_inventor:
+    enabled: false
+  helix:
+    enabled: false

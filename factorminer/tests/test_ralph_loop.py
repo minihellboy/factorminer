@@ -18,7 +18,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 import pytest
@@ -34,7 +34,6 @@ from factorminer.core.ralph_loop import (
     ValidationPipeline,
 )
 from factorminer.memory.memory_store import ExperienceMemory
-
 
 # ---------------------------------------------------------------------------
 # Minimal config for tests
@@ -57,7 +56,7 @@ class _TestConfig:
     memory_policy: str = "paper"
     memory_regime_lookback_window: int = 10
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "target_library_size": self.target_library_size,
             "batch_size": self.batch_size,
@@ -493,7 +492,7 @@ class TestRalphLoopEndToEnd:
             llm_provider=mock_provider,
         )
 
-        library = loop.run(max_iterations=3)
+        loop.run(max_iterations=3)
         assert loop.iteration <= 3
         assert loop.budget.llm_calls <= 3
 
@@ -529,7 +528,7 @@ class TestRalphLoopEndToEnd:
 
         callback_calls = []
 
-        def cb(iteration: int, stats: Dict[str, Any]) -> None:
+        def cb(iteration: int, stats: dict[str, Any]) -> None:
             callback_calls.append((iteration, stats))
 
         loop.run(max_iterations=2, callback=cb)
@@ -556,7 +555,7 @@ class TestRalphLoopEndToEnd:
         )
         loop.budget = BudgetTracker(max_llm_calls=2)
 
-        library = loop.run(max_iterations=100, target_size=1000)
+        loop.run(max_iterations=100, target_size=1000)
         assert loop.budget.llm_calls == 2
         assert loop.iteration == 2
 
@@ -800,7 +799,6 @@ class TestCheckpointResume:
         )
         loop1.run(max_iterations=2, target_size=200)
         saved_iteration = loop1.iteration
-        saved_library_size = loop1.library.size
         loop1.save_session()
 
         # Create a new loop and resume from checkpoint
@@ -813,7 +811,7 @@ class TestCheckpointResume:
         assert loop2.iteration == 0  # Starts fresh
 
         # Resume should load the saved state and continue
-        library = loop2.run(max_iterations=4, target_size=200, resume=True)
+        loop2.run(max_iterations=4, target_size=200, resume=True)
 
         # loop2 should have continued from iteration 2, running up to 4
         assert loop2.iteration > saved_iteration

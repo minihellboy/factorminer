@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import numpy as np
+
 from factorminer.architecture import IterationPayload
 from factorminer.core.loop_services import LoopExecutionService
 
@@ -42,6 +44,14 @@ class _DummyLoop:
         self.reporter = _DummyReporter()
         self._session_logger = _DummySessionLogger()
         self.stages = {}
+        self.library = SimpleNamespace(size=0)
+        self.config = SimpleNamespace(
+            ic_threshold=0.04,
+            icir_threshold=0.5,
+            correlation_threshold=0.5,
+        )
+        self.data_tensor = np.zeros((3, 8, 2))
+        self._session = None
 
     def _compute_stats(self, results, admitted, elapsed):
         return {
@@ -155,3 +165,19 @@ def test_log_telemetry_emits_iteration_and_factor_records() -> None:
     assert loop._session_logger.iterations[0].candidates_generated == 2
     assert loop._session_logger.iterations[0].best_ic == 0.12
     assert len(loop._session_logger.factors) == 2
+
+
+def test_zero_admission_guidance_explains_tiny_strict_runs() -> None:
+    loop = _DummyLoop()
+    loop._session = SimpleNamespace(
+        total_iterations=2,
+        get_summary=lambda: {"total_candidates": 12, "total_admitted": 0},
+    )
+    service = LoopExecutionService(loop)
+
+    warning = service.zero_admission_guidance(target_size=3, max_iterations=2)
+
+    assert warning is not None
+    assert "No factors were admitted" in warning
+    assert "3 assets x 8 periods" in warning
+    assert "ic=0.04" in warning

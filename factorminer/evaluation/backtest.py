@@ -7,11 +7,9 @@ factor return attribution, and drawdown analysis.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from scipy.stats import spearmanr
-
 
 # ------------------------------------------------------------------
 # Time-series splitting
@@ -57,7 +55,7 @@ def rolling_splits(
     train_window: int,
     test_window: int,
     step: int = 1,
-) -> List[SplitWindow]:
+) -> list[SplitWindow]:
     """Generate rolling-window train/test splits.
 
     Parameters
@@ -75,7 +73,7 @@ def rolling_splits(
     -------
     list of SplitWindow
     """
-    splits: List[SplitWindow] = []
+    splits: list[SplitWindow] = []
     start = 0
     while start + train_window + test_window <= T:
         splits.append(SplitWindow(
@@ -222,9 +220,9 @@ def compute_ic_stats(ic_series: np.ndarray) -> dict:
 # ------------------------------------------------------------------
 
 def factor_return_attribution(
-    factor_signals: Dict[int, np.ndarray],
+    factor_signals: dict[int, np.ndarray],
     returns: np.ndarray,
-) -> Dict[int, dict]:
+) -> dict[int, dict]:
     """Attribute portfolio returns to individual factors.
 
     For each factor, computes the IC series, ICIR, and the mean return of
@@ -241,7 +239,7 @@ def factor_return_attribution(
     dict mapping factor_id -> attribution dict with keys:
         ic_mean, icir, ic_win_rate, ls_return
     """
-    results: Dict[int, dict] = {}
+    results: dict[int, dict] = {}
     for fid, signal in factor_signals.items():
         ic_series = compute_ic_series(signal, returns)
         stats = compute_ic_stats(ic_series)
@@ -280,7 +278,7 @@ class DrawdownResult:
     max_drawdown_start: int
     max_drawdown_end: int
     drawdown_series: np.ndarray
-    recovery_periods: List[Tuple[int, int, int]]  # (start, trough, end)
+    recovery_periods: list[tuple[int, int, int]]  # (start, trough, end)
 
 
 def compute_drawdown(cumulative_returns: np.ndarray) -> DrawdownResult:
@@ -309,7 +307,7 @@ def compute_drawdown(cumulative_returns: np.ndarray) -> DrawdownResult:
     peak_idx = int(np.argmax(cumulative_returns[:max_dd_idx + 1]))
 
     # Identify recovery periods (peak -> trough -> recovery)
-    recovery_periods: List[Tuple[int, int, int]] = []
+    recovery_periods: list[tuple[int, int, int]] = []
     i = 0
     while i < T:
         # Find start of drawdown (where dd becomes negative)

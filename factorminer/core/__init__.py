@@ -2,6 +2,8 @@
 
 from importlib import import_module
 
+from factorminer.core.canonicalizer import FormulaCanonicalizer
+from factorminer.core.config import MiningConfig as CoreMiningConfig
 from factorminer.core.expression_tree import (
     ConstantNode,
     ExpressionTree,
@@ -19,17 +21,15 @@ from factorminer.core.library_io import (
 )
 from factorminer.core.parser import parse, try_parse
 from factorminer.core.session import MiningSession
-from factorminer.core.config import MiningConfig as CoreMiningConfig
 from factorminer.core.types import (
-    FEATURES,
     FEATURE_SET,
+    FEATURES,
     OPERATOR_REGISTRY,
     OperatorSpec,
     OperatorType,
     SignatureType,
     get_operator,
 )
-from factorminer.core.canonicalizer import FormulaCanonicalizer
 
 _LAZY_EXPORTS = {
     "RalphLoop": ("factorminer.core.ralph_loop", "RalphLoop"),

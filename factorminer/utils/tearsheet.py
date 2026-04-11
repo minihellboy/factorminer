@@ -7,23 +7,20 @@ Also provides summary table generation for the full factor library.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
-
-import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.stats import rankdata
 
 from factorminer.evaluation.metrics import (
     compute_ic,
-    compute_icir,
     compute_ic_mean,
     compute_ic_win_rate,
+    compute_icir,
     compute_quintile_returns,
     compute_turnover,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -31,7 +28,7 @@ from factorminer.evaluation.metrics import (
 
 def _rolling_mean(arr: np.ndarray, window: int) -> np.ndarray:
     """Compute rolling mean with edge handling."""
-    out = np.full_like(arr, np.nan, dtype=np.float64)
+    np.full_like(arr, np.nan, dtype=np.float64)
     clean = np.where(np.isnan(arr), 0.0, arr)
     kernel = np.ones(window) / window
     conv = np.convolve(clean, kernel, mode="same")
@@ -98,9 +95,9 @@ class FactorTearSheet:
         formula: str,
         signals: np.ndarray,
         returns: np.ndarray,
-        dates: List[str],
-        save_path: Optional[str] = None,
-    ) -> Dict[str, float]:
+        dates: list[str],
+        save_path: str | None = None,
+    ) -> dict[str, float]:
         """Generate a multi-panel tear sheet.
 
         Panels:
@@ -349,7 +346,7 @@ class FactorTearSheet:
 
         return metrics
 
-    def generate_summary_table(self, factors: List[dict]) -> pd.DataFrame:
+    def generate_summary_table(self, factors: list[dict]) -> pd.DataFrame:
         """Generate summary table for all factors in the library.
 
         Parameters
@@ -388,7 +385,7 @@ class FactorTearSheet:
         return df
 
     @staticmethod
-    def _set_date_ticks(ax: plt.Axes, dates: List[str], T: int, n_ticks: int = 8) -> None:
+    def _set_date_ticks(ax: plt.Axes, dates: list[str], T: int, n_ticks: int = 8) -> None:
         """Set evenly spaced date tick labels on the x-axis."""
         if T == 0:
             return

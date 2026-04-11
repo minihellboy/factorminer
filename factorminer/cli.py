@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import logging
-import sys
-from dataclasses import fields
 import json
+import logging
+from dataclasses import fields
 from pathlib import Path
 
 import click
@@ -282,8 +281,8 @@ def _build_debate_config(cfg):
 
 def _build_phase2_runtime_configs(cfg):
     """Instantiate evaluation/runtime configs for the Helix loop."""
-    from factorminer.evaluation.causal import CausalConfig as RuntimeCausalConfig
     from factorminer.evaluation.capacity import CapacityConfig as RuntimeCapacityConfig
+    from factorminer.evaluation.causal import CausalConfig as RuntimeCausalConfig
     from factorminer.evaluation.regime import RegimeConfig as RuntimeRegimeConfig
     from factorminer.evaluation.significance import (
         SignificanceConfig as RuntimeSignificanceConfig,
@@ -526,7 +525,7 @@ def _load_library_from_path(library_path: str):
         return library
     except FileNotFoundError:
         click.echo(f"Error: Factor library not found at {library_path}")
-        click.echo("  Tried: {}.json".format(base_path))
+        click.echo(f"  Tried: {base_path}.json")
         raise click.Abort()
     except Exception as e:
         click.echo(f"Error loading library: {e}")
@@ -571,6 +570,7 @@ def main(ctx: click.Context, config: str | None, gpu: bool, verbose: bool, outpu
     # Stash the raw YAML data for access to top-level fields like data_path
     try:
         import yaml
+
         from factorminer.configs import DEFAULT_CONFIG_PATH
         raw = {}
         if DEFAULT_CONFIG_PATH.exists():
@@ -641,6 +641,65 @@ def validate_data(
     code = report.exit_code(strict=strict)
     if code != 0:
         ctx.exit(code)
+
+
+# ---------------------------------------------------------------------------
+# report
+# ---------------------------------------------------------------------------
+
+@main.command()
+@click.argument("library_path", type=click.Path(exists=True))
+@click.option(
+    "--session-log",
+    type=click.Path(exists=True),
+    default=None,
+    help="Optional session_log.json path.",
+)
+@click.option(
+    "--benchmark",
+    "benchmark_paths",
+    type=click.Path(exists=True),
+    multiple=True,
+    help="Optional benchmark JSON path. May be passed multiple times.",
+)
+@click.option(
+    "--format",
+    "report_format",
+    type=click.Choice(["markdown", "html"]),
+    default="markdown",
+    show_default=True,
+    help="Static report format.",
+)
+@click.option(
+    "--output",
+    "-o",
+    "report_output",
+    type=click.Path(dir_okay=False),
+    default=None,
+    help="Write the report to this path instead of stdout.",
+)
+def report(
+    library_path: str,
+    session_log: str | None,
+    benchmark_paths: tuple[str, ...],
+    report_format: str,
+    report_output: str | None,
+) -> None:
+    """Generate a static report from FactorMiner artifacts."""
+    from factorminer.evaluation.report_viewer import generate_report
+
+    rendered = generate_report(
+        library_path,
+        session_log_source=session_log,
+        benchmark_sources=benchmark_paths,
+        format=report_format,
+        output_path=report_output,
+    )
+
+    if report_output is None:
+        click.echo(rendered)
+    else:
+        click.echo(f"Report written to: {report_output}")
 
 
 # ---------------------------------------------------------------------------

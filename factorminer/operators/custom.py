@@ -9,15 +9,17 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
 from factorminer.core.types import (
     OPERATOR_REGISTRY as SPEC_REGISTRY,
+)
+from factorminer.core.types import (
     OperatorSpec,
     OperatorType,
     SignatureType,
@@ -31,19 +33,19 @@ logger = logging.getLogger(__name__)
 # Safe compilation (shared with auto_inventor.py)
 # ---------------------------------------------------------------------------
 
-_SAFE_GLOBALS: Dict[str, Any] = {
+_SAFE_GLOBALS: dict[str, Any] = {
     "np": np,
     "numpy": np,
     "__builtins__": {},
 }
 
 
-def _compile_operator_code(code: str) -> Optional[Callable]:
+def _compile_operator_code(code: str) -> Callable | None:
     """Compile operator code in a restricted sandbox.
 
     Returns the ``compute`` function or None on failure.
     """
-    safe_ns: Dict[str, Any] = dict(_SAFE_GLOBALS)
+    safe_ns: dict[str, Any] = dict(_SAFE_GLOBALS)
     try:
         exec(code, safe_ns)  # noqa: S102 -- sandboxed exec
     except Exception as exc:
@@ -105,7 +107,7 @@ class CustomOperatorStore:
 
     def __init__(self, store_dir: str = "./output/custom_operators") -> None:
         self._store_dir = Path(store_dir)
-        self._operators: Dict[str, CustomOperator] = {}
+        self._operators: dict[str, CustomOperator] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -146,7 +148,7 @@ class CustomOperatorStore:
         """
         self._store_dir.mkdir(parents=True, exist_ok=True)
 
-        index: List[Dict[str, Any]] = []
+        index: list[dict[str, Any]] = []
         for name, op in self._operators.items():
             # Save Python source
             src_path = self._store_dir / f"{name}.py"
@@ -190,8 +192,8 @@ class CustomOperatorStore:
             logger.debug("No custom operator index at %s", index_path)
             return
 
-        with open(index_path, "r", encoding="utf-8") as f:
-            index: List[Dict[str, Any]] = json.load(f)
+        with open(index_path, encoding="utf-8") as f:
+            index: list[dict[str, Any]] = json.load(f)
 
         loaded = 0
         for entry in index:
@@ -237,11 +239,11 @@ class CustomOperatorStore:
 
         logger.info("Loaded %d / %d custom operators from %s", loaded, len(index), self._store_dir)
 
-    def list_operators(self) -> List[str]:
+    def list_operators(self) -> list[str]:
         """Return names of all registered custom operators."""
         return sorted(self._operators.keys())
 
-    def get_operator(self, name: str) -> Optional[CustomOperator]:
+    def get_operator(self, name: str) -> CustomOperator | None:
         """Look up a custom operator by name.
 
         Returns

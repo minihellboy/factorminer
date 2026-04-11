@@ -158,6 +158,10 @@ python3 -m pip install -e ".[all]"
 uv run python run_demo.py
 ```
 
+### Deterministic quickstart examples
+
+For a runnable, data-shaped walkthrough with sample CSVs and safe `/tmp` output paths, see [examples/quickstart/README.md](examples/quickstart/README.md).
+
 ### CLI overview
 
 ```bash

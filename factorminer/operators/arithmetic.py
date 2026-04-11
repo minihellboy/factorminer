@@ -118,86 +118,86 @@ def power_np(x: np.ndarray, e: float = 2.0) -> np.ndarray:
 
 # ---- PyTorch (GPU) implementations ----------------------------------------
 
-def add_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def add_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return x + y
 
 
-def sub_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def sub_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return x - y
 
 
-def mul_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def mul_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return x * y
 
 
-def div_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def div_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     mask = y.abs() > 1e-10
     out = torch.full_like(x, float("nan"))
     out[mask] = x[mask] / y[mask]
     return out
 
 
-def neg_torch(x: "torch.Tensor") -> "torch.Tensor":
+def neg_torch(x: torch.Tensor) -> torch.Tensor:
     return -x
 
 
-def abs_torch(x: "torch.Tensor") -> "torch.Tensor":
+def abs_torch(x: torch.Tensor) -> torch.Tensor:
     return x.abs()
 
 
-def sign_torch(x: "torch.Tensor") -> "torch.Tensor":
+def sign_torch(x: torch.Tensor) -> torch.Tensor:
     return x.sign()
 
 
-def log_torch(x: "torch.Tensor") -> "torch.Tensor":
+def log_torch(x: torch.Tensor) -> torch.Tensor:
     return torch.log1p(x.abs()) * x.sign()
 
 
-def sqrt_torch(x: "torch.Tensor") -> "torch.Tensor":
+def sqrt_torch(x: torch.Tensor) -> torch.Tensor:
     return x.abs().sqrt() * x.sign()
 
 
-def square_torch(x: "torch.Tensor") -> "torch.Tensor":
+def square_torch(x: torch.Tensor) -> torch.Tensor:
     return x * x
 
 
-def inv_torch(x: "torch.Tensor") -> "torch.Tensor":
+def inv_torch(x: torch.Tensor) -> torch.Tensor:
     mask = x.abs() > 1e-10
     out = torch.full_like(x, float("nan"))
     out[mask] = 1.0 / x[mask]
     return out
 
 
-def pow_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def pow_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     safe = x.abs().pow(y) * x.sign()
     return torch.where(torch.isnan(x) | torch.isnan(y), torch.tensor(float("nan"), device=x.device), safe)
 
 
-def max_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def max_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return torch.fmax(x, y)
 
 
-def min_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def min_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return torch.fmin(x, y)
 
 
-def clip_torch(x: "torch.Tensor", lower: float = -3.0, upper: float = 3.0) -> "torch.Tensor":
+def clip_torch(x: torch.Tensor, lower: float = -3.0, upper: float = 3.0) -> torch.Tensor:
     return x.clamp(lower, upper)
 
 
-def exp_torch(x: "torch.Tensor") -> "torch.Tensor":
+def exp_torch(x: torch.Tensor) -> torch.Tensor:
     return torch.exp(x.clamp(-50.0, 50.0))
 
 
-def tanh_torch(x: "torch.Tensor") -> "torch.Tensor":
+def tanh_torch(x: torch.Tensor) -> torch.Tensor:
     return x.tanh()
 
 
-def signed_power_torch(x: "torch.Tensor", e: float = 2.0) -> "torch.Tensor":
+def signed_power_torch(x: torch.Tensor, e: float = 2.0) -> torch.Tensor:
     return x.sign() * x.abs().pow(e)
 
 
-def power_torch(x: "torch.Tensor", e: float = 2.0) -> "torch.Tensor":
+def power_torch(x: torch.Tensor, e: float = 2.0) -> torch.Tensor:
     return x.pow(e)
 
 

@@ -12,8 +12,9 @@ exports, such as ``code``/``ticker`` for ``asset_id`` and ``amt`` for
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Literal, Optional, Sequence, Union
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -128,12 +129,12 @@ def _coerce_types(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_market_data(
-    path: Union[str, Path],
-    fmt: Optional[FileFormat] = None,
-    universe: Optional[str] = None,
-    asset_ids: Optional[Sequence[str]] = None,
-    start: Optional[str] = None,
-    end: Optional[str] = None,
+    path: str | Path,
+    fmt: FileFormat | None = None,
+    universe: str | None = None,
+    asset_ids: Sequence[str] | None = None,
+    start: str | None = None,
+    end: str | None = None,
     hdf_key: str = "data",
 ) -> pd.DataFrame:
     """Load market data from a single file.
@@ -203,8 +204,8 @@ def load_market_data(
 
 
 def load_multiple(
-    paths: Sequence[Union[str, Path]],
-    fmt: Optional[FileFormat] = None,
+    paths: Sequence[str | Path],
+    fmt: FileFormat | None = None,
     **kwargs,
 ) -> pd.DataFrame:
     """Load and concatenate market data from multiple files.
@@ -223,7 +224,7 @@ def load_multiple(
 
 def to_numpy(
     df: pd.DataFrame,
-    columns: Optional[Sequence[str]] = None,
+    columns: Sequence[str] | None = None,
 ) -> np.ndarray:
     """Convert a DataFrame to a numpy array of the specified columns.
 

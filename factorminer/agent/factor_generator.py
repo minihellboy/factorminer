@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from factorminer.agent.llm_interface import LLMProvider
 from factorminer.agent.output_parser import CandidateFactor, parse_llm_output
@@ -39,7 +39,7 @@ class FactorGenerator:
     def __init__(
         self,
         llm_provider: LLMProvider,
-        prompt_builder: Optional[PromptBuilder] = None,
+        prompt_builder: PromptBuilder | None = None,
         temperature: float = 0.8,
         max_tokens: int = 4096,
     ) -> None:
@@ -51,10 +51,10 @@ class FactorGenerator:
 
     def generate_batch(
         self,
-        memory_signal: Optional[Dict[str, Any]] = None,
-        library_state: Optional[Dict[str, Any]] = None,
+        memory_signal: dict[str, Any] | None = None,
+        library_state: dict[str, Any] | None = None,
         batch_size: int = 40,
-    ) -> List[CandidateFactor]:
+    ) -> list[CandidateFactor]:
         """Generate a batch of candidate factors using LLM guided by memory priors.
 
         Steps:
@@ -165,9 +165,9 @@ class FactorGenerator:
 
     def _retry_failed_parses(
         self,
-        failed: List[str],
+        failed: list[str],
         attempts: int = 2,
-    ) -> List[CandidateFactor]:
+    ) -> list[CandidateFactor]:
         """Retry parsing failed outputs with a repair prompt.
 
         Asks the LLM to fix malformed formulas by providing the broken
@@ -190,7 +190,7 @@ class FactorGenerator:
 
         # Limit retries to avoid excessive API calls
         failed = failed[:15]
-        recovered: List[CandidateFactor] = []
+        recovered: list[CandidateFactor] = []
 
         for attempt in range(1, attempts + 1):
             if not failed:

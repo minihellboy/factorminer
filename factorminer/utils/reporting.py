@@ -10,14 +10,11 @@ from __future__ import annotations
 import json
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import matplotlib.pyplot as plt
-import numpy as np
-
 
 # ---------------------------------------------------------------------------
 # Data classes for structured logging
@@ -51,8 +48,8 @@ class BatchRecord:
     corr_passed: int = 0
     admitted: int = 0
     replaced: int = 0
-    rejection_reasons: List[str] = field(default_factory=list)
-    admitted_factors: List[FactorAdmissionRecord] = field(default_factory=list)
+    rejection_reasons: list[str] = field(default_factory=list)
+    admitted_factors: list[FactorAdmissionRecord] = field(default_factory=list)
     library_size: int = 0
     elapsed_seconds: float = 0.0
     timestamp: str = ""
@@ -104,8 +101,8 @@ class MiningReporter:
     def __init__(self, output_dir: str) -> None:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.batches: List[BatchRecord] = []
-        self.factor_admissions: List[FactorAdmissionRecord] = []
+        self.batches: list[BatchRecord] = []
+        self.factor_admissions: list[FactorAdmissionRecord] = []
         self._session_start: float = time.time()
 
     # ------------------------------------------------------------------
@@ -120,7 +117,7 @@ class MiningReporter:
         corr_passed: int,
         admitted: int,
         replaced: int,
-        rejection_reasons: List[str],
+        rejection_reasons: list[str],
         library_size: int = 0,
         elapsed_seconds: float = 0.0,
     ) -> None:
@@ -259,7 +256,7 @@ class MiningReporter:
 
         # Rejection breakdown
         if batch.rejection_reasons:
-            reason_counts: Dict[str, int] = defaultdict(int)
+            reason_counts: dict[str, int] = defaultdict(int)
             for reason in batch.rejection_reasons:
                 # Normalise to short category
                 if "IC" in reason.upper() or "ic" in reason.lower():
@@ -301,7 +298,7 @@ class MiningReporter:
 
         lines = [
             f"{'#' * 60}",
-            f"  FACTORMINER SESSION REPORT",
+            "  FACTORMINER SESSION REPORT",
             f"  Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             f"{'#' * 60}",
             "",
@@ -400,7 +397,7 @@ class MiningReporter:
     # Visualization
     # ------------------------------------------------------------------
 
-    def plot_mining_progress(self, save_path: Optional[str] = None) -> None:
+    def plot_mining_progress(self, save_path: str | None = None) -> None:
         """Plot library growth, yield rate, and rejection rate over batches.
 
         Produces a 3-panel figure:

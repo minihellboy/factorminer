@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from dataclasses import dataclass, field, asdict
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -65,13 +66,13 @@ class FactorNode:
     formula: str
     ic_mean: float = 0.0
     category: str = ""
-    operators: List[str] = field(default_factory=list)
-    features: List[str] = field(default_factory=list)
+    operators: list[str] = field(default_factory=list)
+    features: list[str] = field(default_factory=list)
     batch_number: int = 0
     admitted: bool = False
-    embedding: Optional[np.ndarray] = None
+    embedding: np.ndarray | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         if self.embedding is not None:
             d["embedding"] = self.embedding.tolist()
@@ -80,7 +81,7 @@ class FactorNode:
         return d
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> FactorNode:
+    def from_dict(cls, d: dict[str, Any]) -> FactorNode:
         embedding = d.get("embedding")
         if embedding is not None:
             embedding = np.array(embedding, dtype=np.float32)
@@ -149,7 +150,7 @@ class FactorKnowledgeGraph:
                 edge_type=EdgeType.USES_OPERATOR.value,
             )
 
-    def get_factor_node(self, factor_id: str) -> Optional[FactorNode]:
+    def get_factor_node(self, factor_id: str) -> FactorNode | None:
         """Return a factor node by id, or ``None`` if missing."""
         attrs = self._graph.nodes.get(factor_id)
         if not attrs or attrs.get("node_type") != "factor":
@@ -180,7 +181,7 @@ class FactorKnowledgeGraph:
             except Exception:
                 continue
 
-    def list_factor_nodes(self, admitted_only: bool = False) -> List[FactorNode]:
+    def list_factor_nodes(self, admitted_only: bool = False) -> list[FactorNode]:
         """Return all factor nodes as a list."""
         return list(self.iter_factor_nodes(admitted_only=admitted_only))
 
@@ -244,7 +245,7 @@ class FactorKnowledgeGraph:
         self,
         factor_id: str,
         max_hops: int = 2,
-    ) -> List[str]:
+    ) -> list[str]:
         """Find factors complementary to *factor_id* via BFS.
 
         A complementary factor is one that:
@@ -258,7 +259,7 @@ class FactorKnowledgeGraph:
             return []
 
         # Collect correlated neighbours (direct CORRELATED_WITH edges)
-        correlated: Set[str] = set()
+        correlated: set[str] = set()
         for _, nbr, data in self._graph.edges(factor_id, data=True):
             if data.get("edge_type") == EdgeType.CORRELATED_WITH.value:
                 correlated.add(nbr)
@@ -271,12 +272,12 @@ class FactorKnowledgeGraph:
 
         # BFS on undirected view
         undirected = self._graph.to_undirected()
-        visited: Set[str] = {factor_id}
-        frontier: List[str] = [factor_id]
-        complementary: List[str] = []
+        visited: set[str] = {factor_id}
+        frontier: list[str] = [factor_id]
+        complementary: list[str] = []
 
         for _ in range(max_hops):
-            next_frontier: List[str] = []
+            next_frontier: list[str] = []
             for node in frontier:
                 for nbr in undirected.neighbors(node):
                     if nbr in visited:
@@ -301,7 +302,7 @@ class FactorKnowledgeGraph:
     def find_saturated_regions(
         self,
         threshold: float = 0.5,
-    ) -> List[Set[str]]:
+    ) -> list[set[str]]:
         """Find clusters of highly correlated factors.
 
         Builds a subgraph of CORRELATED_WITH edges where
@@ -325,12 +326,12 @@ class FactorKnowledgeGraph:
         # Filter out singletons
         return [c for c in components if len(c) > 1]
 
-    def get_operator_cooccurrence(self) -> Dict[Tuple[str, str], int]:
+    def get_operator_cooccurrence(self) -> dict[tuple[str, str], int]:
         """Count operator pair co-occurrences across admitted factors.
 
         Returns a dict mapping ``(op_a, op_b)`` (sorted tuple) to count.
         """
-        cooccurrence: Dict[Tuple[str, str], int] = defaultdict(int)
+        cooccurrence: dict[tuple[str, str], int] = defaultdict(int)
 
         for node_id, attrs in self._graph.nodes(data=True):
             if attrs.get("node_type") != "factor":
@@ -367,12 +368,12 @@ class FactorKnowledgeGraph:
     # Serialization
     # ------------------------------------------------------------------
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-compatible dict via ``nx.node_link_data``."""
         return nx.node_link_data(self._graph, edges="links")
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> FactorKnowledgeGraph:
+    def from_dict(cls, data: dict[str, Any]) -> FactorKnowledgeGraph:
         """Deserialize from a dict produced by :meth:`to_dict`."""
         kg = cls()
         kg._graph = nx.node_link_graph(data, edges="links")
@@ -397,9 +398,9 @@ class FactorKnowledgeGraph:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _get_operators(self, factor_id: str) -> Set[str]:
+    def _get_operators(self, factor_id: str) -> set[str]:
         """Return the set of operator names used by a factor."""
-        ops: Set[str] = set()
+        ops: set[str] = set()
         for _, nbr, data in self._graph.edges(factor_id, data=True):
             if data.get("edge_type") == EdgeType.USES_OPERATOR.value:
                 # Strip "op:" prefix

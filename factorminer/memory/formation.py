@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter, defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from factorminer.memory.memory_store import (
     ExperienceMemory,
@@ -21,13 +21,12 @@ from factorminer.memory.memory_store import (
     SuccessPattern,
 )
 
-
 # ---------------------------------------------------------------------------
 # Operator-pattern detection helpers
 # ---------------------------------------------------------------------------
 
 # Maps operator substrings to pattern categories
-_PATTERN_SIGNATURES: Dict[str, List[str]] = {
+_PATTERN_SIGNATURES: dict[str, list[str]] = {
     "Higher Moment Regimes": ["Skew", "Kurt", "IfElse"],
     "PV Corr Interaction": ["Corr", "$close", "$volume"],
     "Robust Efficiency": ["Med", "Median"],
@@ -38,7 +37,7 @@ _PATTERN_SIGNATURES: Dict[str, List[str]] = {
     "Amt Efficiency Rank Interaction": ["$amt", "CsRank"],
 }
 
-_FORBIDDEN_SIGNATURES: Dict[str, Dict[str, Any]] = {
+_FORBIDDEN_SIGNATURES: dict[str, dict[str, Any]] = {
     "Standardized Returns/Amount": {
         "keywords": ["CsZScore", "$returns", "$amt", "Std"],
         "typical_corr": 0.6,
@@ -62,17 +61,17 @@ _FORBIDDEN_SIGNATURES: Dict[str, Dict[str, Any]] = {
 }
 
 
-def _extract_operators(formula: str) -> List[str]:
+def _extract_operators(formula: str) -> list[str]:
     """Extract operator names from a DSL formula string."""
     return re.findall(r"([A-Z][a-zA-Z]+)\(", formula)
 
 
-def _extract_features(formula: str) -> List[str]:
+def _extract_features(formula: str) -> list[str]:
     """Extract feature references from a DSL formula string."""
     return re.findall(r"\$[a-z]+", formula)
 
 
-def _matches_pattern(formula: str, signature_keywords: List[str]) -> bool:
+def _matches_pattern(formula: str, signature_keywords: list[str]) -> bool:
     """Check if a formula matches a pattern based on keyword presence."""
     formula_upper = formula.upper()
     ops = _extract_operators(formula)
@@ -88,7 +87,7 @@ def _matches_pattern(formula: str, signature_keywords: List[str]) -> bool:
     return match_count >= threshold
 
 
-def _classify_success_pattern(formula: str) -> Optional[str]:
+def _classify_success_pattern(formula: str) -> str | None:
     """Try to classify a formula into a known success pattern category."""
     for pattern_name, keywords in _PATTERN_SIGNATURES.items():
         if _matches_pattern(formula, keywords):
@@ -96,7 +95,7 @@ def _classify_success_pattern(formula: str) -> Optional[str]:
     return None
 
 
-def _classify_forbidden_direction(formula: str) -> Optional[str]:
+def _classify_forbidden_direction(formula: str) -> str | None:
     """Try to classify a formula into a known forbidden direction."""
     for direction_name, info in _FORBIDDEN_SIGNATURES.items():
         if _matches_pattern(formula, info["keywords"]):
@@ -109,8 +108,8 @@ def _classify_forbidden_direction(formula: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 def _analyze_admissions(
-    trajectory: List[dict],
-) -> Tuple[List[dict], List[dict]]:
+    trajectory: list[dict],
+) -> tuple[list[dict], list[dict]]:
     """Split trajectory into admitted and rejected candidates."""
     admitted = []
     rejected = []
@@ -123,11 +122,11 @@ def _analyze_admissions(
 
 
 def _extract_success_patterns(
-    admitted: List[dict],
-    existing_patterns: List[SuccessPattern],
-) -> List[SuccessPattern]:
+    admitted: list[dict],
+    existing_patterns: list[SuccessPattern],
+) -> list[SuccessPattern]:
     """Extract new or reinforced success patterns from admitted factors."""
-    pattern_map: Dict[str, SuccessPattern] = {
+    pattern_map: dict[str, SuccessPattern] = {
         p.name: SuccessPattern(
             name=p.name,
             description=p.description,
@@ -178,11 +177,11 @@ def _extract_success_patterns(
 
 
 def _extract_forbidden_directions(
-    rejected: List[dict],
-    existing_forbidden: List[ForbiddenDirection],
-) -> List[ForbiddenDirection]:
+    rejected: list[dict],
+    existing_forbidden: list[ForbiddenDirection],
+) -> list[ForbiddenDirection]:
     """Extract new or reinforced forbidden directions from rejections."""
-    direction_map: Dict[str, ForbiddenDirection] = {
+    direction_map: dict[str, ForbiddenDirection] = {
         f.name: ForbiddenDirection(
             name=f.name,
             description=f.description,
@@ -196,7 +195,7 @@ def _extract_forbidden_directions(
 
     for candidate in rejected:
         formula = candidate.get("formula", "")
-        factor_id = candidate.get("factor_id", formula[:60])
+        candidate.get("factor_id", formula[:60])
         rejection_reason = candidate.get("rejection_reason", "")
         max_corr = candidate.get("max_correlation", 0.0)
         correlated_with = candidate.get("correlated_with", "")
@@ -241,12 +240,12 @@ def _extract_forbidden_directions(
 
 
 def _derive_insights(
-    admitted: List[dict],
-    rejected: List[dict],
+    admitted: list[dict],
+    rejected: list[dict],
     batch_number: int,
-) -> List[StrategicInsight]:
+) -> list[StrategicInsight]:
     """Derive higher-level strategic insights from a batch."""
-    insights: List[StrategicInsight] = []
+    insights: list[StrategicInsight] = []
     if not admitted and not rejected:
         return insights
 
@@ -325,7 +324,7 @@ def _derive_insights(
 
 def form_memory(
     memory: ExperienceMemory,
-    trajectory: List[dict],
+    trajectory: list[dict],
     batch_number: int = 0,
 ) -> ExperienceMemory:
     """Memory Formation operator F(M, tau).
@@ -408,10 +407,10 @@ def form_memory(
 
 
 def _compute_domain_saturation(
-    existing_saturation: Dict[str, float],
-    admitted: List[dict],
-    rejected: List[dict],
-) -> Dict[str, float]:
+    existing_saturation: dict[str, float],
+    admitted: list[dict],
+    rejected: list[dict],
+) -> dict[str, float]:
     """Compute per-category domain saturation metrics.
 
     Saturation increases when many candidates in a category are rejected
@@ -420,8 +419,8 @@ def _compute_domain_saturation(
     saturation = dict(existing_saturation)
 
     # Count category attempts and rejections
-    category_attempts: Dict[str, int] = defaultdict(int)
-    category_rejections: Dict[str, int] = defaultdict(int)
+    category_attempts: dict[str, int] = defaultdict(int)
+    category_rejections: dict[str, int] = defaultdict(int)
 
     for candidate in admitted + rejected:
         formula = candidate.get("formula", "")

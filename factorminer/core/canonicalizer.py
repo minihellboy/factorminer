@@ -16,7 +16,6 @@ simplification.
 from __future__ import annotations
 
 import hashlib
-from typing import Dict, List, Optional
 
 import sympy
 from sympy import Abs, Float, Function, Symbol, log, sqrt
@@ -53,7 +52,7 @@ class FormulaCanonicalizer:
     """
 
     def __init__(self) -> None:
-        self._cache: Dict[str, str] = {}  # formula string -> canonical MD5 hash
+        self._cache: dict[str, str] = {}  # formula string -> canonical MD5 hash
 
     # ------------------------------------------------------------------
     # Public API
@@ -152,8 +151,8 @@ class FormulaCanonicalizer:
     def _map_operator(
         self,
         name: str,
-        children: List[sympy.Expr],
-        params: Dict[str, float],
+        children: list[sympy.Expr],
+        params: dict[str, float],
     ) -> sympy.Expr:
         """Dispatch an operator to its SymPy equivalent.
 
@@ -199,7 +198,7 @@ class FormulaCanonicalizer:
         # --- Non-algebraic: wrap as opaque Function ---------------------------
         func = Function(name)
         # Build argument list: children first, then params as Float values
-        args: List[sympy.Expr] = list(children)
+        args: list[sympy.Expr] = list(children)
         # Append params in a deterministic order (sorted by param name).
         for pname in sorted(params):
             args.append(Float(params[pname]))

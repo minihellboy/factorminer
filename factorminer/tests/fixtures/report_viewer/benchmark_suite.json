@@ -1,0 +1,93 @@
+{
+  "table1": {
+    "baseline": "factor_miner",
+    "freeze_universe": "CSI500",
+    "freeze_library_size": 2,
+    "candidate_count": 8,
+    "frozen_top_k": [
+      {
+        "name": "alpha_close",
+        "formula": "Neg($close)",
+        "category": "Momentum",
+        "train_ic": 0.12,
+        "train_icir": 1.4
+      }
+    ],
+    "universes": {
+      "CSI500": {
+        "library": {
+          "ic": 0.11,
+          "icir": 1.2,
+          "avg_abs_rho": 0.18
+        },
+        "selection": {
+          "ic": 0.09,
+          "icir": 1.0,
+          "avg_turnover": 0.13
+        },
+        "combinations": {
+          "ew_ic": 0.08,
+          "ew_icir": 0.9
+        },
+        "factors": {
+          "factor_count": 2
+        }
+      },
+      "CSI1000": {
+        "library": {
+          "ic": 0.1,
+          "icir": 1.1,
+          "avg_abs_rho": 0.2
+        },
+        "selection": {
+          "ic": 0.07,
+          "icir": 0.8,
+          "avg_turnover": 0.12
+        },
+        "combinations": {
+          "ew_ic": 0.07,
+          "ew_icir": 0.75
+        },
+        "factors": {
+          "factor_count": 2
+        }
+      }
+    }
+  },
+  "ablation_memory": {
+    "baseline": "factor_miner_no_memory",
+    "freeze_universe": "CSI500",
+    "freeze_library_size": 1,
+    "candidate_count": 6,
+    "frozen_top_k": [
+      {
+        "name": "alpha_volume",
+        "formula": "Div($volume, $amt)",
+        "category": "Volume",
+        "train_ic": 0.07,
+        "train_icir": 0.9
+      }
+    ],
+    "universes": {
+      "CSI500": {
+        "library": {
+          "ic": 0.08,
+          "icir": 0.95,
+          "avg_abs_rho": 0.23
+        },
+        "selection": {
+          "ic": 0.06,
+          "icir": 0.72,
+          "avg_turnover": 0.14
+        },
+        "combinations": {
+          "ew_ic": 0.06,
+          "ew_icir": 0.7
+        },
+        "factors": {
+          "factor_count": 1
+        }
+      }
+    }
+  }
+}

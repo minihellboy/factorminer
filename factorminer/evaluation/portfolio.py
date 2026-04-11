@@ -6,8 +6,6 @@ transaction cost pressure testing, following the FactorMiner paper methodology.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
-
 import numpy as np
 from scipy.stats import spearmanr
 
@@ -155,8 +153,8 @@ class PortfolioBacktester:
         self,
         combined_signal: np.ndarray,
         returns: np.ndarray,
-        cost_settings: Optional[List[float]] = None,
-    ) -> Dict[float, dict]:
+        cost_settings: list[float] | None = None,
+    ) -> dict[float, dict]:
         """Run backtest under multiple transaction cost settings (in bps).
 
         Paper Figure 9: Test at 1, 4, 7, 10, 11 bps.
@@ -176,7 +174,7 @@ class PortfolioBacktester:
         if cost_settings is None:
             cost_settings = [1.0, 4.0, 7.0, 10.0, 11.0]
 
-        results: Dict[float, dict] = {}
+        results: dict[float, dict] = {}
         for cost_bps in cost_settings:
             results[cost_bps] = self.quintile_backtest(
                 combined_signal, returns, transaction_cost_bps=cost_bps,
@@ -211,7 +209,7 @@ class PortfolioBacktester:
         signal = np.asarray(signal, dtype=np.float64)
         T, N = signal.shape
         turnover = np.zeros(T)
-        prev_top: Optional[np.ndarray] = None
+        prev_top: np.ndarray | None = None
 
         for t in range(T):
             sig_t = signal[t]

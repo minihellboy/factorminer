@@ -105,7 +105,7 @@ def test_high_capital_degrades_ic(market_data):
 def test_zero_volume_handling(rng):
     """Zero volume should be handled gracefully (participation_limit used)."""
     M, T = 10, 50
-    returns = rng.normal(0, 0.01, (M, T))
+    rng.normal(0, 0.01, (M, T))
     volume = np.zeros((M, T))  # all zero volume
     signals = rng.normal(0, 1, (M, T))
 

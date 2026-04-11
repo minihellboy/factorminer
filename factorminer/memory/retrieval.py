@@ -9,7 +9,7 @@ recent rejections) to select the most relevant patterns and insights.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from factorminer.memory.memory_store import (
     ExperienceMemory,
@@ -22,7 +22,7 @@ from factorminer.memory.memory_store import (
 
 def _score_success_pattern(
     pattern: SuccessPattern,
-    domain_saturation: Dict[str, float],
+    domain_saturation: dict[str, float],
     saturated_threshold: float = 0.7,
 ) -> float:
     """Score a success pattern for relevance given current library state.
@@ -53,7 +53,7 @@ def _score_success_pattern(
 
 def _score_forbidden_direction(
     direction: ForbiddenDirection,
-    recent_rejection_reasons: List[str],
+    recent_rejection_reasons: list[str],
 ) -> float:
     """Score a forbidden direction for relevance.
 
@@ -85,10 +85,10 @@ def _score_forbidden_direction(
 
 
 def _select_relevant_success(
-    patterns: List[SuccessPattern],
-    domain_saturation: Dict[str, float],
+    patterns: list[SuccessPattern],
+    domain_saturation: dict[str, float],
     max_patterns: int = 8,
-) -> List[SuccessPattern]:
+) -> list[SuccessPattern]:
     """Select the most relevant success patterns for the current context."""
     if not patterns:
         return []
@@ -102,10 +102,10 @@ def _select_relevant_success(
 
 
 def _select_relevant_forbidden(
-    directions: List[ForbiddenDirection],
-    recent_rejections: List[dict],
+    directions: list[ForbiddenDirection],
+    recent_rejections: list[dict],
     max_directions: int = 10,
-) -> List[ForbiddenDirection]:
+) -> list[ForbiddenDirection]:
     """Select the most relevant forbidden directions for the current context."""
     if not directions:
         return []
@@ -121,7 +121,7 @@ def _select_relevant_forbidden(
     return [d for d, _ in scored[:max_directions]]
 
 
-def _format_library_state(state: MiningState) -> Dict[str, Any]:
+def _format_library_state(state: MiningState) -> dict[str, Any]:
     """Format mining state as structured context for LLM prompt."""
     # Identify saturated domains
     saturated = {
@@ -146,10 +146,10 @@ def _format_library_state(state: MiningState) -> Dict[str, Any]:
 
 
 def _format_for_prompt(
-    success_patterns: List[SuccessPattern],
-    forbidden_directions: List[ForbiddenDirection],
-    insights: List[StrategicInsight],
-    library_state: Dict[str, Any],
+    success_patterns: list[SuccessPattern],
+    forbidden_directions: list[ForbiddenDirection],
+    insights: list[StrategicInsight],
+    library_state: dict[str, Any],
 ) -> str:
     """Format the memory signal as structured text for LLM injection.
 
@@ -207,11 +207,11 @@ def _format_for_prompt(
 
 def retrieve_memory(
     memory: ExperienceMemory,
-    library_state: Optional[Dict[str, Any]] = None,
+    library_state: dict[str, Any] | None = None,
     max_success: int = 8,
     max_forbidden: int = 10,
     max_insights: int = 10,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Memory Retrieval operator R(M, L).
 
     Performs context-dependent retrieval matching against the current

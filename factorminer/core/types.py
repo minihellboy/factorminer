@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Dict, List, Optional, Tuple
-
 
 # ---------------------------------------------------------------------------
 # Enumerations
@@ -72,9 +70,9 @@ class OperatorSpec:
     arity: int
     category: OperatorType
     signature: SignatureType
-    param_names: Tuple[str, ...] = ()
-    param_defaults: Dict[str, float] = field(default_factory=dict)
-    param_ranges: Dict[str, Tuple[float, float]] = field(default_factory=dict)
+    param_names: tuple[str, ...] = ()
+    param_defaults: dict[str, float] = field(default_factory=dict)
+    param_ranges: dict[str, tuple[float, float]] = field(default_factory=dict)
     description: str = ""
 
 
@@ -82,7 +80,7 @@ class OperatorSpec:
 # Canonical feature names (leaf nodes)
 # ---------------------------------------------------------------------------
 
-FEATURES: List[str] = [
+FEATURES: list[str] = [
     "$open",
     "$high",
     "$low",
@@ -104,7 +102,7 @@ def _window_params(
     default: int = 10,
     lo: int = 2,
     hi: int = 250,
-) -> Tuple[Tuple[str, ...], Dict[str, float], Dict[str, Tuple[float, float]]]:
+) -> tuple[tuple[str, ...], dict[str, float], dict[str, tuple[float, float]]]:
     """Helper returning standard (window,) parameter triple."""
     return (
         ("window",),
@@ -113,21 +111,21 @@ def _window_params(
     )
 
 
-def _build_operator_registry() -> Dict[str, OperatorSpec]:
+def _build_operator_registry() -> dict[str, OperatorSpec]:
     """Construct the full operator registry.
 
     Returns a mapping from canonical operator name to its ``OperatorSpec``.
     """
-    registry: Dict[str, OperatorSpec] = {}
+    registry: dict[str, OperatorSpec] = {}
 
     def _reg(
         name: str,
         arity: int,
         cat: OperatorType,
         sig: SignatureType,
-        param_names: Tuple[str, ...] = (),
-        param_defaults: Optional[Dict[str, float]] = None,
-        param_ranges: Optional[Dict[str, Tuple[float, float]]] = None,
+        param_names: tuple[str, ...] = (),
+        param_defaults: dict[str, float] | None = None,
+        param_ranges: dict[str, tuple[float, float]] | None = None,
         desc: str = "",
     ) -> None:
         registry[name] = OperatorSpec(
@@ -255,7 +253,7 @@ def _build_operator_registry() -> Dict[str, OperatorSpec]:
     return registry
 
 
-OPERATOR_REGISTRY: Dict[str, OperatorSpec] = _build_operator_registry()
+OPERATOR_REGISTRY: dict[str, OperatorSpec] = _build_operator_registry()
 """Global mapping from operator name to its ``OperatorSpec``."""
 
 

@@ -6,12 +6,11 @@ import json
 import logging
 import sys
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, TextIO
 
 from tqdm import tqdm
-
 
 # ---------------------------------------------------------------------------
 # Structured data records

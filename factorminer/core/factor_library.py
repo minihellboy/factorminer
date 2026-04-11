@@ -14,7 +14,6 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -40,7 +39,7 @@ class Factor:
     max_correlation: float  # Max |rho| with any other library factor at admission
     batch_number: int  # Which mining batch admitted this factor
     admission_date: str = ""
-    signals: Optional[np.ndarray] = field(default=None, repr=False)  # (M, T)
+    signals: np.ndarray | None = field(default=None, repr=False)  # (M, T)
     research_metrics: dict = field(default_factory=dict)
     provenance: dict = field(default_factory=dict)
 
@@ -66,7 +65,7 @@ class Factor:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Factor":
+    def from_dict(cls, d: dict) -> Factor:
         """Reconstruct a Factor from a dictionary."""
         return cls(
             id=d["id"],
@@ -101,8 +100,8 @@ class FactorLibrary:
         ic_threshold: float = 0.04,
         dependence_metric: str | DependenceMetric | None = None,
     ) -> None:
-        self.factors: Dict[int, Factor] = {}
-        self.correlation_matrix: Optional[np.ndarray] = None  # Pairwise |rho|
+        self.factors: dict[int, Factor] = {}
+        self.correlation_matrix: np.ndarray | None = None  # Pairwise |rho|
         self._next_id: int = 1
         self.correlation_threshold = correlation_threshold
         self.ic_threshold = ic_threshold
@@ -111,7 +110,7 @@ class FactorLibrary:
         else:
             self.dependence_metric = build_dependence_metric(dependence_metric)
         # Maps factor_id -> index in the correlation matrix
-        self._id_to_index: Dict[int, int] = {}
+        self._id_to_index: dict[int, int] = {}
 
     # ------------------------------------------------------------------
     # Correlation computation
@@ -149,7 +148,7 @@ class FactorLibrary:
 
     def check_admission(
         self, candidate_ic: float, candidate_signals: np.ndarray
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """Check if candidate passes admission criteria (Eq. 10).
 
         Admission rule:
@@ -192,7 +191,7 @@ class FactorLibrary:
         candidate_signals: np.ndarray,
         ic_min: float = 0.10,
         ic_ratio: float = 1.3,
-    ) -> Tuple[bool, Optional[int], str]:
+    ) -> tuple[bool, int | None, str]:
         """Check replacement mechanism (Eq. 11).
 
         Replacement rule:
@@ -303,7 +302,7 @@ class FactorLibrary:
         if old_id not in self.factors:
             raise KeyError(f"Factor {old_id} not in library")
 
-        old_factor = self.factors[old_id]
+        self.factors[old_id]
         new_factor.id = self._next_id
         self._next_id += 1
 
@@ -464,11 +463,11 @@ class FactorLibrary:
             raise KeyError(f"Factor {factor_id} not in library")
         return self.factors[factor_id]
 
-    def list_factors(self) -> List[Factor]:
+    def list_factors(self) -> list[Factor]:
         """Return all factors sorted by ID."""
         return [self.factors[k] for k in sorted(self.factors)]
 
-    def get_factors_by_category(self, category: str) -> List[Factor]:
+    def get_factors_by_category(self, category: str) -> list[Factor]:
         """Return all factors matching a given category."""
         return [
             f for f in self.factors.values()
@@ -492,8 +491,8 @@ class FactorLibrary:
         diag: dict = {"size": self.size}
 
         # Category breakdown
-        cat_counts: Dict[str, int] = defaultdict(int)
-        cat_ic_sums: Dict[str, float] = defaultdict(float)
+        cat_counts: dict[str, int] = defaultdict(int)
+        cat_ic_sums: dict[str, float] = defaultdict(float)
         for f in self.factors.values():
             cat_counts[f.category] += 1
             cat_ic_sums[f.category] += f.ic_mean

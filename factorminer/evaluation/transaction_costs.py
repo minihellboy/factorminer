@@ -15,10 +15,8 @@ Kissell, R. (2013). The Science of Algorithmic Trading and Portfolio Management.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 import numpy as np
-
 
 # ---------------------------------------------------------------------------
 # Result containers
@@ -56,7 +54,7 @@ class TradingCosts:
     stamp_duty_bps: float
     total_bps: float
     turnover: float
-    details: Dict = field(default_factory=dict)
+    details: dict = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +201,7 @@ class SlippageModel:
     def compute_slippage(
         self,
         trade_size: np.ndarray,
-        spread_bps: Optional[np.ndarray] = None,
+        spread_bps: np.ndarray | None = None,
         urgency: float = 0.5,
     ) -> np.ndarray:
         """Compute one-way slippage for a set of trades.
@@ -292,8 +290,8 @@ class TransactionCostCalculator:
 
     def __init__(
         self,
-        impact_model: Optional[MarketImpactModel] = None,
-        slippage_model: Optional[SlippageModel] = None,
+        impact_model: MarketImpactModel | None = None,
+        slippage_model: SlippageModel | None = None,
         commission_bps: float = 2.0,
         stamp_duty_bps: float = 1.0,
         overnight_rate_annual: float = 0.0,
@@ -315,7 +313,7 @@ class TransactionCostCalculator:
         volatility: np.ndarray,
         portfolio_value: float,
         market: str = 'ashare',
-        spread_bps: Optional[np.ndarray] = None,
+        spread_bps: np.ndarray | None = None,
         urgency: float = 0.5,
     ) -> TradingCosts:
         """Compute all-in transaction costs for a single rebalance event.
@@ -477,7 +475,7 @@ class TransactionCostCalculator:
         commission_bps: float = 2.0,
         stamp_duty_bps: float = 1.0,
         default_spread_bps: float = 3.0,
-    ) -> "TransactionCostCalculator":
+    ) -> TransactionCostCalculator:
         """Convenience constructor with A-share defaults.
 
         All-in round-trip cost at low turnover ≈ 7-9 bps, consistent with
@@ -513,7 +511,7 @@ class TransactionCostCalculator:
         eta_temp: float = 0.005,
         commission_bps: float = 1.0,
         default_spread_bps: float = 1.5,
-    ) -> "TransactionCostCalculator":
+    ) -> TransactionCostCalculator:
         """Convenience constructor with crypto exchange defaults.
 
         Parameters

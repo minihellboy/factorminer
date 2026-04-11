@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
 import re
+from dataclasses import asdict, dataclass, field
 from typing import Any
-
 
 _FEATURE_PATTERN = re.compile(r"\$[a-zA-Z_]+")
 _OPERATOR_PATTERN = re.compile(r"([A-Za-z][a-zA-Z]+)\(")

@@ -109,7 +109,7 @@ def test_fdr_bh_procedure(config):
     assert result.fdr_level == 0.05
     # With BH at 0.05 and raw p in [0.001..0.010], adjusted p for f0 = 0.001*10/1 = 0.01 < 0.05
     assert result.n_discoveries >= 1
-    assert result.significant["f0"] == True  # p=0.001, adjusted=0.01
+    assert result.significant["f0"]  # p=0.001, adjusted=0.01
 
 
 def test_fdr_all_significant(config):
@@ -120,7 +120,7 @@ def test_fdr_all_significant(config):
 
     assert result.n_discoveries == 10
     for name, sig in result.significant.items():
-        assert sig == True
+        assert sig
 
 
 def test_fdr_empty_input(config):

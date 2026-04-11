@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -82,7 +82,7 @@ class MockConfig:
     alpha_strength: float = 0.02
     alpha_assets_frac: float = 0.2
     seed: int = 42
-    universe: Optional[str] = None
+    universe: str | None = None
 
 
 def _bars_per_year(freq: Frequency) -> float:
@@ -128,7 +128,7 @@ def _generate_timestamps(
     return ts
 
 
-def generate_mock_data(config: Optional[MockConfig] = None) -> pd.DataFrame:
+def generate_mock_data(config: MockConfig | None = None) -> pd.DataFrame:
     """Generate synthetic multi-asset OHLCV + amount data.
 
     Parameters
@@ -287,7 +287,7 @@ def generate_mock_data(config: Optional[MockConfig] = None) -> pd.DataFrame:
 
 
 def generate_with_halts(
-    config: Optional[MockConfig] = None,
+    config: MockConfig | None = None,
     halt_fraction: float = 0.01,
 ) -> pd.DataFrame:
     """Generate mock data with simulated trading halts.

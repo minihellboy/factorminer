@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class OpenAIProvider(LLMProvider):
     def __init__(
         self,
         model: str = "gpt-4o",
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
     ) -> None:
         self.model = model
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
@@ -117,7 +117,7 @@ class AnthropicProvider(LLMProvider):
     def __init__(
         self,
         model: str = "claude-sonnet-4-6",
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         use_thinking: bool = True,
         effort: str = "max",
     ) -> None:
@@ -192,7 +192,7 @@ class GoogleProvider(LLMProvider):
     def __init__(
         self,
         model: str = "gemini-2.0-flash",
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
     ) -> None:
         self.model = model
         self.api_key = api_key or os.environ.get("GOOGLE_API_KEY", "")
@@ -345,7 +345,7 @@ class MockProvider(LLMProvider):
 # Factory
 # ---------------------------------------------------------------------------
 
-_PROVIDER_MAP: Dict[str, type] = {
+_PROVIDER_MAP: dict[str, type] = {
     "openai": OpenAIProvider,
     "anthropic": AnthropicProvider,
     "google": GoogleProvider,
@@ -353,7 +353,7 @@ _PROVIDER_MAP: Dict[str, type] = {
 }
 
 
-def create_provider(config: Dict[str, Any]) -> LLMProvider:
+def create_provider(config: dict[str, Any]) -> LLMProvider:
     """Factory function to instantiate an LLM provider from config.
 
     Parameters
@@ -377,7 +377,7 @@ def create_provider(config: Dict[str, Any]) -> LLMProvider:
             f"Available: {sorted(_PROVIDER_MAP.keys())}"
         )
 
-    kwargs: Dict[str, Any] = {}
+    kwargs: dict[str, Any] = {}
     if "model" in config and provider_name != "mock":
         kwargs["model"] = config["model"]
     if "api_key" in config and provider_name != "mock":

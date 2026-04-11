@@ -96,6 +96,16 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP"]
+ignore = [
+    # Quant research code uses matrix notation such as M, T, X, and K.
+    "N803",
+    "N806",
+    # Formula catalogs and LLM prompts are intentionally long string literals.
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"run_demo.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["factorminer/tests"]

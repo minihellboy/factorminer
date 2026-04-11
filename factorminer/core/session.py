@@ -8,11 +8,10 @@ to serialized artifacts (library, memory).
 from __future__ import annotations
 
 import json
-import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 
 @dataclass
@@ -30,15 +29,15 @@ class MiningSession:
     """
 
     session_id: str
-    config: Dict[str, Any] = field(default_factory=dict)
+    config: dict[str, Any] = field(default_factory=dict)
     output_dir: str = "./output"
     start_time: str = ""
     end_time: str = ""
-    iterations: List[Dict[str, Any]] = field(default_factory=list)
+    iterations: list[dict[str, Any]] = field(default_factory=list)
     library_path: str = ""
     memory_path: str = ""
     run_manifest_path: str = ""
-    run_manifest: Dict[str, Any] = field(default_factory=dict)
+    run_manifest: dict[str, Any] = field(default_factory=dict)
     status: str = "running"  # running | completed | interrupted
 
     def __post_init__(self) -> None:
@@ -49,7 +48,7 @@ class MiningSession:
     # Iteration tracking
     # ------------------------------------------------------------------
 
-    def record_iteration(self, stats: Dict[str, Any]) -> None:
+    def record_iteration(self, stats: dict[str, Any]) -> None:
         """Append iteration statistics to the session log."""
         stats = dict(stats)
         stats.setdefault("timestamp", datetime.now().isoformat())
@@ -69,7 +68,7 @@ class MiningSession:
     # Serialization
     # ------------------------------------------------------------------
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize session state to a JSON-compatible dictionary."""
         return {
             "session_id": self.session_id,
@@ -87,7 +86,7 @@ class MiningSession:
             "iterations": self.iterations,
         }
 
-    def save(self, path: Optional[Union[str, Path]] = None) -> str:
+    def save(self, path: str | Path | None = None) -> str:
         """Save session state to a JSON file.
 
         Parameters
@@ -113,7 +112,7 @@ class MiningSession:
         return str(path)
 
     @classmethod
-    def load(cls, path: Union[str, Path]) -> "MiningSession":
+    def load(cls, path: str | Path) -> MiningSession:
         """Load session from a JSON file.
 
         Parameters
@@ -147,7 +146,7 @@ class MiningSession:
     # Summary
     # ------------------------------------------------------------------
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """Session summary statistics."""
         total_candidates = sum(
             it.get("candidates", 0) for it in self.iterations

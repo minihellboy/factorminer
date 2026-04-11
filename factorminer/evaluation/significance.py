@@ -8,12 +8,10 @@ guard against data-snooping and multiple-testing bias in factor research.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple
+from dataclasses import dataclass
 
 import numpy as np
-from scipy.stats import norm, skew, kurtosis
-
+from scipy.stats import kurtosis, norm, skew
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -188,9 +186,9 @@ class BootstrapICTester:
 class FDRResult:
     """Result of Benjamini-Hochberg FDR correction."""
 
-    raw_p_values: Dict[str, float]
-    adjusted_p_values: Dict[str, float]
-    significant: Dict[str, bool]
+    raw_p_values: dict[str, float]
+    adjusted_p_values: dict[str, float]
+    significant: dict[str, bool]
     n_discoveries: int
     fdr_level: float
 
@@ -206,7 +204,7 @@ class FDRController:
     def __init__(self, config: SignificanceConfig) -> None:
         self._config = config
 
-    def apply_fdr(self, p_values: Dict[str, float]) -> FDRResult:
+    def apply_fdr(self, p_values: dict[str, float]) -> FDRResult:
         """Apply Benjamini-Hochberg procedure.
 
         Parameters
@@ -250,8 +248,8 @@ class FDRController:
         inv_order[order] = np.arange(m)
         adjusted_orig = adjusted[inv_order]
 
-        adjusted_dict: Dict[str, float] = {}
-        significant_dict: Dict[str, bool] = {}
+        adjusted_dict: dict[str, float] = {}
+        significant_dict: dict[str, bool] = {}
         for i, name in enumerate(names):
             adjusted_dict[name] = float(adjusted_orig[i])
             significant_dict[name] = adjusted_orig[i] <= self._config.fdr_level
@@ -266,7 +264,7 @@ class FDRController:
 
     def batch_evaluate(
         self,
-        ic_series_map: Dict[str, np.ndarray],
+        ic_series_map: dict[str, np.ndarray],
         bootstrap_tester: BootstrapICTester,
     ) -> FDRResult:
         """Compute bootstrap p-values for all factors, then apply BH.
@@ -281,7 +279,7 @@ class FDRController:
         -------
         FDRResult
         """
-        p_values: Dict[str, float] = {}
+        p_values: dict[str, float] = {}
         for name, ic_series in ic_series_map.items():
             p_values[name] = bootstrap_tester.compute_p_value(ic_series)
         return self.apply_fdr(p_values)
@@ -429,8 +427,8 @@ def check_significance(
     ic_series: np.ndarray,
     ls_returns: np.ndarray,
     n_total_trials: int,
-    config: Optional[SignificanceConfig] = None,
-) -> Tuple[bool, Optional[str], Dict]:
+    config: SignificanceConfig | None = None,
+) -> tuple[bool, str | None, dict]:
     """Run all significance checks on a single factor.
 
     Executes bootstrap CI, bootstrap p-value, and (optionally) the
@@ -461,7 +459,7 @@ def check_significance(
     if not config.enabled:
         return True, None, {"skipped": True}
 
-    details: Dict = {}
+    details: dict = {}
 
     # -- Bootstrap IC CI / p-value --
     bt = BootstrapICTester(config)

@@ -10,13 +10,14 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
 from factorminer.agent.llm_interface import LLMProvider
-from factorminer.core.types import OPERATOR_REGISTRY, OperatorSpec
+from factorminer.core.types import OperatorSpec
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +58,11 @@ class ProposedOperator:
     arity: int
     description: str
     numpy_code: str
-    param_names: Tuple[str, ...] = ()
-    param_defaults: Dict[str, float] = field(default_factory=dict)
-    param_ranges: Dict[str, Tuple[float, float]] = field(default_factory=dict)
+    param_names: tuple[str, ...] = ()
+    param_defaults: dict[str, float] = field(default_factory=dict)
+    param_ranges: dict[str, tuple[float, float]] = field(default_factory=dict)
     rationale: str = ""
-    based_on: List[str] = field(default_factory=list)
+    based_on: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -96,7 +97,7 @@ class ValidationResult:
 # Sandbox security: allowed names in exec()
 # ---------------------------------------------------------------------------
 
-_SAFE_GLOBALS: Dict[str, Any] = {
+_SAFE_GLOBALS: dict[str, Any] = {
     "np": np,
     "numpy": np,
     "__builtins__": {},
@@ -104,7 +105,7 @@ _SAFE_GLOBALS: Dict[str, Any] = {
 
 # Explicitly blocked tokens in submitted code.  If any of these appear in the
 # raw source string, the code is rejected *before* exec().
-_BLOCKED_TOKENS: Tuple[str, ...] = (
+_BLOCKED_TOKENS: tuple[str, ...] = (
     "import ",
     "__import__",
     "os.",
@@ -198,9 +199,9 @@ class OperatorInventor:
 
     def propose_operators(
         self,
-        existing_operators: Dict[str, OperatorSpec],
-        successful_patterns: Optional[List[str]] = None,
-    ) -> List[ProposedOperator]:
+        existing_operators: dict[str, OperatorSpec],
+        successful_patterns: list[str] | None = None,
+    ) -> list[ProposedOperator]:
         """Ask the LLM to propose new operators.
 
         Parameters
@@ -303,11 +304,11 @@ class OperatorInventor:
 
     def _build_proposal_prompt(
         self,
-        existing_ops: Dict[str, OperatorSpec],
-        patterns: List[str],
+        existing_ops: dict[str, OperatorSpec],
+        patterns: list[str],
     ) -> str:
         """Format the user prompt for operator proposals."""
-        lines: List[str] = []
+        lines: list[str] = []
 
         # Existing operators summary
         lines.append("## EXISTING OPERATORS (do NOT duplicate these)")
@@ -321,7 +322,7 @@ class OperatorInventor:
                 lines.append(f"  * {p}")
 
         # Request
-        lines.append(f"\n## REQUEST")
+        lines.append("\n## REQUEST")
         lines.append(
             f"Propose exactly {self.max_proposals} new operators. "
             f"For each operator, output a JSON object with these fields:"
@@ -343,9 +344,9 @@ class OperatorInventor:
         )
         return "\n".join(lines)
 
-    def _parse_proposals(self, raw: str) -> List[ProposedOperator]:
+    def _parse_proposals(self, raw: str) -> list[ProposedOperator]:
         """Parse LLM output into ProposedOperator objects."""
-        proposals: List[ProposedOperator] = []
+        proposals: list[ProposedOperator] = []
 
         # Try to find JSON objects in the text
         # Pattern: optional number prefix, then a JSON object
@@ -392,7 +393,7 @@ class OperatorInventor:
     # Internal: safe compilation & validation helpers
     # ------------------------------------------------------------------
 
-    def _compile_safely(self, code: str) -> Optional[Callable]:
+    def _compile_safely(self, code: str) -> Callable | None:
         """Compile operator code in a restricted sandbox.
 
         SECURITY: Only numpy is available. No filesystem, network,
@@ -417,7 +418,7 @@ class OperatorInventor:
                 return None
 
         # Restricted exec
-        safe_ns: Dict[str, Any] = dict(_SAFE_GLOBALS)
+        safe_ns: dict[str, Any] = dict(_SAFE_GLOBALS)
         try:
             exec(code, safe_ns)  # noqa: S102 -- intentional sandboxed exec
         except Exception as exc:
@@ -531,7 +532,7 @@ class OperatorInventor:
             ranked[valid, t] = order / (valid.sum() - 1)  # percentile rank
 
         # Rank IC per time step
-        ics: List[float] = []
+        ics: list[float] = []
         for t in range(T):
             factor_col = ranked[:, t]
             ret_col = self.returns[:, t]

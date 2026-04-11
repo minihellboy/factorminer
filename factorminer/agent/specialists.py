@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from factorminer.agent.llm_interface import LLMProvider
-from factorminer.agent.output_parser import CandidateFactor, parse_llm_output
+from factorminer.agent.output_parser import parse_llm_output
 from factorminer.agent.prompt_builder import (
     SYSTEM_PROMPT,
     PromptBuilder,
@@ -58,14 +58,14 @@ class SpecialistConfig:
 
     name: str
     domain: str
-    preferred_operators: List[str]
-    preferred_features: List[str]
+    preferred_operators: list[str]
+    preferred_features: list[str]
     hypothesis: str = ""
-    example_factors: List[str] = field(default_factory=list)
-    avoid: List[str] = field(default_factory=list)
+    example_factors: list[str] = field(default_factory=list)
+    avoid: list[str] = field(default_factory=list)
     temperature: float = 0.8
     system_prompt_suffix: str = ""
-    provider_config: Dict[str, Any] = field(default_factory=dict)
+    provider_config: dict[str, Any] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +210,7 @@ REGIME_SPECIALIST = SpecialistConfig(
     ),
 )
 
-DEFAULT_SPECIALISTS: List[SpecialistConfig] = [
+DEFAULT_SPECIALISTS: list[SpecialistConfig] = [
     MOMENTUM_SPECIALIST,
     VOLATILITY_SPECIALIST,
     LIQUIDITY_SPECIALIST,
@@ -218,7 +218,7 @@ DEFAULT_SPECIALISTS: List[SpecialistConfig] = [
 ]
 
 # Map from specialist name to config for convenience
-SPECIALIST_CONFIGS: Dict[str, SpecialistConfig] = {
+SPECIALIST_CONFIGS: dict[str, SpecialistConfig] = {
     spec.name: spec for spec in DEFAULT_SPECIALISTS
 }
 
@@ -238,9 +238,9 @@ class SpecialistDomainMemory:
     """
 
     specialist_name: str
-    admitted: List[str] = field(default_factory=list)
-    rejected: List[str] = field(default_factory=list)
-    rejection_reasons: List[str] = field(default_factory=list)
+    admitted: list[str] = field(default_factory=list)
+    rejected: list[str] = field(default_factory=list)
+    rejection_reasons: list[str] = field(default_factory=list)
 
     @property
     def total_proposed(self) -> int:
@@ -252,10 +252,10 @@ class SpecialistDomainMemory:
             return 0.0
         return len(self.admitted) / self.total_proposed
 
-    def record_admitted(self, formulas: List[str]) -> None:
+    def record_admitted(self, formulas: list[str]) -> None:
         self.admitted.extend(formulas)
 
-    def record_rejected(self, formulas: List[str], reasons: List[str]) -> None:
+    def record_rejected(self, formulas: list[str], reasons: list[str]) -> None:
         self.rejected.extend(formulas)
         self.rejection_reasons.extend(reasons)
 
@@ -307,7 +307,7 @@ class SpecialistAgent:
         self,
         config: SpecialistConfig,
         llm: LLMProvider,
-        base_system_prompt: Optional[str] = None,
+        base_system_prompt: str | None = None,
     ) -> None:
         self.config = config
         self.llm = llm
@@ -331,12 +331,12 @@ class SpecialistAgent:
     def generate_proposals(
         self,
         n_proposals: int,
-        memory_signal: Optional[Dict[str, Any]] = None,
-        library_diagnostics: Optional[Dict[str, Any]] = None,
+        memory_signal: dict[str, Any] | None = None,
+        library_diagnostics: dict[str, Any] | None = None,
         regime_context: str = "",
-        forbidden_patterns: Optional[List[str]] = None,
-        existing_factors: Optional[List[str]] = None,
-    ) -> List[str]:
+        forbidden_patterns: list[str] | None = None,
+        existing_factors: list[str] | None = None,
+    ) -> list[str]:
         """Generate formula string proposals from this specialist.
 
         Builds a rich domain-aware prompt injecting memory, diagnostics,
@@ -418,9 +418,9 @@ class SpecialistAgent:
 
     def update_domain_memory(
         self,
-        admitted: List[str],
-        rejected: List[str],
-        reasons: Optional[List[str]] = None,
+        admitted: list[str],
+        rejected: list[str],
+        reasons: list[str] | None = None,
     ) -> None:
         """Update this specialist's domain memory after evaluation.
 
@@ -445,10 +445,10 @@ class SpecialistAgent:
 
     def _enrich_memory_signal(
         self,
-        base_signal: Dict[str, Any],
-        forbidden_patterns: List[str],
+        base_signal: dict[str, Any],
+        forbidden_patterns: list[str],
         regime_context: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Merge base memory signal with domain-specific context."""
         enriched = dict(base_signal)
 
@@ -510,7 +510,7 @@ class SpecialistPromptBuilder(PromptBuilder):
     def __init__(
         self,
         specialist_config: SpecialistConfig,
-        base_system_prompt: Optional[str] = None,
+        base_system_prompt: str | None = None,
     ) -> None:
         base = base_system_prompt or SYSTEM_PROMPT
         suffix = specialist_config.system_prompt_suffix
@@ -536,8 +536,8 @@ class SpecialistPromptBuilder(PromptBuilder):
 
     def build_user_prompt(
         self,
-        memory_signal: Dict[str, Any],
-        library_state: Dict[str, Any],
+        memory_signal: dict[str, Any],
+        library_state: dict[str, Any],
         batch_size: int = 40,
     ) -> str:
         """Build user prompt with specialist operator/feature bias.

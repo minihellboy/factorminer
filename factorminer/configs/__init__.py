@@ -1,7 +1,7 @@
 """Configuration defaults and schemas for FactorMiner."""
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import yaml
 
@@ -9,7 +9,7 @@ CONFIGS_DIR = Path(__file__).parent
 DEFAULT_CONFIG_PATH = CONFIGS_DIR / "default.yaml"
 
 
-def load_default_yaml() -> Dict[str, Any]:
+def load_default_yaml() -> dict[str, Any]:
     """Load the default YAML configuration shipped with the package.
 
     Returns

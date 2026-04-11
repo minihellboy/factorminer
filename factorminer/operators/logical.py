@@ -95,73 +95,73 @@ def ne_np(x: np.ndarray, y: np.ndarray) -> np.ndarray:
 # PyTorch implementations
 # ===========================================================================
 
-def if_else_torch(cond: "torch.Tensor", x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def if_else_torch(cond: torch.Tensor, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     result = torch.where(cond > 0, x, y)
     result[torch.isnan(cond)] = float("nan")
     return result
 
 
-def greater_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def greater_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     out = torch.where(x > y, 1.0, 0.0)
     out[torch.isnan(x) | torch.isnan(y)] = float("nan")
     return out
 
 
-def less_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def less_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     out = torch.where(x < y, 1.0, 0.0)
     out[torch.isnan(x) | torch.isnan(y)] = float("nan")
     return out
 
 
-def greater_equal_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def greater_equal_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     out = torch.where(x >= y, 1.0, 0.0)
     out[torch.isnan(x) | torch.isnan(y)] = float("nan")
     return out
 
 
-def less_equal_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def less_equal_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     out = torch.where(x <= y, 1.0, 0.0)
     out[torch.isnan(x) | torch.isnan(y)] = float("nan")
     return out
 
 
-def equal_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def equal_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     out = torch.where((x - y).abs() < 1e-10, 1.0, 0.0)
     out[torch.isnan(x) | torch.isnan(y)] = float("nan")
     return out
 
 
-def and_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def and_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     out = torch.where((x > 0) & (y > 0), 1.0, 0.0)
     out[torch.isnan(x) | torch.isnan(y)] = float("nan")
     return out
 
 
-def or_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def or_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     out = torch.where((x > 0) | (y > 0), 1.0, 0.0)
     out[torch.isnan(x) | torch.isnan(y)] = float("nan")
     return out
 
 
-def not_torch(x: "torch.Tensor") -> "torch.Tensor":
+def not_torch(x: torch.Tensor) -> torch.Tensor:
     out = torch.where(x > 0, 0.0, 1.0)
     out[torch.isnan(x)] = float("nan")
     return out
 
 
-def sign_torch(x: "torch.Tensor") -> "torch.Tensor":
+def sign_torch(x: torch.Tensor) -> torch.Tensor:
     return x.sign()
 
 
-def max2_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def max2_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return torch.fmax(x, y)
 
 
-def min2_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def min2_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return torch.fmin(x, y)
 
 
-def ne_torch(x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
+def ne_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     out = torch.where((x - y).abs() >= 1e-10, 1.0, 0.0)
     out[torch.isnan(x) | torch.isnan(y)] = float("nan")
     return out

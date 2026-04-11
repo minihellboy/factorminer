@@ -7,8 +7,8 @@ detection, cross-sectional standardisation, winsorisation, and quality checks.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -46,7 +46,7 @@ class PreprocessConfig:
     winsor_lower: float = 1.0
     winsor_upper: float = 99.0
     min_nonnan_ratio: float = 0.5
-    ffill_limit: Optional[int] = None
+    ffill_limit: int | None = None
     cross_fill_method: str = "median"
     standardise: bool = True
     halt_volume_threshold: float = 0.0
@@ -142,9 +142,9 @@ def _extract_date(dt_series: pd.Series) -> pd.Series:
 
 def fill_missing(
     df: pd.DataFrame,
-    ffill_limit: Optional[int] = None,
+    ffill_limit: int | None = None,
     cross_fill_method: str = "median",
-    columns: Optional[Sequence[str]] = None,
+    columns: Sequence[str] | None = None,
 ) -> pd.DataFrame:
     """Fill missing values using a two-stage strategy.
 
@@ -262,7 +262,7 @@ def cross_sectional_standardise(
 def quality_check(
     df: pd.DataFrame,
     min_nonnan_ratio: float = 0.5,
-    columns: Optional[Sequence[str]] = None,
+    columns: Sequence[str] | None = None,
 ) -> pd.DataFrame:
     """Drop time steps where the fraction of non-NaN values across assets
     is below *min_nonnan_ratio*.
@@ -312,7 +312,7 @@ def quality_check(
 
 def preprocess(
     df: pd.DataFrame,
-    config: Optional[PreprocessConfig] = None,
+    config: PreprocessConfig | None = None,
 ) -> pd.DataFrame:
     """Run the full preprocessing pipeline.
 

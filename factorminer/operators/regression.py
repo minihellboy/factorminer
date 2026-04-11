@@ -23,7 +23,7 @@ def _linreg_components_np(x: np.ndarray, window: int):
     window = int(window)
     M, T = x.shape
 
-    from factorminer.operators.statistical import _rolling_np, _pad_front
+    from factorminer.operators.statistical import _pad_front, _rolling_np
 
     w = _rolling_np(x, window)
     if w is None:
@@ -91,12 +91,12 @@ def ts_linreg_resid_np(x: np.ndarray, window: int = 20) -> np.ndarray:
 # PyTorch implementations
 # ===========================================================================
 
-def _linreg_components_torch(x: "torch.Tensor", window: int):
+def _linreg_components_torch(x: torch.Tensor, window: int):
     """Vectorized rolling OLS on GPU."""
     window = int(window)
     M, T = x.shape
 
-    from factorminer.operators.statistical import _unfold_torch, _pad_front_torch
+    from factorminer.operators.statistical import _pad_front_torch, _unfold_torch
 
     w = _unfold_torch(x, window)  # (M, T-w+1, window)
 
@@ -108,7 +108,7 @@ def _linreg_components_torch(x: "torch.Tensor", window: int):
     # Handle NaN: replace with 0 for summation
     w_filled = w.nan_to_num(0.0)
     not_nan = ~torch.isnan(w)
-    n = not_nan.sum(dim=2, keepdim=True).float()
+    not_nan.sum(dim=2, keepdim=True).float()
 
     # Recompute mean with nan handling
     cov_xt = ((w_filled - x_mean.nan_to_num(0.0)) * (t_idx - t_mean) * not_nan).sum(dim=2)
@@ -135,22 +135,22 @@ def _linreg_components_torch(x: "torch.Tensor", window: int):
     return slope, intercept, fitted, residual, r2
 
 
-def ts_linreg_torch(x: "torch.Tensor", window: int = 20) -> "torch.Tensor":
+def ts_linreg_torch(x: torch.Tensor, window: int = 20) -> torch.Tensor:
     _, _, fitted, _, _ = _linreg_components_torch(x, window)
     return fitted
 
 
-def ts_linreg_slope_torch(x: "torch.Tensor", window: int = 20) -> "torch.Tensor":
+def ts_linreg_slope_torch(x: torch.Tensor, window: int = 20) -> torch.Tensor:
     slope, _, _, _, _ = _linreg_components_torch(x, window)
     return slope
 
 
-def ts_linreg_intercept_torch(x: "torch.Tensor", window: int = 20) -> "torch.Tensor":
+def ts_linreg_intercept_torch(x: torch.Tensor, window: int = 20) -> torch.Tensor:
     _, intercept, _, _, _ = _linreg_components_torch(x, window)
     return intercept
 
 
-def ts_linreg_resid_torch(x: "torch.Tensor", window: int = 20) -> "torch.Tensor":
+def ts_linreg_resid_torch(x: torch.Tensor, window: int = 20) -> torch.Tensor:
     _, _, _, residual, _ = _linreg_components_torch(x, window)
     return residual
 

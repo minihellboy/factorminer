@@ -8,7 +8,6 @@ import pytest
 from factorminer.evaluation.combination import FactorCombiner
 from factorminer.evaluation.selection import FactorSelector
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

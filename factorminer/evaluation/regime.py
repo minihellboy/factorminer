@@ -9,11 +9,9 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass
-from typing import Dict
 
 import numpy as np
 from scipy.stats import rankdata
-
 
 # ---------------------------------------------------------------------------
 # Regime enum
@@ -86,8 +84,8 @@ class RegimeClassification:
     """
 
     labels: np.ndarray
-    periods: Dict[MarketRegime, np.ndarray]
-    stats: Dict[MarketRegime, Dict[str, float]]
+    periods: dict[MarketRegime, np.ndarray]
+    stats: dict[MarketRegime, dict[str, float]]
 
 
 # ---------------------------------------------------------------------------
@@ -156,8 +154,8 @@ class RegimeDetector:
         labels[: cfg.lookback_window] = MarketRegime.SIDEWAYS.value
 
         # Build boolean masks & stats
-        periods: Dict[MarketRegime, np.ndarray] = {}
-        stats: Dict[MarketRegime, Dict[str, float]] = {}
+        periods: dict[MarketRegime, np.ndarray] = {}
+        stats: dict[MarketRegime, dict[str, float]] = {}
 
         for regime in MarketRegime:
             mask = labels == regime.value
@@ -226,9 +224,9 @@ class RegimeICResult:
     """
 
     factor_name: str
-    regime_ic: Dict[MarketRegime, float]
-    regime_icir: Dict[MarketRegime, float]
-    regime_n_periods: Dict[MarketRegime, int]
+    regime_ic: dict[MarketRegime, float]
+    regime_icir: dict[MarketRegime, float]
+    regime_n_periods: dict[MarketRegime, int]
     n_regimes_passing: int
     passes: bool
     overall_regime_score: float
@@ -280,9 +278,9 @@ class RegimeAwareEvaluator:
         cfg = self.config
         min_periods = cfg.lookback_window * 2
 
-        regime_ic: Dict[MarketRegime, float] = {}
-        regime_icir: Dict[MarketRegime, float] = {}
-        regime_n_periods: Dict[MarketRegime, int] = {}
+        regime_ic: dict[MarketRegime, float] = {}
+        regime_icir: dict[MarketRegime, float] = {}
+        regime_n_periods: dict[MarketRegime, int] = {}
 
         for regime in MarketRegime:
             mask = self.regime.periods[regime]
@@ -337,8 +335,8 @@ class RegimeAwareEvaluator:
 
     def evaluate_batch(
         self,
-        candidates: Dict[str, np.ndarray],
-    ) -> Dict[str, RegimeICResult]:
+        candidates: dict[str, np.ndarray],
+    ) -> dict[str, RegimeICResult]:
         """Evaluate multiple factors.
 
         Parameters
@@ -431,7 +429,7 @@ class RegimeState:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "RegimeState":
+    def from_dict(cls, d: dict) -> RegimeState:
         return cls(
             trend=TrendRegime(d.get("trend", "neutral")),
             vol=VolRegime(d.get("vol", "normal_vol")),
@@ -584,7 +582,7 @@ class StreamingRegimeDetector:
         if len(buf) < 32:
             return MeanRevRegime.RANDOM_WALK
         arr = np.array(buf)
-        lags = [l for l in self.config.hurst_lags if l < len(arr)]
+        lags = [lag for lag in self.config.hurst_lags if lag < len(arr)]
         if not lags:
             return MeanRevRegime.RANDOM_WALK
         ratios = []

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from factorminer.memory.memory_store import ExperienceMemory
 from factorminer.memory.retrieval import retrieve_memory
@@ -21,13 +21,13 @@ except ImportError:
 
 def retrieve_memory_enhanced(
     memory: ExperienceMemory,
-    library_state: Optional[Dict[str, Any]] = None,
+    library_state: dict[str, Any] | None = None,
     max_success: int = 8,
     max_forbidden: int = 10,
     max_insights: int = 10,
-    kg: Optional[FactorKnowledgeGraph] = None,  # type: ignore[type-arg]
-    embedder: Optional[FormulaEmbedder] = None,  # type: ignore[type-arg]
-) -> Dict[str, Any]:
+    kg: FactorKnowledgeGraph | None = None,  # type: ignore[type-arg]
+    embedder: FormulaEmbedder | None = None,  # type: ignore[type-arg]
+) -> dict[str, Any]:
     """Enhanced memory retrieval operator R+(M, L, KG, E).
 
     Calls the base :func:`retrieve_memory` first, then augments the
@@ -75,8 +75,8 @@ def retrieve_memory_enhanced(
     if kg is not None:
         # Complementary patterns: for each recently admitted factor,
         # find structurally complementary neighbours.
-        complementary: List[str] = []
-        seen: Set[str] = set()
+        complementary: list[str] = []
+        seen: set[str] = set()
         for admission in memory.state.recent_admissions[-5:]:
             fid = admission.get("factor_id", "")
             if not fid:
@@ -118,7 +118,7 @@ def retrieve_memory_enhanced(
     # ----------------------------------------------------------------
     # Augment prompt text
     # ----------------------------------------------------------------
-    extra_sections: List[str] = []
+    extra_sections: list[str] = []
 
     if result["complementary_patterns"]:
         extra_sections.append("=== COMPLEMENTARY PATTERNS (explore) ===")
@@ -173,13 +173,13 @@ def retrieve_memory_enhanced(
 
 def _find_semantic_gaps(
     memory: ExperienceMemory,
-    kg: Optional[FactorKnowledgeGraph],  # type: ignore[type-arg]
-    embedder: Optional[FormulaEmbedder],  # type: ignore[type-arg]
-) -> List[str]:
+    kg: FactorKnowledgeGraph | None,  # type: ignore[type-arg]
+    embedder: FormulaEmbedder | None,  # type: ignore[type-arg]
+) -> list[str]:
     """Identify success-pattern operators with poor semantic coverage."""
     import re
 
-    template_ops: Set[str] = set()
+    template_ops: set[str] = set()
     op_pattern = re.compile(r"\b([A-Z][a-zA-Z]+)\(")
 
     for pat in memory.success_patterns:
@@ -194,7 +194,7 @@ def _find_semantic_gaps(
 
     # A pattern is considered underexplored when it has no close semantic
     # neighbors in the current library representation.
-    uncovered_ops: Set[str] = set()
+    uncovered_ops: set[str] = set()
     anchors = list(memory.success_patterns[:10])
     if not anchors:
         return sorted(template_ops)
@@ -211,7 +211,7 @@ def _find_semantic_gaps(
 
     if not uncovered_ops:
         # Fall back to the operators that are entirely absent from the admitted set.
-        used_ops: Set[str] = set()
+        used_ops: set[str] = set()
         if kg is not None:
             for node in kg.list_factor_nodes(admitted_only=True):
                 used_ops.update(node.operators)
@@ -222,11 +222,11 @@ def _find_semantic_gaps(
 
 def _seed_embedder_from_memory(
     memory: ExperienceMemory,
-    kg: Optional[FactorKnowledgeGraph],  # type: ignore[type-arg]
+    kg: FactorKnowledgeGraph | None,  # type: ignore[type-arg]
     embedder: FormulaEmbedder,  # type: ignore[type-arg]
 ) -> None:
     """Ensure the embedder cache reflects the current known factors."""
-    seen: Set[str] = set()
+    seen: set[str] = set()
 
     if kg is not None:
         for node in kg.list_factor_nodes(admitted_only=True):
@@ -244,13 +244,13 @@ def _seed_embedder_from_memory(
 
 def _collect_semantic_context(
     memory: ExperienceMemory,
-    kg: Optional[FactorKnowledgeGraph],  # type: ignore[type-arg]
+    kg: FactorKnowledgeGraph | None,  # type: ignore[type-arg]
     embedder: FormulaEmbedder,  # type: ignore[type-arg]
     max_neighbors: int = 8,
     similarity_threshold: float = 0.72,
-) -> Tuple[List[str], List[str]]:
+) -> tuple[list[str], list[str]]:
     """Collect semantically similar neighbors and duplicate warnings."""
-    anchors: List[Tuple[str, str, str]] = []
+    anchors: list[tuple[str, str, str]] = []
     for admission in memory.state.recent_admissions[-5:]:
         fid = admission.get("factor_id", "")
         formula = admission.get("formula", "")
@@ -262,9 +262,9 @@ def _collect_semantic_context(
             if pattern.template:
                 anchors.append(("success pattern", pattern.name, pattern.template))
 
-    semantic_neighbors: List[str] = []
-    semantic_duplicates: List[str] = []
-    seen_matches: Set[Tuple[str, str]] = set()
+    semantic_neighbors: list[str] = []
+    semantic_duplicates: list[str] = []
+    seen_matches: set[tuple[str, str]] = set()
 
     if embedder.cache_size == 0:
         return semantic_neighbors, semantic_duplicates
@@ -329,7 +329,7 @@ def _describe_factor_node(
 
 def _describe_conflict_cluster(
     kg: FactorKnowledgeGraph,  # type: ignore[type-arg]
-    cluster: Set[str],
+    cluster: set[str],
 ) -> str:
     """Render one saturated cluster into short text."""
     described = [_describe_factor_node(kg, factor_id) for factor_id in sorted(cluster)]

@@ -8,12 +8,10 @@ before its alpha degrades beyond acceptable limits.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 import numpy as np
 
 from factorminer.evaluation.metrics import compute_ic, compute_icir
-
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -51,7 +49,7 @@ class CapacityConfig:
 
     enabled: bool = True
     base_capital_usd: float = 1e8
-    capacity_levels: List[float] = field(
+    capacity_levels: list[float] = field(
         default_factory=lambda: [1e7, 5e7, 1e8, 5e8, 1e9]
     )
     ic_degradation_limit: float = 0.20
@@ -108,7 +106,7 @@ class CapacityEstimate:
 
     factor_name: str
     max_capacity_usd: float
-    capacity_curve: Dict[float, float]
+    capacity_curve: dict[float, float]
     break_even_cost_bps: float
 
 
@@ -327,9 +325,9 @@ class CapacityEstimator:
         gross_ic = compute_ic(signals, self.returns)
         abs_gross_mean = abs(self._mean_ic(gross_ic))
 
-        curve: Dict[float, float] = {}
-        degradations: List[float] = []
-        capitals: List[float] = []
+        curve: dict[float, float] = {}
+        degradations: list[float] = []
+        capitals: list[float] = []
 
         for cap in self.config.capacity_levels:
             impact = self._impact_model.estimate_impact(signals, self.volume, cap)
@@ -367,7 +365,7 @@ class CapacityEstimator:
         self,
         factor_name: str,
         signals: np.ndarray,
-        capital: Optional[float] = None,
+        capital: float | None = None,
     ) -> NetCostResult:
         """Evaluate a factor net of estimated market impact.
 
@@ -420,8 +418,8 @@ class CapacityEstimator:
 
     @staticmethod
     def _interpolate_capacity(
-        capitals: List[float],
-        degradations: List[float],
+        capitals: list[float],
+        degradations: list[float],
         limit: float,
     ) -> float:
         """Linearly interpolate the capital at which degradation hits *limit*.

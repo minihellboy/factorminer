@@ -6,11 +6,12 @@ save/load boundaries.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field, is_dataclass
-from datetime import datetime
 import hashlib
 import json
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import asdict, dataclass, field, is_dataclass
+from datetime import datetime
+from typing import Any
 
 import numpy as np
 
@@ -37,7 +38,7 @@ def stable_digest(payload: Any) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
-def _compact_reference_list(entries: Any, limit: int = 8) -> List[str]:
+def _compact_reference_list(entries: Any, limit: int = 8) -> list[str]:
     """Normalize a mixed list of factor references into readable strings."""
     if not entries:
         return []
@@ -47,7 +48,7 @@ def _compact_reference_list(entries: Any, limit: int = 8) -> List[str]:
     else:
         iterable = list(entries)
 
-    values: List[str] = []
+    values: list[str] = []
     seen: set[str] = set()
     for entry in iterable[:limit]:
         text = ""
@@ -74,7 +75,7 @@ def _compact_reference_list(entries: Any, limit: int = 8) -> List[str]:
     return values
 
 
-def _compact_memory_signal(memory_signal: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+def _compact_memory_signal(memory_signal: Mapping[str, Any] | None) -> dict[str, Any]:
     """Keep only the most useful pieces of memory context."""
     if not memory_signal:
         return {}
@@ -118,14 +119,14 @@ class RunManifest:
     library_size: int = 0
     output_dir: str = ""
     config_digest: str = ""
-    config_summary: Dict[str, Any] = field(default_factory=dict)
-    dataset_summary: Dict[str, Any] = field(default_factory=dict)
-    phase2_features: List[str] = field(default_factory=list)
-    target_stack: List[str] = field(default_factory=list)
-    artifact_paths: Dict[str, str] = field(default_factory=dict)
-    notes: List[str] = field(default_factory=list)
+    config_summary: dict[str, Any] = field(default_factory=dict)
+    dataset_summary: dict[str, Any] = field(default_factory=dict)
+    phase2_features: list[str] = field(default_factory=list)
+    target_stack: list[str] = field(default_factory=list)
+    artifact_paths: dict[str, str] = field(default_factory=dict)
+    notes: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return _json_safe(asdict(self))
 
 
@@ -146,15 +147,15 @@ class FactorProvenance:
     factor_category: str = ""
     factor_id: int = 0
     generator_family: str = ""
-    memory_summary: Dict[str, Any] = field(default_factory=dict)
-    library_snapshot: Dict[str, Any] = field(default_factory=dict)
-    evaluation: Dict[str, Any] = field(default_factory=dict)
-    admission: Dict[str, Any] = field(default_factory=dict)
-    phase2: Dict[str, Any] = field(default_factory=dict)
-    target_stack: List[str] = field(default_factory=list)
-    research_metrics: Dict[str, Any] = field(default_factory=dict)
+    memory_summary: dict[str, Any] = field(default_factory=dict)
+    library_snapshot: dict[str, Any] = field(default_factory=dict)
+    evaluation: dict[str, Any] = field(default_factory=dict)
+    admission: dict[str, Any] = field(default_factory=dict)
+    phase2: dict[str, Any] = field(default_factory=dict)
+    target_stack: list[str] = field(default_factory=list)
+    research_metrics: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return _json_safe(asdict(self))
 
 
@@ -173,8 +174,8 @@ def build_run_manifest(
     dataset_summary: Mapping[str, Any],
     phase2_features: Sequence[str],
     target_stack: Sequence[str],
-    artifact_paths: Optional[Mapping[str, str]] = None,
-    notes: Optional[Sequence[str]] = None,
+    artifact_paths: Mapping[str, str] | None = None,
+    notes: Sequence[str] | None = None,
 ) -> RunManifest:
     """Build a run manifest from the live loop state."""
     return RunManifest(
@@ -208,13 +209,13 @@ def build_factor_provenance(
     batch_number: int,
     candidate_rank: int,
     generator_family: str,
-    memory_signal: Optional[Mapping[str, Any]],
-    library_state: Optional[Mapping[str, Any]],
+    memory_signal: Mapping[str, Any] | None,
+    library_state: Mapping[str, Any] | None,
     evaluation: Mapping[str, Any],
     admission: Mapping[str, Any],
-    phase2: Optional[Mapping[str, Any]] = None,
-    target_stack: Optional[Sequence[str]] = None,
-    research_metrics: Optional[Mapping[str, Any]] = None,
+    phase2: Mapping[str, Any] | None = None,
+    target_stack: Sequence[str] | None = None,
+    research_metrics: Mapping[str, Any] | None = None,
 ) -> FactorProvenance:
     """Build per-factor provenance from the current mining context."""
     manifest = dict(run_manifest)

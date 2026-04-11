@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -46,7 +45,7 @@ class DatasetSplit:
     indices: np.ndarray
     timestamps: np.ndarray
     returns: np.ndarray
-    target_returns: Dict[str, np.ndarray] = field(default_factory=dict)
+    target_returns: dict[str, np.ndarray] = field(default_factory=dict)
     default_target: str = "target"
 
     @property
@@ -64,15 +63,15 @@ class DatasetSplit:
 class EvaluationDataset:
     """Canonical dataset used for analysis commands."""
 
-    data_dict: Dict[str, np.ndarray]
+    data_dict: dict[str, np.ndarray]
     data_tensor: np.ndarray
     returns: np.ndarray
     timestamps: np.ndarray
     asset_ids: np.ndarray
-    splits: Dict[str, DatasetSplit]
+    splits: dict[str, DatasetSplit]
     processed_df: pd.DataFrame = field(repr=False)
-    target_panels: Dict[str, np.ndarray] = field(default_factory=dict)
-    target_specs: Dict[str, TargetSpec] = field(default_factory=dict)
+    target_panels: dict[str, np.ndarray] = field(default_factory=dict)
+    target_specs: dict[str, TargetSpec] = field(default_factory=dict)
     default_target: str = "target"
 
     def get_split(self, name: str) -> DatasetSplit:
@@ -96,12 +95,12 @@ class FactorEvaluationArtifact:
     formula: str
     category: str
     parse_ok: bool
-    signals_full: Optional[np.ndarray] = None
-    split_signals: Dict[str, np.ndarray] = field(default_factory=dict)
-    split_stats: Dict[str, dict] = field(default_factory=dict)
-    target_stats: Dict[str, Dict[str, dict]] = field(default_factory=dict)
-    score_vector: Optional[dict] = None
-    research_metrics: Dict[str, float] = field(default_factory=dict)
+    signals_full: np.ndarray | None = None
+    split_signals: dict[str, np.ndarray] = field(default_factory=dict)
+    split_stats: dict[str, dict] = field(default_factory=dict)
+    target_stats: dict[str, dict[str, dict]] = field(default_factory=dict)
+    score_vector: dict | None = None
+    research_metrics: dict[str, float] = field(default_factory=dict)
     error: str = ""
 
     @property
@@ -216,9 +215,9 @@ def evaluate_factors(
     dataset: EvaluationDataset,
     signal_failure_policy: str = "reject",
     target_name: str | None = None,
-) -> List[FactorEvaluationArtifact]:
+) -> list[FactorEvaluationArtifact]:
     """Recompute factor signals and metrics across all dataset splits."""
-    artifacts: List[FactorEvaluationArtifact] = []
+    artifacts: list[FactorEvaluationArtifact] = []
     active_target_name = target_name or dataset.default_target
     active_returns = dataset.get_target(active_target_name)
 
@@ -279,7 +278,7 @@ def evaluate_factors(
 
 def compute_tree_signals(
     tree,
-    data_dict: Dict[str, np.ndarray],
+    data_dict: dict[str, np.ndarray],
     returns_shape: tuple[int, int],
     signal_failure_policy: str = "reject",
 ) -> np.ndarray:
@@ -331,8 +330,8 @@ def compute_correlation_matrix(
 def select_top_k(
     artifacts: Sequence[FactorEvaluationArtifact],
     split_name: str,
-    top_k: Optional[int] = None,
-) -> List[FactorEvaluationArtifact]:
+    top_k: int | None = None,
+) -> list[FactorEvaluationArtifact]:
     """Sort succeeded artifacts by split abs-IC and return the top-k subset."""
     succeeded = [a for a in artifacts if a.succeeded]
     succeeded.sort(
@@ -348,7 +347,7 @@ def select_top_k(
 
 def summarize_failures(
     artifacts: Sequence[FactorEvaluationArtifact],
-) -> List[str]:
+) -> list[str]:
     """Return human-readable failure summaries."""
     return [
         f"{artifact.name or artifact.factor_id}: {artifact.error}"
@@ -362,18 +361,18 @@ def resolve_split_for_fit_eval(period: str) -> str:
     return "full" if period == "both" else period
 
 
-def analysis_split_names(period: str) -> List[str]:
+def analysis_split_names(period: str) -> list[str]:
     """Map analysis CLI period values to one or two runtime split names."""
     if period == "both":
         return ["train", "test"]
     return [period]
 
 
-def _resolve_feature_columns(config_features: Sequence[str]) -> List[str]:
+def _resolve_feature_columns(config_features: Sequence[str]) -> list[str]:
     if not config_features:
         return list(COLUMN_TO_FEATURE.keys())
 
-    resolved: List[str] = []
+    resolved: list[str] = []
     for feature in config_features:
         if feature in FEATURE_TO_COLUMN:
             resolved.append(FEATURE_TO_COLUMN[feature])
@@ -389,7 +388,7 @@ def _build_named_split(
     name: str,
     timestamps: np.ndarray,
     returns: np.ndarray,
-    target_panels: Dict[str, np.ndarray],
+    target_panels: dict[str, np.ndarray],
     default_target: str,
     start: str,
     end: str,
@@ -410,7 +409,7 @@ def _build_named_split(
     )
 
 
-def _resolve_target_specs(cfg) -> List[TargetSpec]:
+def _resolve_target_specs(cfg) -> list[TargetSpec]:
     raw_targets = getattr(cfg.data, "targets", None) or [
         {
             "name": "paper",

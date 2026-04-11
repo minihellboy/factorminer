@@ -14,23 +14,26 @@ No API keys needed - uses MockProvider for LLM generation.
 import sys
 import time
 import warnings
+
 warnings.filterwarnings("ignore")
 
 sys.path.insert(0, ".")
 import numpy as np
+
 np.random.seed(42)
 
-from factorminer.data.mock_data import generate_mock_data, MockConfig
-from factorminer.data.preprocessor import preprocess
-from factorminer.core.parser import parse, try_parse
 from factorminer.core.factor_library import Factor, FactorLibrary
 from factorminer.core.library_io import PAPER_FACTORS
-from factorminer.evaluation.metrics import (
-    compute_ic, compute_icir, compute_ic_mean, compute_ic_win_rate,
-    compute_factor_stats,
-)
+from factorminer.core.parser import try_parse
+from factorminer.data.mock_data import MockConfig, generate_mock_data
+from factorminer.data.preprocessor import preprocess
 from factorminer.evaluation.combination import FactorCombiner
-from factorminer.evaluation.selection import FactorSelector
+from factorminer.evaluation.metrics import (
+    compute_ic,
+    compute_ic_mean,
+    compute_ic_win_rate,
+    compute_icir,
+)
 
 
 def section(title):
@@ -139,7 +142,7 @@ def main():
     # Sort by |IC|
     results.sort(key=lambda x: abs(x["ic_mean"]), reverse=True)
 
-    print(f"\n  Top 20 Factors by |IC|:")
+    print("\n  Top 20 Factors by |IC|:")
     print(f"  {'ID':<5} {'Name':<40} {'Cat':<15} {'IC':>8} {'ICIR':>8} {'Win%':>6}")
     print(f"  {'-'*5} {'-'*40} {'-'*15} {'-'*8} {'-'*8} {'-'*6}")
     for r in results[:20]:
@@ -147,7 +150,7 @@ def main():
               f"{r['ic_mean']:>8.4f} {r['icir']:>8.3f} {r['win_rate']:>5.1%}")
 
     # Category breakdown
-    print(f"\n  Category Breakdown:")
+    print("\n  Category Breakdown:")
     categories = {}
     for r in results:
         cat = r["category"]
@@ -257,7 +260,7 @@ def main():
     # ================================================================
     section("STEP 5: Phase 2 - Regime-Aware Analysis")
 
-    from factorminer.evaluation.regime import RegimeDetector, RegimeAwareEvaluator, RegimeConfig
+    from factorminer.evaluation.regime import RegimeAwareEvaluator, RegimeConfig, RegimeDetector
 
     regime_config = RegimeConfig(lookback_window=30, min_regime_ic=0.01, min_regimes_passing=2)
     detector = RegimeDetector(regime_config)
@@ -287,7 +290,9 @@ def main():
     section("STEP 6: Phase 2 - Statistical Significance Testing")
 
     from factorminer.evaluation.significance import (
-        BootstrapICTester, FDRController, DeflatedSharpeCalculator, SignificanceConfig
+        BootstrapICTester,
+        FDRController,
+        SignificanceConfig,
     )
 
     sig_config = SignificanceConfig(bootstrap_n_samples=500, bootstrap_block_size=10)
@@ -346,8 +351,9 @@ def main():
     # ================================================================
     section("STEP 8: Phase 2 - Knowledge Graph Memory")
 
-    from factorminer.memory.knowledge_graph import FactorKnowledgeGraph, FactorNode
     import re
+
+    from factorminer.memory.knowledge_graph import FactorKnowledgeGraph, FactorNode
 
     kg = FactorKnowledgeGraph()
 
@@ -385,7 +391,7 @@ def main():
     cooccur = kg.get_operator_cooccurrence()
     if cooccur:
         top_pairs = sorted(cooccur.items(), key=lambda x: -x[1])[:5]
-        print(f"  Top operator co-occurrences:")
+        print("  Top operator co-occurrences:")
         for (op1, op2), count in top_pairs:
             print(f"    ({op1}, {op2}): {count} times")
 
@@ -394,9 +400,9 @@ def main():
     # ================================================================
     section("STEP 9: Mining Loop Demo (3 iterations with MockProvider)")
 
-    from factorminer.core.ralph_loop import RalphLoop
     from factorminer.agent.llm_interface import MockProvider
     from factorminer.core.config import MiningConfig
+    from factorminer.core.ralph_loop import RalphLoop
 
     mining_config = MiningConfig(
         target_library_size=20,
@@ -424,7 +430,7 @@ def main():
     print(f"  Completed in {elapsed:.1f}s")
     print(f"  Library size: {result_library.size}")
     if result_library.size > 0:
-        print(f"\n  Admitted factors:")
+        print("\n  Admitted factors:")
         for fid, f in result_library.factors.items():
             print(f"    [{fid}] {f.name[:50]} IC={f.ic_mean:.4f} ICIR={f.icir:.3f}")
 
@@ -438,20 +444,20 @@ def main():
     print(f"  Factors with |IC| > 0.02: {sum(1 for r in results if abs(r['ic_mean']) > 0.02)}")
     print(f"  Library (admission-filtered): {library.size} factors")
     print(f"  Mining loop (3 iter): {result_library.size} factors discovered")
-    print(f"")
-    print(f"  Phase 2 Features Demonstrated:")
-    print(f"    Regime detection:     3 regimes classified")
-    print(f"    Statistical testing:  Bootstrap CI + FDR")
-    print(f"    Canonicalization:     Neg(Neg(x))==x detected")
+    print("")
+    print("  Phase 2 Features Demonstrated:")
+    print("    Regime detection:     3 regimes classified")
+    print("    Statistical testing:  Bootstrap CI + FDR")
+    print("    Canonicalization:     Neg(Neg(x))==x detected")
     print(f"    Knowledge graph:      {kg.get_factor_count()} nodes, {kg.get_edge_count()} edges")
-    print(f"")
-    print(f"  To run with real LLM (e.g., Claude):")
-    print(f"    export ANTHROPIC_API_KEY=sk-ant-...")
-    print(f"    factorminer mine --config factorminer/configs/default.yaml")
-    print(f"")
-    print(f"  To run with real market data:")
-    print(f"    Place CSV with [datetime,asset_id,open,high,low,close,volume,amount]")
-    print(f"    at data/market.csv and update configs/default.yaml")
+    print("")
+    print("  To run with real LLM (e.g., Claude):")
+    print("    export ANTHROPIC_API_KEY=sk-ant-...")
+    print("    factorminer mine --config factorminer/configs/default.yaml")
+    print("")
+    print("  To run with real market data:")
+    print("    Place CSV with [datetime,asset_id,open,high,low,close,volume,amount]")
+    print("    at data/market.csv and update configs/default.yaml")
 
 
 if __name__ == "__main__":

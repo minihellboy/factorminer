@@ -12,12 +12,6 @@ from factorminer.data.mock_data import (
     generate_mock_data,
     generate_with_halts,
 )
-from factorminer.data.validation import (
-    DataValidationReport,
-    ValidationIssue,
-    render_validation_report,
-    validate_market_data,
-)
 from factorminer.data.preprocessor import (
     PreprocessConfig,
     compute_derived_features,
@@ -42,6 +36,12 @@ from factorminer.data.tensor_builder import (
     compute_targets,
     sample_assets,
     temporal_split,
+)
+from factorminer.data.validation import (
+    DataValidationReport,
+    ValidationIssue,
+    render_validation_report,
+    validate_market_data,
 )
 
 __all__ = [

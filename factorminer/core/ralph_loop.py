@@ -38,8 +38,8 @@ from factorminer.architecture import (
     DistillStage,
     EvaluateStage,
     EvaluationKernel,
-    FactorFamilyDiscovery,
     FactorAdmissionService,
+    FactorFamilyDiscovery,
     FactorLifecycleStore,
     GenerateStage,
     IterationPayload,
@@ -894,6 +894,12 @@ class RalphLoop:
             self._checkpoint()
         finally:
             elapsed = time.time() - loop_start
+            zero_admission_warning = self._loop_services.zero_admission_guidance(
+                target_size=target_size,
+                max_iterations=max_iterations,
+            )
+            if zero_admission_warning:
+                logger.warning(zero_admission_warning)
             if self._session_logger:
                 self._session_logger.log_session_end(self.library.size, elapsed)
             self._refresh_run_manifest(

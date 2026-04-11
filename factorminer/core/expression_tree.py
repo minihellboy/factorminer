@@ -7,18 +7,15 @@ and whose internal nodes are operator applications (``OperatorNode``).
 
 from __future__ import annotations
 
-import copy
 import math
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from collections.abc import Iterator
 
 import numpy as np
 
 from factorminer.core.types import (
     FEATURE_SET,
     OperatorSpec,
-    OperatorType,
-    SignatureType,
 )
 
 # Epsilon for safe division / log
@@ -33,7 +30,7 @@ class Node(ABC):
     """Abstract base for every node in an expression tree."""
 
     @abstractmethod
-    def evaluate(self, data: Dict[str, np.ndarray]) -> np.ndarray:
+    def evaluate(self, data: dict[str, np.ndarray]) -> np.ndarray:
         """Compute the node's value given market data.
 
         Parameters
@@ -62,7 +59,7 @@ class Node(ABC):
         """Return the number of nodes in the subtree."""
 
     @abstractmethod
-    def clone(self) -> "Node":
+    def clone(self) -> Node:
         """Return a deep copy of the subtree."""
 
     def __repr__(self) -> str:  # pragma: no cover
@@ -70,14 +67,14 @@ class Node(ABC):
 
     # Iteration helpers -----------------------------------------------------
 
-    def iter_nodes(self) -> Iterator["Node"]:
+    def iter_nodes(self) -> Iterator[Node]:
         """Yield every node in the subtree (pre-order)."""
         yield self
         if isinstance(self, OperatorNode):
             for child in self.children:
                 yield from child.iter_nodes()
 
-    def leaf_features(self) -> List[str]:
+    def leaf_features(self) -> list[str]:
         """Return sorted unique feature names referenced by this subtree."""
         feats = {n.feature_name for n in self.iter_nodes() if isinstance(n, LeafNode)}
         return sorted(feats)
@@ -96,7 +93,7 @@ class LeafNode(Node):
             )
         self.feature_name = feature_name
 
-    def evaluate(self, data: Dict[str, np.ndarray]) -> np.ndarray:
+    def evaluate(self, data: dict[str, np.ndarray]) -> np.ndarray:
         if self.feature_name not in data:
             raise KeyError(
                 f"Feature '{self.feature_name}' not found in data. "
@@ -113,7 +110,7 @@ class LeafNode(Node):
     def size(self) -> int:
         return 1
 
-    def clone(self) -> "LeafNode":
+    def clone(self) -> LeafNode:
         return LeafNode(self.feature_name)
 
 
@@ -125,7 +122,7 @@ class ConstantNode(Node):
     def __init__(self, value: float) -> None:
         self.value = float(value)
 
-    def evaluate(self, data: Dict[str, np.ndarray]) -> np.ndarray:
+    def evaluate(self, data: dict[str, np.ndarray]) -> np.ndarray:
         # Infer shape from any entry in data so the constant broadcasts.
         for arr in data.values():
             return np.full_like(arr, self.value, dtype=np.float64)
@@ -143,7 +140,7 @@ class ConstantNode(Node):
     def size(self) -> int:
         return 1
 
-    def clone(self) -> "ConstantNode":
+    def clone(self) -> ConstantNode:
         return ConstantNode(self.value)
 
 
@@ -165,8 +162,8 @@ class OperatorNode(Node):
     def __init__(
         self,
         operator: OperatorSpec,
-        children: List[Node],
-        params: Optional[Dict[str, float]] = None,
+        children: list[Node],
+        params: dict[str, float] | None = None,
     ) -> None:
         self.operator = operator
         self.children = list(children)
@@ -200,7 +197,7 @@ class OperatorNode(Node):
     def size(self) -> int:
         return 1 + sum(c.size() for c in self.children)
 
-    def clone(self) -> "OperatorNode":
+    def clone(self) -> OperatorNode:
         return OperatorNode(
             operator=self.operator,
             children=[c.clone() for c in self.children],
@@ -209,7 +206,7 @@ class OperatorNode(Node):
 
     # ---- evaluation -------------------------------------------------------
 
-    def evaluate(self, data: Dict[str, np.ndarray]) -> np.ndarray:
+    def evaluate(self, data: dict[str, np.ndarray]) -> np.ndarray:
         child_vals = [c.evaluate(data) for c in self.children]
         return _dispatch_operator(self.operator, child_vals, self.params)
 
@@ -237,7 +234,7 @@ def _rolling_apply(
     window: int,
     func,
     *,
-    binary_y: Optional[np.ndarray] = None,
+    binary_y: np.ndarray | None = None,
 ) -> np.ndarray:
     """Apply *func* over a rolling window along the last axis (T).
 
@@ -480,8 +477,8 @@ def _ts_linreg_resid(x: np.ndarray, window: int) -> np.ndarray:
 
 def _dispatch_operator(
     spec: OperatorSpec,
-    children: List[np.ndarray],
-    params: Dict[str, float],
+    children: list[np.ndarray],
+    params: dict[str, float],
 ) -> np.ndarray:
     """Execute an operator on evaluated children, return result array."""
     name = spec.name
@@ -707,7 +704,7 @@ class ExpressionTree:
         """Return the total number of nodes."""
         return self.root.size()
 
-    def evaluate(self, data: Dict[str, np.ndarray]) -> np.ndarray:
+    def evaluate(self, data: dict[str, np.ndarray]) -> np.ndarray:
         """Execute the formula on market data.
 
         Parameters
@@ -721,11 +718,11 @@ class ExpressionTree:
         """
         return self.root.evaluate(data)
 
-    def clone(self) -> "ExpressionTree":
+    def clone(self) -> ExpressionTree:
         """Return a deep copy of the tree."""
         return ExpressionTree(self.root.clone())
 
-    def leaf_features(self) -> List[str]:
+    def leaf_features(self) -> list[str]:
         """Return sorted unique feature names referenced by this tree."""
         return self.root.leaf_features()
 

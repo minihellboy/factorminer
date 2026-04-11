@@ -8,7 +8,6 @@ import pytest
 from factorminer.core.factor_library import Factor, FactorLibrary
 from factorminer.memory.experience_memory import ExperienceMemoryManager
 
-
 # ---------------------------------------------------------------------------
 # Mock data fixtures
 # ---------------------------------------------------------------------------
@@ -88,7 +87,7 @@ def mock_library(rng):
         factor = Factor(
             id=0,
             name=f"test_factor_{i}",
-            formula=f"Neg($close)" if i == 0 else f"CsRank(Mean($close, {10 + i * 5}))",
+            formula="Neg($close)" if i == 0 else f"CsRank(Mean($close, {10 + i * 5}))",
             category="test",
             ic_mean=0.05 + i * 0.01,
             icir=0.8 + i * 0.1,

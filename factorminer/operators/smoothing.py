@@ -98,18 +98,18 @@ def hma_np(x: np.ndarray, window: int = 10) -> np.ndarray:
 # PyTorch implementations
 # ===========================================================================
 
-def sma_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def sma_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     """Simple moving average using conv1d for GPU efficiency."""
     window = int(window)
     M, T = x.shape
     # Use unfold-based approach
-    from factorminer.operators.statistical import _unfold_torch, _pad_front_torch
+    from factorminer.operators.statistical import _pad_front_torch, _unfold_torch
     w = _unfold_torch(x, window)
     result = w.nanmean(dim=2)
     return _pad_front_torch(result, window, T)
 
 
-def ema_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def ema_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     """EMA -- sequential by nature, but batch across assets."""
     window = int(window)
     alpha = 2.0 / (window + 1.0)
@@ -125,13 +125,13 @@ def ema_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
     return out
 
 
-def dema_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def dema_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     e1 = ema_torch(x, window)
     e2 = ema_torch(e1, window)
     return 2.0 * e1 - e2
 
 
-def kama_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def kama_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     fast_sc = 2.0 / (2.0 + 1.0)
     slow_sc = 2.0 / (30.0 + 1.0)
@@ -149,7 +149,7 @@ def kama_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
     return out
 
 
-def hma_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def hma_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     from factorminer.operators.timeseries import wma_torch
     half = max(int(window / 2), 1)

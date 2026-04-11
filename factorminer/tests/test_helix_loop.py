@@ -12,10 +12,9 @@ except ImportError:
     HAS_HELIX = False
 
 from factorminer.agent.llm_interface import MockProvider
-from factorminer.core.factor_library import Factor, FactorLibrary
 from factorminer.core.config import MiningConfig
+from factorminer.core.factor_library import Factor, FactorLibrary
 from factorminer.core.ralph_loop import EvaluationResult
-
 
 pytestmark = pytest.mark.skipif(not HAS_HELIX, reason="helix_loop not yet built")
 

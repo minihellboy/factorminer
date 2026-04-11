@@ -34,7 +34,7 @@ import logging
 import os
 import warnings
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -68,7 +68,7 @@ except ImportError:  # pragma: no cover
 # ---------------------------------------------------------------------------
 
 # Canonical feature order — must match factorminer.core.types.FEATURES
-_DEFAULT_FEATURES: List[str] = [
+_DEFAULT_FEATURES: list[str] = [
     "$open",
     "$high",
     "$low",
@@ -153,7 +153,7 @@ if _TORCH_AVAILABLE:
         # Core PyTorch forward
         # ------------------------------------------------------------------
 
-        def forward(self, x: "torch.Tensor") -> "torch.Tensor":
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
             """Map ``(N, window_size * n_features)`` -> ``(N,)``.
 
             Parameters
@@ -173,7 +173,7 @@ if _TORCH_AVAILABLE:
         def evaluate(
             self,
             features_3d: np.ndarray,
-            device: Optional["torch.device"] = None,
+            device: torch.device | None = None,
         ) -> np.ndarray:
             """Evaluate the leaf on a full (M, T, F) market tensor.
 
@@ -294,10 +294,10 @@ def _build_windows_np(x: np.ndarray, window: int) -> np.ndarray:
 # ===========================================================================
 
 def _pearson_ic_loss(
-    pred: "torch.Tensor",
-    target: "torch.Tensor",
+    pred: torch.Tensor,
+    target: torch.Tensor,
     eps: float = 1e-8,
-) -> "torch.Tensor":
+) -> torch.Tensor:
     """Negative Pearson cross-sectional IC averaged over time steps.
 
     Both tensors must be shape ``(M,)`` (one time slice) or ``(N,)``
@@ -322,7 +322,7 @@ def _pearson_ic_loss(
     return -ic
 
 
-def _l2_regularisation(model: "NeuralLeaf", lam: float = 1e-4) -> "torch.Tensor":
+def _l2_regularisation(model: NeuralLeaf, lam: float = 1e-4) -> torch.Tensor:
     """Compute L2 weight penalty (excludes bias and LayerNorm params)."""
     reg = torch.tensor(0.0)
     for name, param in model.named_parameters():
@@ -347,9 +347,9 @@ def train_neural_leaf(
     l2_lambda: float = 1e-4,
     batch_size: int = 2048,
     patience: int = 15,
-    device: Optional["torch.device"] = None,
+    device: torch.device | None = None,
     verbose: bool = False,
-) -> Optional["NeuralLeaf"]:
+) -> NeuralLeaf | None:
     """Train a NeuralLeaf to maximise cross-sectional IC with next-period returns.
 
     The leaf receives a rolling window of F features per (asset, time) pair
@@ -491,7 +491,7 @@ def train_neural_leaf(
     N_train = X_train_t.shape[0]
 
     best_val_ic: float = -np.inf
-    best_state: Optional[Dict[str, Any]] = None
+    best_state: dict[str, Any] | None = None
     no_improve: int = 0
 
     # ------------------------------------------------------------------
@@ -598,7 +598,7 @@ class DistillationResult:
     formula: str
     correlation: float
     rank_correlation: float
-    candidate_scores: Dict[str, float] = field(default_factory=dict)
+    candidate_scores: dict[str, float] = field(default_factory=dict)
 
     def __str__(self) -> str:
         return (
@@ -631,7 +631,7 @@ def _pearson_corr(a: np.ndarray, b: np.ndarray) -> float:
     return float(num / denom)
 
 
-def _evaluate_symbolic_candidate(formula_fn, data: Dict[str, np.ndarray]) -> Optional[np.ndarray]:
+def _evaluate_symbolic_candidate(formula_fn, data: dict[str, np.ndarray]) -> np.ndarray | None:
     """Safely evaluate a symbolic candidate, returning None on failure."""
     try:
         result = formula_fn(data)
@@ -645,26 +645,31 @@ def _evaluate_symbolic_candidate(formula_fn, data: Dict[str, np.ndarray]) -> Opt
         return None
 
 
-def _build_symbolic_candidates(data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+def _build_symbolic_candidates(data: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
     """Generate all symbolic candidate outputs from the hand-coded operator library.
 
     Returns a dict mapping formula string -> (M, T) array.
     """
     # Import operators lazily to avoid circular imports
-    from factorminer.core.expression_tree import _ema, _wma, _rolling_apply  # type: ignore[attr-defined]
-    from factorminer.core.expression_tree import _ts_rank, _ts_mean, _ts_std  # type: ignore[attr-defined]
+    from factorminer.core.expression_tree import (  # type: ignore[attr-defined]  # type: ignore[attr-defined]
+        _ema,
+        _rolling_apply,
+        _ts_mean,
+        _ts_rank,
+        _ts_std,
+    )
 
-    candidates: Dict[str, np.ndarray] = {}
+    candidates: dict[str, np.ndarray] = {}
 
     close = data.get("$close")
     volume = data.get("$volume")
     returns = data.get("$returns")
     high = data.get("$high")
     low = data.get("$low")
-    amt = data.get("$amt")
+    data.get("$amt")
     vwap = data.get("$vwap")
 
-    def _safe_add(name: str, arr: Optional[np.ndarray]) -> None:
+    def _safe_add(name: str, arr: np.ndarray | None) -> None:
         if arr is not None and isinstance(arr, np.ndarray):
             candidates[name] = arr
 
@@ -733,9 +738,9 @@ def _build_symbolic_candidates(data: Dict[str, np.ndarray]) -> Dict[str, np.ndar
 
 
 def distill_to_symbolic(
-    leaf: "NeuralLeaf",
-    data: Dict[str, np.ndarray],
-    feature_order: Optional[List[str]] = None,
+    leaf: NeuralLeaf,
+    data: dict[str, np.ndarray],
+    feature_order: list[str] | None = None,
 ) -> DistillationResult:
     """Find the symbolic formula that best approximates the neural leaf.
 
@@ -763,7 +768,7 @@ def distill_to_symbolic(
     # Build feature tensor (M, T, F)
     ref_arr = next(iter(data.values()))
     M, T = ref_arr.shape
-    F = len(feature_order)
+    len(feature_order)
     features_3d = np.stack(
         [data.get(f, np.full((M, T), np.nan)) for f in feature_order],
         axis=-1,
@@ -778,7 +783,7 @@ def distill_to_symbolic(
     # Build symbolic candidates
     candidates = _build_symbolic_candidates(data)
 
-    scores: Dict[str, float] = {}
+    scores: dict[str, float] = {}
     for formula, arr in candidates.items():
         r = _pearson_corr(leaf_flat, arr.ravel())
         scores[formula] = abs(r)  # rank by |r|
@@ -845,9 +850,9 @@ class NeuralLeafNode:
 
     def __init__(
         self,
-        leaf: "NeuralLeaf",
-        feature_order: Optional[List[str]] = None,
-        distilled_formula: Optional[str] = None,
+        leaf: NeuralLeaf,
+        feature_order: list[str] | None = None,
+        distilled_formula: str | None = None,
     ) -> None:
         self._leaf = leaf
         self._feature_order = feature_order or _DEFAULT_FEATURES
@@ -857,7 +862,7 @@ class NeuralLeafNode:
     # Node interface
     # ------------------------------------------------------------------
 
-    def evaluate(self, data: Dict[str, np.ndarray]) -> np.ndarray:
+    def evaluate(self, data: dict[str, np.ndarray]) -> np.ndarray:
         """Compute the leaf signal on market data.
 
         Parameters
@@ -871,7 +876,7 @@ class NeuralLeafNode:
         """
         ref = next(iter(data.values()))
         M, T = ref.shape
-        F = len(self._feature_order)
+        len(self._feature_order)
         features_3d = np.stack(
             [data.get(f, np.full((M, T), np.nan)) for f in self._feature_order],
             axis=-1,
@@ -890,14 +895,14 @@ class NeuralLeafNode:
     def size(self) -> int:
         return 1
 
-    def clone(self) -> "NeuralLeafNode":
+    def clone(self) -> NeuralLeafNode:
         return NeuralLeafNode(
             leaf=self._leaf,  # shared reference — leaf weights are shared
             feature_order=list(self._feature_order),
             distilled_formula=self._distilled_formula,
         )
 
-    def leaf_features(self) -> List[str]:
+    def leaf_features(self) -> list[str]:
         return sorted(self._feature_order)
 
     def __repr__(self) -> str:
@@ -908,7 +913,7 @@ class NeuralLeafNode:
     # ------------------------------------------------------------------
 
     @property
-    def neural_leaf(self) -> "NeuralLeaf":
+    def neural_leaf(self) -> NeuralLeaf:
         return self._leaf
 
     def set_distilled_formula(self, formula: str) -> None:
@@ -949,7 +954,7 @@ class SymbolicShell:
         self._node = leaf_node
         self._is_distilled = False
 
-    def __call__(self, data: Dict[str, np.ndarray]) -> np.ndarray:
+    def __call__(self, data: dict[str, np.ndarray]) -> np.ndarray:
         """Evaluate the operator on market data."""
         return self._node.evaluate(data)
 
@@ -964,8 +969,8 @@ class SymbolicShell:
 
     def distill(
         self,
-        data: Dict[str, np.ndarray],
-        feature_order: Optional[List[str]] = None,
+        data: dict[str, np.ndarray],
+        feature_order: list[str] | None = None,
     ) -> DistillationResult:
         """Run distillation and return the result without modifying state."""
         return distill_to_symbolic(
@@ -1023,23 +1028,23 @@ class NeuralLeafRegistry:
         leaf = registry.get("NeuralMomentum")
     """
 
-    def __init__(self, storage_dir: Optional[str] = None) -> None:
+    def __init__(self, storage_dir: str | None = None) -> None:
         import tempfile
 
         self._storage_dir = storage_dir or os.path.join(tempfile.gettempdir(), "neural_leaves")
         os.makedirs(self._storage_dir, exist_ok=True)
-        self._leaves: Dict[str, NeuralLeaf] = {}
+        self._leaves: dict[str, NeuralLeaf] = {}
 
     # ------------------------------------------------------------------
     # CRUD
     # ------------------------------------------------------------------
 
-    def register(self, name: str, leaf: "NeuralLeaf") -> None:
+    def register(self, name: str, leaf: NeuralLeaf) -> None:
         """Register a trained leaf under *name*."""
         self._leaves[name] = leaf
         logger.info("NeuralLeafRegistry: registered '%s'.", name)
 
-    def get(self, name: str) -> Optional["NeuralLeaf"]:
+    def get(self, name: str) -> NeuralLeaf | None:
         """Return the leaf registered under *name*, or None."""
         return self._leaves.get(name)
 
@@ -1047,7 +1052,7 @@ class NeuralLeafRegistry:
         """Remove a leaf from the in-memory registry."""
         self._leaves.pop(name, None)
 
-    def available(self) -> List[str]:
+    def available(self) -> list[str]:
         """Return sorted list of registered leaf names."""
         return sorted(self._leaves.keys())
 
@@ -1093,7 +1098,7 @@ class NeuralLeafRegistry:
         logger.info("Saved NeuralLeaf '%s' to %s", name, path)
         return path
 
-    def load(self, name: str, path: Optional[str] = None) -> "NeuralLeaf":
+    def load(self, name: str, path: str | None = None) -> NeuralLeaf:
         """Load a leaf from disk and register it.
 
         Parameters
@@ -1125,11 +1130,11 @@ class NeuralLeafRegistry:
         logger.info("Loaded NeuralLeaf '%s' from %s", name, file_path)
         return leaf
 
-    def save_all(self) -> Dict[str, str]:
+    def save_all(self) -> dict[str, str]:
         """Save all registered leaves.  Returns name -> path mapping."""
         return {name: self.save(name) for name in self._leaves}
 
-    def load_all(self) -> List[str]:
+    def load_all(self) -> list[str]:
         """Load all .pt files from the storage directory.  Returns loaded names."""
         loaded = []
         for fname in os.listdir(self._storage_dir):
@@ -1205,12 +1210,12 @@ class NeuralOperatorIntegration:
 
     def __init__(
         self,
-        registry: Optional[NeuralLeafRegistry] = None,
-        feature_order: Optional[List[str]] = None,
+        registry: NeuralLeafRegistry | None = None,
+        feature_order: list[str] | None = None,
     ) -> None:
         self._registry = registry or NeuralLeafRegistry()
         self._feature_order = feature_order or _DEFAULT_FEATURES
-        self._distillation_results: Dict[str, DistillationResult] = {}
+        self._distillation_results: dict[str, DistillationResult] = {}
 
     # ------------------------------------------------------------------
     # Training
@@ -1220,8 +1225,8 @@ class NeuralOperatorIntegration:
         self,
         features: np.ndarray,
         returns: np.ndarray,
-        leaf_configs: List[NeuralLeafConfig],
-        device: Optional["torch.device"] = None,
+        leaf_configs: list[NeuralLeafConfig],
+        device: torch.device | None = None,
         verbose: bool = False,
     ) -> None:
         """Train all listed neural leaves and register them.
@@ -1262,8 +1267,8 @@ class NeuralOperatorIntegration:
 
     def distill_all(
         self,
-        data: Dict[str, np.ndarray],
-    ) -> Dict[str, str]:
+        data: dict[str, np.ndarray],
+    ) -> dict[str, str]:
         """Distill all registered leaves and return name -> best formula.
 
         Parameters
@@ -1276,7 +1281,7 @@ class NeuralOperatorIntegration:
         dict
             Maps leaf name to its best symbolic approximation formula string.
         """
-        results: Dict[str, str] = {}
+        results: dict[str, str] = {}
         for name in self._registry.available():
             leaf = self._registry.get(name)
             if leaf is None:
@@ -1299,19 +1304,19 @@ class NeuralOperatorIntegration:
     # Registry accessors
     # ------------------------------------------------------------------
 
-    def get_available_leaves(self) -> List[str]:
+    def get_available_leaves(self) -> list[str]:
         """Return names of all registered leaves."""
         return self._registry.available()
 
-    def get_leaf(self, name: str) -> Optional["NeuralLeaf"]:
+    def get_leaf(self, name: str) -> NeuralLeaf | None:
         """Return the NeuralLeaf registered under *name*, or None."""
         return self._registry.get(name)
 
-    def get_distillation_result(self, name: str) -> Optional[DistillationResult]:
+    def get_distillation_result(self, name: str) -> DistillationResult | None:
         """Return the stored DistillationResult for *name*, or None."""
         return self._distillation_results.get(name)
 
-    def as_node(self, name: str) -> Optional[NeuralLeafNode]:
+    def as_node(self, name: str) -> NeuralLeafNode | None:
         """Return a NeuralLeafNode ready for use in an expression tree.
 
         If distillation has been run, the formula string is automatically set
@@ -1337,7 +1342,7 @@ class NeuralOperatorIntegration:
             distilled_formula=distilled_formula,
         )
 
-    def as_shell(self, name: str) -> Optional[SymbolicShell]:
+    def as_shell(self, name: str) -> SymbolicShell | None:
         """Return a SymbolicShell for *name*, or None if unknown."""
         node = self.as_node(name)
         if node is None:
@@ -1388,7 +1393,7 @@ class NeuralOperatorIntegration:
 # ===========================================================================
 
 # Global singleton, populated lazily when neural leaves are trained/loaded.
-_GLOBAL_REGISTRY: Optional[NeuralLeafRegistry] = None
+_GLOBAL_REGISTRY: NeuralLeafRegistry | None = None
 
 
 def get_global_neural_registry() -> NeuralLeafRegistry:
@@ -1415,8 +1420,8 @@ def register_neural_leaves_in_operator_registry() -> None:
     evaluation loops.
     """
     try:
-        from factorminer.operators.registry import OPERATOR_REGISTRY  # type: ignore[attr-defined]
         from factorminer.core.types import OperatorSpec, OperatorType, SignatureType
+        from factorminer.operators.registry import OPERATOR_REGISTRY  # type: ignore[attr-defined]
     except ImportError:
         logger.debug("register_neural_leaves_in_operator_registry: operator registry not available.")
         return
@@ -1434,10 +1439,10 @@ def register_neural_leaves_in_operator_registry() -> None:
 
         # Capture leaf in closure
         def _make_np_fn(captured_leaf, captured_order):
-            def _np_fn(data: Dict[str, np.ndarray]) -> np.ndarray:
+            def _np_fn(data: dict[str, np.ndarray]) -> np.ndarray:
                 ref = next(iter(data.values()))
                 M, T = ref.shape
-                F = len(captured_order)
+                len(captured_order)
                 features_3d = np.stack(
                     [data.get(f, np.full((M, T), np.nan)) for f in captured_order],
                     axis=-1,
@@ -1509,7 +1514,7 @@ def build_default_neural_leaves(
     # Pivot to (M, T) arrays
     df_sorted = df.sort_values(["asset_id", "datetime"])
     assets = sorted(df_sorted["asset_id"].unique())
-    M = len(assets)
+    len(assets)
     T = df_sorted.groupby("asset_id").size().min()
 
     def _pivot(col: str) -> np.ndarray:
@@ -1529,7 +1534,7 @@ def build_default_neural_leaves(
     ret[:, 1:] = close[:, 1:] / np.where(close[:, :-1] > 1e-10, close[:, :-1], np.nan) - 1.0
     vwap = (high + low + close) / 3.0
 
-    data_dict: Dict[str, np.ndarray] = {
+    data_dict: dict[str, np.ndarray] = {
         "$open": open_,
         "$high": high,
         "$low": low,

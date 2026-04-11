@@ -6,8 +6,8 @@ import numpy as np
 
 from factorminer.architecture import (
     DatasetContract,
-    FamilyAwareMemoryPolicy,
     FactorFamilyDiscovery,
+    FamilyAwareMemoryPolicy,
     KGMemoryPolicy,
     LibraryGeometry,
     NoMemoryPolicy,

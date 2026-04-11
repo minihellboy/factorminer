@@ -1414,7 +1414,8 @@ def _runtime_strategy_backends(
     try:
         from factorminer.operators import torch_available
     except Exception:  # pragma: no cover - optional dependency
-        torch_available = lambda: False
+        def torch_available() -> bool:
+            return False
 
     available = {
         "numpy": True,

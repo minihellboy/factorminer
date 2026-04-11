@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, field
-from typing import Dict, Iterable, Sequence
 
 import numpy as np
 
@@ -39,12 +39,12 @@ class FactorScoreVector:
     cross_horizon_consistency: float
     average_turnover: float
     geometry: FactorGeometryDiagnostics
-    per_horizon_ic_mean: Dict[str, float] = field(default_factory=dict)
-    per_horizon_icir: Dict[str, float] = field(default_factory=dict)
-    per_horizon_shrunk_ic: Dict[str, float] = field(default_factory=dict)
-    per_horizon_se: Dict[str, float] = field(default_factory=dict)
-    per_horizon_lcb: Dict[str, float] = field(default_factory=dict)
-    per_horizon_turnover: Dict[str, float] = field(default_factory=dict)
+    per_horizon_ic_mean: dict[str, float] = field(default_factory=dict)
+    per_horizon_icir: dict[str, float] = field(default_factory=dict)
+    per_horizon_shrunk_ic: dict[str, float] = field(default_factory=dict)
+    per_horizon_se: dict[str, float] = field(default_factory=dict)
+    per_horizon_lcb: dict[str, float] = field(default_factory=dict)
+    per_horizon_turnover: dict[str, float] = field(default_factory=dict)
     pareto_dominant: bool = True
 
     def to_dict(self) -> dict:
@@ -118,8 +118,8 @@ def compute_factor_geometry(
 
 
 def build_score_vector(
-    target_stats: Dict[str, dict],
-    target_horizons: Dict[str, int],
+    target_stats: dict[str, dict],
+    target_horizons: dict[str, int],
     research_cfg,
     geometry: FactorGeometryDiagnostics,
 ) -> FactorScoreVector:
@@ -131,12 +131,12 @@ def build_score_vector(
     uncertainty_cfg = research_cfg.uncertainty
     admission_cfg = research_cfg.admission
 
-    per_horizon_ic_mean: Dict[str, float] = {}
-    per_horizon_icir: Dict[str, float] = {}
-    per_horizon_shrunk_ic: Dict[str, float] = {}
-    per_horizon_se: Dict[str, float] = {}
-    per_horizon_lcb: Dict[str, float] = {}
-    per_horizon_turnover: Dict[str, float] = {}
+    per_horizon_ic_mean: dict[str, float] = {}
+    per_horizon_icir: dict[str, float] = {}
+    per_horizon_shrunk_ic: dict[str, float] = {}
+    per_horizon_se: dict[str, float] = {}
+    per_horizon_lcb: dict[str, float] = {}
+    per_horizon_turnover: dict[str, float] = {}
 
     for target_name, stats in target_stats.items():
         ic_series = np.asarray(stats.get("ic_series", np.array([])), dtype=np.float64)
@@ -229,10 +229,10 @@ def passes_research_admission(
 
 
 def run_research_model_suite(
-    factor_signals: Dict[int, np.ndarray],
+    factor_signals: dict[int, np.ndarray],
     returns: np.ndarray,
     research_cfg,
-) -> Dict[str, dict]:
+) -> dict[str, dict]:
     """Fit research-mode models on rolling windows and report net IR/stability."""
     if not factor_signals:
         return {}
@@ -248,7 +248,7 @@ def run_research_model_suite(
     if not splits:
         return {}
 
-    reports: Dict[str, dict] = {}
+    reports: dict[str, dict] = {}
     for model_name in research_cfg.selection.models:
         fold_reports = []
         selected_sets = []
@@ -318,9 +318,9 @@ def run_research_model_suite(
 def _fit_research_model(
     selector: FactorSelector,
     model_name: str,
-    factor_signals: Dict[int, np.ndarray],
+    factor_signals: dict[int, np.ndarray],
     returns: np.ndarray,
-) -> tuple[list[int], Dict[int, float]]:
+) -> tuple[list[int], dict[int, float]]:
     if model_name == "ridge":
         from sklearn.linear_model import RidgeCV
 
@@ -364,8 +364,8 @@ def _fit_research_model(
 
 
 def _weighted_composite(
-    factor_signals: Dict[int, np.ndarray],
-    weights: Dict[int, float],
+    factor_signals: dict[int, np.ndarray],
+    weights: dict[int, float],
 ) -> np.ndarray:
     selected_signals = {fid: factor_signals[fid] for fid in weights if fid in factor_signals}
     if not selected_signals:
@@ -403,8 +403,8 @@ def _bootstrap_standard_error(ic_series: np.ndarray, uncertainty_cfg) -> float:
 
 def _normalized_weights(
     target_names: Iterable[str],
-    explicit_weights: Dict[str, float],
-) -> Dict[str, float]:
+    explicit_weights: dict[str, float],
+) -> dict[str, float]:
     target_names = list(target_names)
     if not target_names:
         return {}
@@ -417,7 +417,7 @@ def _normalized_weights(
     return {name: equal for name in target_names}
 
 
-def _decay_slope(target_horizons: Dict[str, int], shrunk_ic: Dict[str, float]) -> float:
+def _decay_slope(target_horizons: dict[str, int], shrunk_ic: dict[str, float]) -> float:
     aligned = [
         (target_horizons[name], value)
         for name, value in shrunk_ic.items()
@@ -433,7 +433,7 @@ def _decay_slope(target_horizons: Dict[str, int], shrunk_ic: Dict[str, float]) -
     return float(slope)
 
 
-def _cross_horizon_consistency(per_horizon_ic_mean: Dict[str, float]) -> float:
+def _cross_horizon_consistency(per_horizon_ic_mean: dict[str, float]) -> float:
     values = [value for value in per_horizon_ic_mean.values() if abs(value) > 1e-12]
     if not values:
         return 0.0

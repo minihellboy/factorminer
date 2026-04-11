@@ -31,5 +31,17 @@ jobs:
       - name: Sync dependencies
         run: uv sync --group dev --extra llm
 
+      - name: Run Ruff lint report
+        run: uv run ruff check . --output-format=github
+
+      - name: Check import boundaries
+        run: |
+          uv run python -c "import factorminer.evaluation.runtime as runtime; print(runtime.SignalComputationError.__name__)"
+          uv run factorminer --help
+
       - name: Run test suite
         run: uv run pytest -q factorminer/tests
+
+      - name: Run CLI smoke test
+        run: |
+          uv run factorminer --cpu -o /tmp/factorminer-ci-smoke mine --mock -n 1 -b 3 -t 1

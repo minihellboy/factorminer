@@ -7,10 +7,10 @@ import json
 import numpy as np
 
 from factorminer.agent.llm_interface import MockProvider
-from factorminer.core.factor_library import Factor
-from factorminer.core.library_io import load_library
 from factorminer.core.config import MiningConfig
+from factorminer.core.factor_library import Factor
 from factorminer.core.helix_loop import HelixLoop
+from factorminer.core.library_io import load_library
 from factorminer.core.ralph_loop import EvaluationResult
 from factorminer.core.session import MiningSession
 

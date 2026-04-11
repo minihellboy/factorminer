@@ -7,7 +7,6 @@ strategies for choosing an optimal subset of factors from the mined library.
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from scipy.stats import spearmanr
@@ -28,10 +27,10 @@ class FactorSelector:
 
     def lasso_selection(
         self,
-        factor_signals: Dict[int, np.ndarray],
+        factor_signals: dict[int, np.ndarray],
         returns: np.ndarray,
-        alpha: Optional[float] = None,
-    ) -> List[Tuple[int, float]]:
+        alpha: float | None = None,
+    ) -> list[tuple[int, float]]:
         """Lasso: L1-regularized linear regression for factor selection.
 
         Paper: Only 8 factors capture 95% of IC improvement.
@@ -66,7 +65,7 @@ class FactorSelector:
         lasso = Lasso(alpha=alpha, max_iter=10000)
         lasso.fit(X, y)
 
-        results: List[Tuple[int, float]] = []
+        results: list[tuple[int, float]] = []
         for idx, coef in enumerate(lasso.coef_):
             if abs(coef) > 1e-10:
                 results.append((ids[idx], float(coef)))
@@ -80,10 +79,10 @@ class FactorSelector:
 
     def forward_stepwise(
         self,
-        factor_signals: Dict[int, np.ndarray],
+        factor_signals: dict[int, np.ndarray],
         returns: np.ndarray,
         max_factors: int = 20,
-    ) -> List[Tuple[int, float]]:
+    ) -> list[tuple[int, float]]:
         """Forward Stepwise: greedy selection maximizing combined ICIR.
 
         Paper: 18 factors, ICIR=1.38.
@@ -109,12 +108,12 @@ class FactorSelector:
             return []
 
         remaining = set(factor_signals.keys())
-        selected: List[int] = []
-        result: List[Tuple[int, float]] = []
+        selected: list[int] = []
+        result: list[tuple[int, float]] = []
         current_icir = 0.0
 
         for _ in range(min(max_factors, len(factor_signals))):
-            best_fid: Optional[int] = None
+            best_fid: int | None = None
             best_icir = current_icir
             best_delta = 0.0
 
@@ -147,9 +146,9 @@ class FactorSelector:
 
     def xgboost_selection(
         self,
-        factor_signals: Dict[int, np.ndarray],
+        factor_signals: dict[int, np.ndarray],
         returns: np.ndarray,
-    ) -> List[Tuple[int, float]]:
+    ) -> list[tuple[int, float]]:
         """XGBoost: gradient boosting for nonlinear factor interactions.
 
         Paper: Best performance with ICIR=1.49, 92.6% win rate.
@@ -186,7 +185,7 @@ class FactorSelector:
         model.fit(X, y)
 
         importance = model.feature_importances_  # gain-based by default
-        results: List[Tuple[int, float]] = [
+        results: list[tuple[int, float]] = [
             (ids[i], float(importance[i])) for i in range(len(ids))
         ]
         results.sort(key=lambda x: x[1], reverse=True)
@@ -198,9 +197,9 @@ class FactorSelector:
 
     @staticmethod
     def _prepare_panel(
-        factor_signals: Dict[int, np.ndarray],
+        factor_signals: dict[int, np.ndarray],
         returns: np.ndarray,
-    ) -> Tuple[List[int], np.ndarray, np.ndarray]:
+    ) -> tuple[list[int], np.ndarray, np.ndarray]:
         """Flatten panel data to (samples, features) for sklearn-style models.
 
         Stacks all (T, N) arrays into (T*N, K) feature matrix and (T*N,)
@@ -218,7 +217,7 @@ class FactorSelector:
 
         ids = sorted(factor_signals.keys())
         T, N = next(iter(factor_signals.values())).shape
-        K = len(ids)
+        len(ids)
 
         # Build (T*N, K) matrix
         X = np.column_stack([
@@ -232,8 +231,8 @@ class FactorSelector:
 
     @staticmethod
     def _composite_icir(
-        factor_signals: Dict[int, np.ndarray],
-        selected_ids: List[int],
+        factor_signals: dict[int, np.ndarray],
+        selected_ids: list[int],
         returns: np.ndarray,
     ) -> float:
         """Compute ICIR of the equal-weight composite of selected factors.

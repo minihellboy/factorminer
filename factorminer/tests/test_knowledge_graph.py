@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
-
 from factorminer.memory.knowledge_graph import (
-    EdgeType,
     FactorKnowledgeGraph,
     FactorNode,
 )
-
 
 # -----------------------------------------------------------------------
 # Basic node and edge operations

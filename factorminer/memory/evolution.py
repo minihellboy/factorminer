@@ -9,27 +9,24 @@ Consolidates newly formed experience into the existing memory:
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
-
 from factorminer.memory.memory_store import (
     ExperienceMemory,
     ForbiddenDirection,
-    MiningState,
     StrategicInsight,
     SuccessPattern,
 )
 
 
 def _merge_success_patterns(
-    existing: List[SuccessPattern],
-    new: List[SuccessPattern],
-) -> List[SuccessPattern]:
+    existing: list[SuccessPattern],
+    new: list[SuccessPattern],
+) -> list[SuccessPattern]:
     """Merge new success patterns into existing ones.
 
     Patterns with the same name are consolidated by combining examples
     and updating occurrence counts. Novel patterns are appended.
     """
-    merged: Dict[str, SuccessPattern] = {}
+    merged: dict[str, SuccessPattern] = {}
 
     for pat in existing:
         merged[pat.name] = SuccessPattern(
@@ -76,11 +73,11 @@ def _merge_success_patterns(
 
 
 def _merge_forbidden_directions(
-    existing: List[ForbiddenDirection],
-    new: List[ForbiddenDirection],
-) -> List[ForbiddenDirection]:
+    existing: list[ForbiddenDirection],
+    new: list[ForbiddenDirection],
+) -> list[ForbiddenDirection]:
     """Merge new forbidden directions into existing ones."""
-    merged: Dict[str, ForbiddenDirection] = {}
+    merged: dict[str, ForbiddenDirection] = {}
 
     for fd in existing:
         merged[fd.name] = ForbiddenDirection(
@@ -129,14 +126,14 @@ def _merge_forbidden_directions(
 
 
 def _merge_insights(
-    existing: List[StrategicInsight],
-    new: List[StrategicInsight],
-) -> List[StrategicInsight]:
+    existing: list[StrategicInsight],
+    new: list[StrategicInsight],
+) -> list[StrategicInsight]:
     """Merge new insights into existing, deduplicating similar ones.
 
     Insights with substantially overlapping text are consolidated.
     """
-    merged: List[StrategicInsight] = list(existing)
+    merged: list[StrategicInsight] = list(existing)
 
     for new_insight in new:
         is_duplicate = False
@@ -162,24 +159,24 @@ def _merge_insights(
 
 
 def _reclassify_patterns(
-    success_patterns: List[SuccessPattern],
-    forbidden_directions: List[ForbiddenDirection],
+    success_patterns: list[SuccessPattern],
+    forbidden_directions: list[ForbiddenDirection],
     failure_threshold: int = 5,
-) -> tuple[List[SuccessPattern], List[ForbiddenDirection]]:
+) -> tuple[list[SuccessPattern], list[ForbiddenDirection]]:
     """Reclassify patterns that have changed behavior.
 
     If a success pattern consistently appears in forbidden directions
     (e.g., VWAP variant with rho=0.82), move it from success to forbidden.
     """
-    forbidden_names = {fd.name for fd in forbidden_directions}
+    {fd.name for fd in forbidden_directions}
 
-    remaining_success: List[SuccessPattern] = []
-    new_forbidden: List[ForbiddenDirection] = []
+    remaining_success: list[SuccessPattern] = []
+    new_forbidden: list[ForbiddenDirection] = []
 
     for pat in success_patterns:
         # Check if this pattern name overlaps with forbidden directions
         should_reclassify = False
-        matching_forbidden: Optional[ForbiddenDirection] = None
+        matching_forbidden: ForbiddenDirection | None = None
 
         for fd in forbidden_directions:
             # Check for name overlap or keyword overlap
@@ -222,11 +219,11 @@ def _names_overlap(name_a: str, name_b: str) -> bool:
 
 
 def _prune_low_utility(
-    success_patterns: List[SuccessPattern],
-    forbidden_directions: List[ForbiddenDirection],
-    insights: List[StrategicInsight],
+    success_patterns: list[SuccessPattern],
+    forbidden_directions: list[ForbiddenDirection],
+    insights: list[StrategicInsight],
     min_occurrences: int = 1,
-) -> tuple[List[SuccessPattern], List[ForbiddenDirection], List[StrategicInsight]]:
+) -> tuple[list[SuccessPattern], list[ForbiddenDirection], list[StrategicInsight]]:
     """Remove entries with too few occurrences to be reliable.
 
     Initial knowledge base entries (occurrence_count=0) are preserved.
@@ -244,13 +241,13 @@ def _prune_low_utility(
 
 
 def _cap_memory_size(
-    success_patterns: List[SuccessPattern],
-    forbidden_directions: List[ForbiddenDirection],
-    insights: List[StrategicInsight],
+    success_patterns: list[SuccessPattern],
+    forbidden_directions: list[ForbiddenDirection],
+    insights: list[StrategicInsight],
     max_success: int = 50,
     max_forbidden: int = 100,
     max_insights: int = 30,
-) -> tuple[List[SuccessPattern], List[ForbiddenDirection], List[StrategicInsight]]:
+) -> tuple[list[SuccessPattern], list[ForbiddenDirection], list[StrategicInsight]]:
     """Enforce maximum memory sizes by keeping the most useful entries."""
     # Sort success patterns by occurrence count (most useful first)
     if len(success_patterns) > max_success:
@@ -350,10 +347,10 @@ def evolve_memory(
 # ---------------------------------------------------------------------------
 
 def apply_confidence_decay(
-    memory: "ExperienceMemory",
+    memory: ExperienceMemory,
     decay_factor: float = 0.99,
     min_confidence: float = 0.05,
-) -> "ExperienceMemory":
+) -> ExperienceMemory:
     """Return new ExperienceMemory with decayed pattern confidences.
 
     Seed patterns (occurrence_count == 0) are immune to decay.
@@ -392,11 +389,11 @@ def apply_confidence_decay(
 
 
 def bump_pattern_confidence(
-    memory: "ExperienceMemory",
+    memory: ExperienceMemory,
     keywords: list,
     boost: float = 0.05,
     max_confidence: float = 1.0,
-) -> "ExperienceMemory":
+) -> ExperienceMemory:
     """Return new ExperienceMemory with confidence boosted for matching patterns.
 
     Patterns whose description or template contain any of the keywords receive
@@ -438,11 +435,11 @@ def bump_pattern_confidence(
 
 
 def penalise_pattern_confidence(
-    memory: "ExperienceMemory",
+    memory: ExperienceMemory,
     keywords: list,
     penalty: float = 0.15,
     min_confidence: float = 0.05,
-) -> "ExperienceMemory":
+) -> ExperienceMemory:
     """Return new ExperienceMemory with confidence penalised for matching patterns.
 
     Parameters

@@ -1,0 +1,43 @@
+{
+  "correlation_threshold": 0.5,
+  "ic_threshold": 0.04,
+  "dependence_metric": "spearman",
+  "next_id": 3,
+  "factors": [
+    {
+      "id": 1,
+      "name": "alpha_close",
+      "formula": "Neg($close)",
+      "category": "Momentum",
+      "ic_mean": 0.12,
+      "icir": 1.4,
+      "ic_win_rate": 0.6,
+      "max_correlation": 0.18,
+      "batch_number": 1,
+      "admission_date": "2026-04-10 10:00:00",
+      "research_metrics": {
+        "family": "mean_reversion"
+      },
+      "provenance": {
+        "loop_type": "ralph",
+        "family_hint": "mean_reversion"
+      }
+    },
+    {
+      "id": 2,
+      "name": "alpha_volume",
+      "formula": "Div($volume, $amt)",
+      "category": "Volume",
+      "ic_mean": 0.07,
+      "icir": 0.9,
+      "ic_win_rate": 0.55,
+      "max_correlation": 0.21,
+      "batch_number": 2,
+      "admission_date": "2026-04-10 10:05:00",
+      "provenance": {
+        "loop_type": "helix",
+        "group": "volume_family"
+      }
+    }
+  ]
+}

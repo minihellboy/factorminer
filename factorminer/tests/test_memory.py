@@ -6,10 +6,10 @@ import json
 import tempfile
 from pathlib import Path
 
-import pytest
-
-from factorminer.memory.experience_memory import ExperienceMemoryManager
 from factorminer.memory.embeddings import FormulaEmbedder
+from factorminer.memory.evolution import evolve_memory
+from factorminer.memory.experience_memory import ExperienceMemoryManager
+from factorminer.memory.formation import form_memory
 from factorminer.memory.kg_retrieval import retrieve_memory_enhanced
 from factorminer.memory.knowledge_graph import FactorKnowledgeGraph, FactorNode
 from factorminer.memory.memory_store import (
@@ -19,10 +19,6 @@ from factorminer.memory.memory_store import (
     StrategicInsight,
     SuccessPattern,
 )
-from factorminer.memory.formation import form_memory
-from factorminer.memory.evolution import evolve_memory
-from factorminer.memory.retrieval import retrieve_memory
-
 
 # ---------------------------------------------------------------------------
 # Initialization

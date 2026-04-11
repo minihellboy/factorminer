@@ -6,6 +6,34 @@ from factorminer.evaluation.admission import (
     check_admission,
     check_replacement,
 )
+from factorminer.evaluation.backtest import (
+    DrawdownResult,
+    SplitWindow,
+    compute_calmar_ratio,
+    compute_cumulative_ic,
+    compute_drawdown,
+    compute_ic_series,
+    compute_ic_stats,
+    compute_rolling_ic,
+    compute_sharpe_ratio,
+    factor_return_attribution,
+    rolling_splits,
+    train_test_split,
+)
+from factorminer.evaluation.capacity import (
+    CapacityConfig,
+    CapacityEstimate,
+    CapacityEstimator,
+    MarketImpactEstimate,
+    MarketImpactModel,
+    NetCostResult,
+)
+from factorminer.evaluation.causal import (
+    CausalConfig,
+    CausalTestResult,
+    CausalValidator,
+)
+from factorminer.evaluation.combination import FactorCombiner
 from factorminer.evaluation.correlation import (
     IncrementalCorrelationMatrix,
     batch_spearman_correlation,
@@ -31,44 +59,24 @@ from factorminer.evaluation.pipeline import (
     ValidationPipeline,
     run_evaluation_pipeline,
 )
-from factorminer.evaluation.combination import FactorCombiner
-from factorminer.evaluation.selection import FactorSelector
 from factorminer.evaluation.portfolio import PortfolioBacktester
-from factorminer.evaluation.backtest import (
-    SplitWindow,
-    DrawdownResult,
-    train_test_split,
-    rolling_splits,
-    compute_ic_series,
-    compute_rolling_ic,
-    compute_cumulative_ic,
-    compute_ic_stats,
-    factor_return_attribution,
-    compute_drawdown,
-    compute_sharpe_ratio,
-    compute_calmar_ratio,
-)
 from factorminer.evaluation.regime import (
     MarketRegime,
-    RegimeConfig,
+    RegimeAwareEvaluator,
     RegimeClassification,
+    RegimeConfig,
     RegimeDetector,
     RegimeICResult,
-    RegimeAwareEvaluator,
 )
-from factorminer.evaluation.capacity import (
-    CapacityConfig,
-    CapacityEstimate,
-    CapacityEstimator,
-    MarketImpactEstimate,
-    MarketImpactModel,
-    NetCostResult,
+from factorminer.evaluation.research import (
+    FactorGeometryDiagnostics,
+    FactorScoreVector,
+    build_score_vector,
+    compute_factor_geometry,
+    passes_research_admission,
+    run_research_model_suite,
 )
-from factorminer.evaluation.causal import (
-    CausalConfig,
-    CausalTestResult,
-    CausalValidator,
-)
+from factorminer.evaluation.selection import FactorSelector
 from factorminer.evaluation.significance import (
     BootstrapCIResult,
     BootstrapICTester,
@@ -78,14 +86,6 @@ from factorminer.evaluation.significance import (
     FDRResult,
     SignificanceConfig,
     check_significance,
-)
-from factorminer.evaluation.research import (
-    FactorGeometryDiagnostics,
-    FactorScoreVector,
-    build_score_vector,
-    compute_factor_geometry,
-    passes_research_admission,
-    run_research_model_suite,
 )
 
 __all__ = [

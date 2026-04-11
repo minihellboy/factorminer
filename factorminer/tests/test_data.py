@@ -9,7 +9,6 @@ import pytest
 from factorminer.data.loader import load_market_data
 from factorminer.data.mock_data import MockConfig, generate_mock_data, generate_with_halts
 
-
 # ---------------------------------------------------------------------------
 # Mock data generation
 # ---------------------------------------------------------------------------
@@ -188,7 +187,7 @@ class TestTensorBuilder:
 
     def test_build_pipeline_import(self):
         """Verify we can import the tensor builder."""
-        from factorminer.data.tensor_builder import TensorConfig, build_tensor
+        from factorminer.data.tensor_builder import TensorConfig
         config = TensorConfig()
         assert config.backend == "numpy"
         assert "close" in config.features

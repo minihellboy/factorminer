@@ -17,26 +17,23 @@ Supports parallel evaluation via a configurable multiprocessing worker pool.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
 from factorminer.evaluation.admission import (
-    AdmissionDecision,
-    check_admission,
     check_replacement,
 )
 from factorminer.evaluation.correlation import (
-    batch_spearman_correlation,
     batch_spearman_pairwise,
     compute_correlation_batch,
 )
 from factorminer.evaluation.metrics import (
     compute_factor_stats,
     compute_ic,
-    compute_ic_mean,
     compute_icir,
 )
 
@@ -53,8 +50,8 @@ class CandidateFactor:
 
     name: str
     formula: str
-    signals: Optional[np.ndarray] = None  # (M, T) computed signals
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    signals: np.ndarray | None = None  # (M, T) computed signals
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -63,16 +60,16 @@ class EvaluationResult:
 
     factor_name: str
     formula: str
-    ic_series: Optional[np.ndarray] = None
+    ic_series: np.ndarray | None = None
     ic_mean: float = 0.0
     icir: float = 0.0
     max_correlation: float = 0.0
-    correlated_with: Optional[str] = None
+    correlated_with: str | None = None
     stage_passed: int = 0  # Highest stage passed (1-4), 0 if failed stage 1
-    rejection_reason: Optional[str] = None
+    rejection_reason: str | None = None
     admitted: bool = False
-    replaced: Optional[str] = None  # ID of replaced factor if replacement occurred
-    full_stats: Optional[dict] = None  # Full stats from stage 4
+    replaced: str | None = None  # ID of replaced factor if replacement occurred
+    full_stats: dict | None = None  # Full stats from stage 4
 
     def to_trajectory_dict(self) -> dict:
         """Convert to a dict compatible with the memory formation trajectory format."""
@@ -98,9 +95,9 @@ class FactorLibraryView:
     decisions without exposing the full library internals.
     """
 
-    factor_ids: List[str]
-    signals: Dict[str, np.ndarray]  # factor_id -> (M, T)
-    ic_map: Dict[str, float]  # factor_id -> absolute IC
+    factor_ids: list[str]
+    signals: dict[str, np.ndarray]  # factor_id -> (M, T)
+    ic_map: dict[str, float]  # factor_id -> absolute IC
 
     @property
     def size(self) -> int:
@@ -161,7 +158,7 @@ class PipelineConfig:
 def _evaluate_single_candidate_ic(
     signals: np.ndarray,
     returns: np.ndarray,
-) -> Tuple[np.ndarray, float, float]:
+) -> tuple[np.ndarray, float, float]:
     """Compute IC series, IC mean, and ICIR for a single candidate.
 
     Designed to be called in a worker process.
@@ -203,8 +200,8 @@ class ValidationPipeline:
         returns: np.ndarray,
         library: FactorLibraryView,
         config: PipelineConfig,
-        compute_signals_fn: Optional[Callable] = None,
-        data: Optional[Dict[str, np.ndarray]] = None,
+        compute_signals_fn: Callable | None = None,
+        data: dict[str, np.ndarray] | None = None,
     ) -> None:
         self.returns = returns
         self.library = library
@@ -224,8 +221,8 @@ class ValidationPipeline:
 
     def evaluate_batch(
         self,
-        candidates: List[CandidateFactor],
-    ) -> List[EvaluationResult]:
+        candidates: list[CandidateFactor],
+    ) -> list[EvaluationResult]:
         """Run the full multi-stage evaluation on a batch of candidates.
 
         Parameters
@@ -245,7 +242,7 @@ class ValidationPipeline:
         # Ensure signals are computed
         self._ensure_signals(candidates)
 
-        results: Dict[str, EvaluationResult] = {}
+        results: dict[str, EvaluationResult] = {}
 
         logger.info(
             "Starting pipeline evaluation for %d candidates", len(candidates)
@@ -309,7 +306,7 @@ class ValidationPipeline:
 
         return list(results.values())
 
-    def _ensure_signals(self, candidates: List[CandidateFactor]) -> None:
+    def _ensure_signals(self, candidates: list[CandidateFactor]) -> None:
         """Compute signals for candidates that don't have them yet."""
         if self.compute_signals_fn is None:
             return
@@ -321,10 +318,10 @@ class ValidationPipeline:
 
     def _stage1_ic_screen(
         self,
-        candidates: List[CandidateFactor],
-    ) -> Tuple[
-        List[CandidateFactor],
-        List[Tuple[CandidateFactor, EvaluationResult]],
+        candidates: list[CandidateFactor],
+    ) -> tuple[
+        list[CandidateFactor],
+        list[tuple[CandidateFactor, EvaluationResult]],
     ]:
         """Stage 1: Fast IC screening on asset subset.
 
@@ -383,11 +380,11 @@ class ValidationPipeline:
 
     def _stage2_correlation_check(
         self,
-        candidates: List[CandidateFactor],
-    ) -> Tuple[
-        List[CandidateFactor],
-        List[Tuple[CandidateFactor, EvaluationResult]],
-        List[Tuple[CandidateFactor, Dict[str, float]]],
+        candidates: list[CandidateFactor],
+    ) -> tuple[
+        list[CandidateFactor],
+        list[tuple[CandidateFactor, EvaluationResult]],
+        list[tuple[CandidateFactor, dict[str, float]]],
     ]:
         """Stage 2: Correlation check against the library.
 
@@ -459,8 +456,8 @@ class ValidationPipeline:
 
     def _stage25_replacement_check(
         self,
-        replacement_candidates: List[Tuple[CandidateFactor, Dict[str, float]]],
-    ) -> List[Tuple[CandidateFactor, EvaluationResult]]:
+        replacement_candidates: list[tuple[CandidateFactor, dict[str, float]]],
+    ) -> list[tuple[CandidateFactor, EvaluationResult]]:
         """Stage 2.5: Check if rejected candidates can replace library members.
 
         For a in C1 \\ C2, check replacement rule (Eq. 11):
@@ -506,10 +503,10 @@ class ValidationPipeline:
 
     def _stage3_batch_dedup(
         self,
-        candidates: List[CandidateFactor],
-    ) -> Tuple[
-        List[CandidateFactor],
-        List[Tuple[CandidateFactor, EvaluationResult]],
+        candidates: list[CandidateFactor],
+    ) -> tuple[
+        list[CandidateFactor],
+        list[tuple[CandidateFactor, EvaluationResult]],
     ]:
         """Stage 3: Intra-batch deduplication.
 
@@ -559,15 +556,14 @@ class ValidationPipeline:
 
     def _stage4_full_validation(
         self,
-        candidates: List[CandidateFactor],
-    ) -> List[Tuple[CandidateFactor, EvaluationResult]]:
+        candidates: list[CandidateFactor],
+    ) -> list[tuple[CandidateFactor, EvaluationResult]]:
         """Stage 4: Full validation on complete asset universe.
 
         Compute comprehensive statistics using all assets and apply
         final quality checks.
         """
         results = []
-        threshold = self.config.ic_threshold
 
         use_parallel = self.config.num_workers > 1 and len(candidates) > 1
 
@@ -629,8 +625,8 @@ class ValidationPipeline:
 
     def _stage4_parallel(
         self,
-        candidates: List[CandidateFactor],
-    ) -> List[Tuple[CandidateFactor, EvaluationResult]]:
+        candidates: list[CandidateFactor],
+    ) -> list[tuple[CandidateFactor, EvaluationResult]]:
         """Run stage 4 in parallel using ProcessPoolExecutor.
 
         Each worker evaluates one candidate independently. Since signals
@@ -704,13 +700,13 @@ class ValidationPipeline:
 # ---------------------------------------------------------------------------
 
 def run_evaluation_pipeline(
-    candidates: List[CandidateFactor],
+    candidates: list[CandidateFactor],
     returns: np.ndarray,
     library: FactorLibraryView,
     config: PipelineConfig,
-    compute_signals_fn: Optional[Callable] = None,
-    data: Optional[Dict[str, np.ndarray]] = None,
-) -> List[EvaluationResult]:
+    compute_signals_fn: Callable | None = None,
+    data: dict[str, np.ndarray] | None = None,
+) -> list[EvaluationResult]:
     """One-shot convenience function to run the full evaluation pipeline.
 
     Parameters

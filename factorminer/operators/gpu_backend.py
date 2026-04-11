@@ -6,8 +6,6 @@ for parallel factor evaluation on CUDA GPUs with automatic CPU fallback.
 
 from __future__ import annotations
 
-from typing import Optional, Union
-
 import numpy as np
 
 try:
@@ -27,22 +25,22 @@ class DeviceManager:
     """Singleton-style helper that picks the best available device."""
 
     def __init__(self) -> None:
-        self._device: Optional["torch.device"] = None
+        self._device: torch.device | None = None
 
     @property
-    def device(self) -> "torch.device":
+    def device(self) -> torch.device:
         if self._device is None:
             self._device = self._select_device()
         return self._device
 
     @device.setter
-    def device(self, dev: Union[str, "torch.device"]) -> None:
+    def device(self, dev: str | torch.device) -> None:
         if not _TORCH_AVAILABLE:
             raise RuntimeError("PyTorch is not installed")
         self._device = torch.device(dev)
 
     @staticmethod
-    def _select_device() -> "torch.device":
+    def _select_device() -> torch.device:
         if not _TORCH_AVAILABLE:
             raise RuntimeError("PyTorch is not installed")
         if torch.cuda.is_available():
@@ -68,9 +66,9 @@ device_manager = DeviceManager()
 
 def to_tensor(
     arr: np.ndarray,
-    device: Optional["torch.device"] = None,
-    dtype: Optional["torch.dtype"] = None,
-) -> "torch.Tensor":
+    device: torch.device | None = None,
+    dtype: torch.dtype | None = None,
+) -> torch.Tensor:
     """Convert a NumPy array to a PyTorch tensor on the target device."""
     if not _TORCH_AVAILABLE:
         raise RuntimeError("PyTorch is not installed")
@@ -79,7 +77,7 @@ def to_tensor(
     return torch.as_tensor(np.ascontiguousarray(arr), dtype=dt, device=torch.device("cpu")).to(dev)
 
 
-def to_numpy(tensor: "torch.Tensor") -> np.ndarray:
+def to_numpy(tensor: torch.Tensor) -> np.ndarray:
     """Convert a PyTorch tensor back to a NumPy array."""
     return tensor.detach().cpu().numpy()
 

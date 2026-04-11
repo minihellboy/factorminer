@@ -1,5 +1,13 @@
 """LLM agent integration for factor generation."""
 
+from factorminer.agent.critic import CriticAgent, CriticScore
+from factorminer.agent.debate import (
+    DebateConfig,
+    DebateGenerator,
+    DebateMemory,
+    DebateOrchestrator,
+    DebateResult,
+)
 from factorminer.agent.factor_generator import FactorGenerator
 from factorminer.agent.llm_interface import (
     AnthropicProvider,
@@ -27,14 +35,6 @@ from factorminer.agent.specialists import (
     SpecialistConfig,
     SpecialistDomainMemory,
     SpecialistPromptBuilder,
-)
-from factorminer.agent.critic import CriticAgent, CriticScore
-from factorminer.agent.debate import (
-    DebateConfig,
-    DebateGenerator,
-    DebateMemory,
-    DebateOrchestrator,
-    DebateResult,
 )
 
 __all__ = [

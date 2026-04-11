@@ -81,7 +81,7 @@ def cs_quantile_np(x: np.ndarray, n_bins: int = 5) -> np.ndarray:
 # PyTorch implementations
 # ===========================================================================
 
-def cs_rank_torch(x: "torch.Tensor") -> "torch.Tensor":
+def cs_rank_torch(x: torch.Tensor) -> torch.Tensor:
     """Cross-sectional percentile rank -- fully vectorized for GPU."""
     M, T = x.shape
     not_nan = ~torch.isnan(x)
@@ -100,7 +100,7 @@ def cs_rank_torch(x: "torch.Tensor") -> "torch.Tensor":
     return result
 
 
-def cs_zscore_torch(x: "torch.Tensor") -> "torch.Tensor":
+def cs_zscore_torch(x: torch.Tensor) -> torch.Tensor:
     m = x.nanmean(dim=0, keepdim=True)
     d = x - m
     not_nan = ~torch.isnan(x)
@@ -111,20 +111,20 @@ def cs_zscore_torch(x: "torch.Tensor") -> "torch.Tensor":
     return result
 
 
-def cs_demean_torch(x: "torch.Tensor") -> "torch.Tensor":
+def cs_demean_torch(x: torch.Tensor) -> torch.Tensor:
     return x - x.nanmean(dim=0, keepdim=True)
 
 
-def cs_scale_torch(x: "torch.Tensor") -> "torch.Tensor":
+def cs_scale_torch(x: torch.Tensor) -> torch.Tensor:
     l1 = x.abs().nansum(dim=0, keepdim=True)
     return torch.where(l1 > 1e-10, x / l1, torch.tensor(float("nan"), device=x.device))
 
 
-def cs_neutralize_torch(x: "torch.Tensor") -> "torch.Tensor":
+def cs_neutralize_torch(x: torch.Tensor) -> torch.Tensor:
     return cs_demean_torch(x)
 
 
-def cs_quantile_torch(x: "torch.Tensor", n_bins: int = 5) -> "torch.Tensor":
+def cs_quantile_torch(x: torch.Tensor, n_bins: int = 5) -> torch.Tensor:
     n_bins = int(n_bins)
     M, T = x.shape
     not_nan = ~torch.isnan(x)

@@ -6,10 +6,11 @@ import json
 import warnings
 from types import SimpleNamespace
 
-from click.testing import CliRunner
 import numpy as np
 import pandas as pd
+from click.testing import CliRunner
 
+from factorminer.benchmark.helix_benchmark import StatisticalComparisonTests, _json_safe
 from factorminer.benchmark.runtime import (
     build_benchmark_library,
     build_benchmark_runtime_contract,
@@ -18,7 +19,6 @@ from factorminer.benchmark.runtime import (
     run_table1_benchmark,
     select_frozen_top_k,
 )
-from factorminer.benchmark.helix_benchmark import StatisticalComparisonTests, _json_safe
 from factorminer.cli import main
 from factorminer.core.factor_library import Factor, FactorLibrary
 from factorminer.core.library_io import save_library

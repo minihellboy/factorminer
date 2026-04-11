@@ -4,20 +4,20 @@ __version__ = "0.1.0"
 __author__ = "FactorMiner Team"
 
 from factorminer.utils.config import (
+    AutoInventorConfig,
+    CapacityConfig,
+    CausalConfig,
     Config,
-    MiningConfig,
-    EvaluationConfig,
     DataConfig,
+    DebateConfig,
+    EvaluationConfig,
+    HelixConfig,
     LLMConfig,
     MemoryConfig,
+    MiningConfig,
     Phase2Config,
-    CausalConfig,
     RegimeConfig,
-    CapacityConfig,
     SignificanceConfig,
-    DebateConfig,
-    AutoInventorConfig,
-    HelixConfig,
     load_config,
 )
 

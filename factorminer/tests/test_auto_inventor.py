@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from factorminer.operators.auto_inventor import (
     OperatorInventor,
     ProposedOperator,
-    _BLOCKED_TOKENS,
 )
 from factorminer.operators.custom import CustomOperatorStore
-
 
 # -----------------------------------------------------------------------
 # _compile_safely: valid numpy code -> callable

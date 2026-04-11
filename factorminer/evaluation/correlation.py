@@ -7,11 +7,8 @@ factor library.  Supports both numpy and optional torch backends.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
-
 import numpy as np
 from scipy.stats import rankdata
-
 
 # ---------------------------------------------------------------------------
 # Batch cross-sectional Spearman rank correlation
@@ -97,7 +94,7 @@ def batch_spearman_correlation(
 
 
 def batch_spearman_pairwise(
-    signals_list: List[np.ndarray],
+    signals_list: list[np.ndarray],
 ) -> np.ndarray:
     """Compute pairwise Spearman correlation matrix for a list of signal arrays.
 
@@ -160,17 +157,17 @@ class IncrementalCorrelationMatrix:
     """
 
     def __init__(self) -> None:
-        self._signals: Dict[str, np.ndarray] = {}
-        self._ranked: Dict[str, np.ndarray] = {}
-        self._corr_cache: Dict[Tuple[str, str], float] = {}
-        self._factor_ids: List[str] = []
+        self._signals: dict[str, np.ndarray] = {}
+        self._ranked: dict[str, np.ndarray] = {}
+        self._corr_cache: dict[tuple[str, str], float] = {}
+        self._factor_ids: list[str] = []
 
     @property
     def size(self) -> int:
         return len(self._factor_ids)
 
     @property
-    def factor_ids(self) -> List[str]:
+    def factor_ids(self) -> list[str]:
         return list(self._factor_ids)
 
     def _compute_pair_corr(self, id_a: str, id_b: str) -> float:
@@ -197,7 +194,7 @@ class IncrementalCorrelationMatrix:
             count += 1
         return corr_sum / count if count > 0 else 0.0
 
-    def add_factor(self, factor_id: str, signals: np.ndarray) -> Dict[str, float]:
+    def add_factor(self, factor_id: str, signals: np.ndarray) -> dict[str, float]:
         """Add a factor and compute its correlation with all existing factors.
 
         Parameters
@@ -213,7 +210,7 @@ class IncrementalCorrelationMatrix:
         self._signals[factor_id] = signals
         self._ranked[factor_id] = _rank_columns(signals)
 
-        correlations: Dict[str, float] = {}
+        correlations: dict[str, float] = {}
         for existing_id in self._factor_ids:
             corr = self._compute_pair_corr(factor_id, existing_id)
             key = (min(factor_id, existing_id), max(factor_id, existing_id))
@@ -246,7 +243,7 @@ class IncrementalCorrelationMatrix:
             return 1.0
         return 0.0
 
-    def get_max_correlation(self, factor_id: str) -> Tuple[float, Optional[str]]:
+    def get_max_correlation(self, factor_id: str) -> tuple[float, str | None]:
         """Get the maximum absolute correlation of a factor with all others.
 
         Returns
@@ -254,7 +251,7 @@ class IncrementalCorrelationMatrix:
         tuple of (max_abs_corr, most_correlated_factor_id)
         """
         max_corr = 0.0
-        max_id: Optional[str] = None
+        max_id: str | None = None
         for other_id in self._factor_ids:
             if other_id == factor_id:
                 continue
@@ -288,7 +285,7 @@ class IncrementalCorrelationMatrix:
 def _try_torch_rank_correlation(
     candidate: np.ndarray,
     library: np.ndarray,
-) -> Optional[np.ndarray]:
+) -> np.ndarray | None:
     """Attempt to compute rank correlations using PyTorch for GPU acceleration.
 
     Falls back to None if torch is not available.
@@ -325,7 +322,7 @@ def _try_torch_rank_correlation(
             continue
 
         # Rank the candidate column
-        c_sorted_idx = c_col[c_valid].argsort().argsort().float() + 1.0
+        c_col[c_valid].argsort().argsort().float() + 1.0
 
         for i in range(N):
             l_col = l_cols[i]

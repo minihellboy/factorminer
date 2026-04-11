@@ -12,9 +12,9 @@ from factorminer.architecture.paper_protocol import PaperProtocol
 from factorminer.evaluation.regime import MarketRegime, RegimeConfig, RegimeDetector
 from factorminer.memory.evolution import evolve_memory
 from factorminer.memory.formation import form_memory
-from factorminer.memory.memory_store import ExperienceMemory
 from factorminer.memory.kg_retrieval import retrieve_memory_enhanced
 from factorminer.memory.knowledge_graph import FactorKnowledgeGraph, FactorNode
+from factorminer.memory.memory_store import ExperienceMemory
 from factorminer.memory.retrieval import retrieve_memory
 
 

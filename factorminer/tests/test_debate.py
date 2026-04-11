@@ -14,7 +14,6 @@ from factorminer.agent.specialists import (
     SpecialistPromptBuilder,
 )
 
-
 # -----------------------------------------------------------------------
 # SpecialistConfig and SpecialistPromptBuilder
 # -----------------------------------------------------------------------

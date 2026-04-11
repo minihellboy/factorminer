@@ -16,7 +16,6 @@ Replacement Rule (Eq. 11):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -24,17 +23,17 @@ class AdmissionDecision:
     """Result of an admission check for a candidate factor."""
 
     admitted: bool
-    replaced_factor_id: Optional[str] = None
-    rejection_reason: Optional[str] = None
+    replaced_factor_id: str | None = None
+    rejection_reason: str | None = None
     max_correlation: float = 0.0
-    correlated_with: Optional[str] = None
+    correlated_with: str | None = None
     decision_type: str = "rejected"  # "admitted", "replacement", "rejected"
 
 
 def check_admission(
     ic_abs: float,
     max_corr: float,
-    correlated_with: Optional[str],
+    correlated_with: str | None,
     ic_threshold: float = 0.04,
     correlation_threshold: float = 0.5,
 ) -> AdmissionDecision:
@@ -89,9 +88,9 @@ def check_admission(
 def check_replacement(
     candidate_ic_abs: float,
     max_corr: float,
-    correlated_with: Optional[str],
-    library_ic_map: Dict[str, float],
-    correlation_map: Dict[str, float],
+    correlated_with: str | None,
+    library_ic_map: dict[str, float],
+    correlation_map: dict[str, float],
     replacement_ic_min: float = 0.10,
     replacement_ic_ratio: float = 1.3,
     correlation_threshold: float = 0.5,
@@ -138,7 +137,7 @@ def check_replacement(
         )
 
     # Find all factors above the correlation threshold
-    conflicting: List[str] = [
+    conflicting: list[str] = [
         fid for fid, corr in correlation_map.items()
         if abs(corr) >= correlation_threshold
     ]
@@ -201,7 +200,7 @@ class StockThresholds:
         ic_win_rate: float = 1.0,
         turnover: float = 0.0,
         monotonicity: float = 1.0,
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """Check if a factor meets all stock-level thresholds.
 
         Returns

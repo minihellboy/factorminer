@@ -11,7 +11,6 @@ them as dense vectors. Supports:
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -46,7 +45,7 @@ except ImportError:
 # Operator name -> natural-language expansion table
 # ---------------------------------------------------------------------------
 
-_OPERATOR_EXPANSIONS: Dict[str, str] = {
+_OPERATOR_EXPANSIONS: dict[str, str] = {
     # Arithmetic
     "Add": "addition",
     "Sub": "subtraction",
@@ -102,7 +101,7 @@ _OPERATOR_EXPANSIONS: Dict[str, str] = {
 }
 
 # Feature name -> natural-language
-_FEATURE_EXPANSIONS: Dict[str, str] = {
+_FEATURE_EXPANSIONS: dict[str, str] = {
     "$close": "close price",
     "$open": "open price",
     "$high": "high price",
@@ -136,17 +135,17 @@ class FormulaEmbedder:
         self._use_faiss = use_faiss and _has_faiss
 
         # Lazy-loaded model / vectoriser
-        self._model: Optional[SentenceTransformer] = None  # type: ignore[type-arg]
-        self._tfidf: Optional[TfidfVectorizer] = None  # type: ignore[type-arg]
+        self._model: SentenceTransformer | None = None  # type: ignore[type-arg]
+        self._tfidf: TfidfVectorizer | None = None  # type: ignore[type-arg]
         self._tfidf_dirty: bool = False  # whether TF-IDF needs refit
 
         # Cache: factor_id -> (embedding, text)
-        self._cache: Dict[str, Tuple[np.ndarray, str]] = {}
+        self._cache: dict[str, tuple[np.ndarray, str]] = {}
         # Ordered list mirroring cache for FAISS index alignment
-        self._ids: List[str] = []
+        self._ids: list[str] = []
 
         # FAISS index (rebuilt lazily)
-        self._index: Optional[object] = None
+        self._index: object | None = None
         self._index_dirty: bool = True
 
     # ------------------------------------------------------------------
@@ -209,7 +208,7 @@ class FormulaEmbedder:
         self,
         formula: str,
         k: int = 5,
-    ) -> List[Tuple[str, float]]:
+    ) -> list[tuple[str, float]]:
         """Find the *k* most similar cached formulas.
 
         Parameters
@@ -238,7 +237,7 @@ class FormulaEmbedder:
         self,
         formula: str,
         threshold: float = 0.92,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Check if *formula* is a near-duplicate of a cached factor.
 
         Returns the factor_id of the most similar cached factor if the
@@ -362,7 +361,7 @@ class FormulaEmbedder:
         self,
         query: np.ndarray,
         k: int,
-    ) -> List[Tuple[str, float]]:
+    ) -> list[tuple[str, float]]:
         if self._index_dirty:
             self._rebuild_index()
         if self._index is None:
@@ -371,7 +370,7 @@ class FormulaEmbedder:
         distances, indices = self._index.search(  # type: ignore[union-attr]
             query.reshape(1, -1), k
         )
-        results: List[Tuple[str, float]] = []
+        results: list[tuple[str, float]] = []
         for dist, idx in zip(distances[0], indices[0]):
             if idx < 0 or idx >= len(self._ids):
                 continue
@@ -382,8 +381,8 @@ class FormulaEmbedder:
         self,
         query: np.ndarray,
         k: int,
-    ) -> List[Tuple[str, float]]:
-        sims: List[Tuple[str, float]] = []
+    ) -> list[tuple[str, float]]:
+        sims: list[tuple[str, float]] = []
         for fid in self._ids:
             vec = self._cache[fid][0]
             sim = float(np.dot(query, vec))

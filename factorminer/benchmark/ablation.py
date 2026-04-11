@@ -24,7 +24,7 @@ import logging
 import tempfile
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -34,9 +34,14 @@ import factorminer.core.ralph_loop as ralph_loop_module
 from factorminer.agent.debate import DebateConfig as RuntimeDebateConfig
 from factorminer.agent.llm_interface import MockProvider
 from factorminer.benchmark.helix_benchmark import AblationResult, MethodResult
+from factorminer.benchmark.runtime import (
+    build_benchmark_library,
+    evaluate_frozen_set,
+    select_frozen_top_k,
+)
 from factorminer.core.config import MiningConfig
-from factorminer.core.helix_loop import HelixLoop
 from factorminer.core.factor_library import FactorLibrary
+from factorminer.core.helix_loop import HelixLoop
 from factorminer.evaluation.capacity import CapacityConfig as RuntimeCapacityConfig
 from factorminer.evaluation.causal import CausalConfig as RuntimeCausalConfig
 from factorminer.evaluation.regime import RegimeConfig as RuntimeRegimeConfig
@@ -47,11 +52,6 @@ from factorminer.evaluation.runtime import (
 )
 from factorminer.evaluation.significance import (
     SignificanceConfig as RuntimeSignificanceConfig,
-)
-from factorminer.benchmark.runtime import (
-    build_benchmark_library,
-    evaluate_frozen_set,
-    select_frozen_top_k,
 )
 from factorminer.memory.memory_store import ExperienceMemory
 
@@ -73,7 +73,7 @@ _FULL_CFG = {
     "memory": True,
 }
 
-ABLATION_CONFIGS: Dict[str, Dict[str, bool]] = {
+ABLATION_CONFIGS: dict[str, dict[str, bool]] = {
     "full": dict(_FULL_CFG),
     "no_debate": {**_FULL_CFG, "debate": False},
     "no_causal": {**_FULL_CFG, "causal": False},
@@ -85,7 +85,7 @@ ABLATION_CONFIGS: Dict[str, Dict[str, bool]] = {
     "no_memory": {**_FULL_CFG, "memory": False, "debate": False},
 }
 
-ABLATION_LABELS: Dict[str, str] = {
+ABLATION_LABELS: dict[str, str] = {
     "full": "HelixFactor (Full)",
     "no_debate": "w/o Debate",
     "no_causal": "w/o Causal",
@@ -97,7 +97,7 @@ ABLATION_LABELS: Dict[str, str] = {
     "no_memory": "w/o Memory (≈ FactorMiner NM)",
 }
 
-EXPECTED_CONTRIBUTION_SIGN: Dict[str, int] = {
+EXPECTED_CONTRIBUTION_SIGN: dict[str, int] = {
     "debate": +1,
     "causal": +1,
     "canonicalize": +1,
@@ -269,7 +269,7 @@ def _build_mining_config(
     return cfg
 
 
-def _build_phase2_configs(flags: Dict[str, bool]) -> Dict[str, Any]:
+def _build_phase2_configs(flags: dict[str, bool]) -> dict[str, Any]:
     """Translate ablation flags into real HelixLoop runtime configs."""
     return {
         "debate_config": RuntimeDebateConfig() if flags.get("debate", True) else None,
@@ -348,7 +348,7 @@ def _compute_avg_abs_rho(artifacts) -> float:
 def _runtime_payload_to_result(
     *,
     method: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     benchmark_library_size: int,
     benchmark_succeeded: int,
     elapsed_seconds: float,
@@ -388,15 +388,15 @@ def _evaluate_runtime_library(
     cfg: MiningConfig,
     *,
     target_library_size: int,
-    cost_bps: Optional[List[float]] = None,
-) -> tuple[MethodResult, Dict[str, Any], int, int]:
+    cost_bps: list[float] | None = None,
+) -> tuple[MethodResult, dict[str, Any], int, int]:
     """Recompute a mined library using the runtime benchmark contract."""
     if cost_bps is None:
         cost_bps = [1.0, 4.0, 7.0, 10.0, 11.0]
 
     factors = library.list_factors()
     artifacts = evaluate_factors(factors, dataset, signal_failure_policy="reject")
-    succeeded = [artifact for artifact in artifacts if artifact.succeeded]
+    [artifact for artifact in artifacts if artifact.succeeded]
     benchmark_library, benchmark_stats = build_benchmark_library(
         artifacts,
         cfg,
@@ -454,11 +454,11 @@ class AblatedMethodRunner:
 
     def __init__(
         self,
-        cfg: Dict[str, bool],
+        cfg: dict[str, bool],
         ic_threshold: float = 0.02,
         correlation_threshold: float = 0.5,
         seed: int = 42,
-        llm_provider: Optional[Any] = None,
+        llm_provider: Any | None = None,
         benchmark_mode: str = "paper",
     ) -> None:
         self._cfg = dict(cfg)
@@ -574,8 +574,8 @@ class AblationStudy:
         ic_threshold: float = 0.02,
         correlation_threshold: float = 0.5,
         seed: int = 42,
-        configs: Optional[Dict[str, Dict[str, bool]]] = None,
-        llm_provider: Optional[Any] = None,
+        configs: dict[str, dict[str, bool]] | None = None,
+        llm_provider: Any | None = None,
         benchmark_mode: str = "paper",
     ) -> None:
         self.ic_threshold = ic_threshold
@@ -588,17 +588,17 @@ class AblationStudy:
     def run_ablation(
         self,
         data: dict,
-        train_period: Tuple[int, int],
-        test_period: Tuple[int, int],
+        train_period: tuple[int, int],
+        test_period: tuple[int, int],
         n_factors: int = 40,
-        configs_to_run: Optional[List[str]] = None,
+        configs_to_run: list[str] | None = None,
     ) -> AblationResult:
         """Run one or more ablation variants on the real loop pipeline."""
         configs_to_run = configs_to_run or list(self.configs.keys())
         train_data = _slice_data(data, *train_period)
         test_data = _slice_data(data, *test_period)
 
-        config_results: Dict[str, MethodResult] = {}
+        config_results: dict[str, MethodResult] = {}
         for cfg_name in configs_to_run:
             cfg = self.configs.get(cfg_name)
             if cfg is None:
@@ -765,7 +765,7 @@ def run_full_ablation_study(
     n_periods: int = 500,
     n_factors: int = 40,
     seed: int = 42,
-    configs_to_run: Optional[List[str]] = None,
+    configs_to_run: list[str] | None = None,
     verbose: bool = True,
 ) -> AblationResult:
     """Run the full runtime ablation study on mock data."""

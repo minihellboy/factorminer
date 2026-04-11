@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 import pandas as pd
 
@@ -110,7 +110,7 @@ class DataValidationReport:
 
 def validate_market_data(
     path: str | Path,
-    fmt: Optional[FileFormat] = None,
+    fmt: FileFormat | None = None,
     hdf_key: str = "data",
 ) -> DataValidationReport:
     """Validate a market-data file against the canonical loader contract."""
@@ -303,14 +303,8 @@ def render_validation_report(report: DataValidationReport, strict: bool = False)
     lines.append(f"Path:   {report.path}")
     lines.append(f"Format: {report.fmt}")
     lines.append(
-        "Rows:   {rows} | Assets: {assets} | Timestamps: {timestamps} | "
-        "Observed pairs: {pairs} | Coverage: {coverage:.2%}".format(
-            rows=report.row_count,
-            assets=report.asset_count,
-            timestamps=report.timestamp_count,
-            pairs=report.observed_pair_count,
-            coverage=report.coverage_ratio,
-        )
+        f"Rows:   {report.row_count} | Assets: {report.asset_count} | Timestamps: {report.timestamp_count} | "
+        f"Observed pairs: {report.observed_pair_count} | Coverage: {report.coverage_ratio:.2%}"
     )
     lines.append(f"Duplicate asset/timestamp rows: {report.duplicate_key_count}")
     lines.append(f"Non-monotonic asset timelines:   {report.non_monotonic_assets}")

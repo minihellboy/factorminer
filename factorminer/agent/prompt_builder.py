@@ -7,24 +7,23 @@ memory signals, library state, and output format instructions.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from factorminer.core.types import (
     FEATURES,
     OPERATOR_REGISTRY,
     OperatorSpec,
-    OperatorType,
 )
 
 
 def _format_operator_table() -> str:
     """Build a human-readable operator reference table grouped by category."""
-    grouped: Dict[str, List[OperatorSpec]] = {}
+    grouped: dict[str, list[OperatorSpec]] = {}
     for spec in OPERATOR_REGISTRY.values():
         cat = spec.category.name
         grouped.setdefault(cat, []).append(spec)
 
-    lines: List[str] = []
+    lines: list[str] = []
     for cat_name in [
         "ARITHMETIC",
         "STATISTICAL",
@@ -131,12 +130,12 @@ Your goal is to generate novel, predictive factor expressions using a tree-struc
 # PromptBuilder
 # ---------------------------------------------------------------------------
 
-def normalize_factor_references(entries: Optional[List[Any]]) -> List[str]:
+def normalize_factor_references(entries: list[Any] | None) -> list[str]:
     """Convert mixed factor metadata into prompt-safe string references."""
     if not entries:
         return []
 
-    normalized: List[str] = []
+    normalized: list[str] = []
     seen: set[str] = set()
 
     for entry in entries:
@@ -172,7 +171,7 @@ class PromptBuilder:
     The user prompt varies each iteration based on memory signals.
     """
 
-    def __init__(self, system_prompt: Optional[str] = None) -> None:
+    def __init__(self, system_prompt: str | None = None) -> None:
         self._system_prompt = system_prompt or SYSTEM_PROMPT
 
     @property
@@ -181,8 +180,8 @@ class PromptBuilder:
 
     def build_user_prompt(
         self,
-        memory_signal: Dict[str, Any],
-        library_state: Dict[str, Any],
+        memory_signal: dict[str, Any],
+        library_state: dict[str, Any],
         batch_size: int = 40,
     ) -> str:
         """Build the per-iteration user prompt injecting memory priors.
@@ -209,7 +208,7 @@ class PromptBuilder:
         str
             The fully assembled user prompt.
         """
-        sections: List[str] = []
+        sections: list[str] = []
 
         # --- Task directive ---
         sections.append(
@@ -350,15 +349,15 @@ def build_specialist_prompt(
     specialist_name: str,
     specialist_domain: str,
     specialist_hypothesis: str,
-    preferred_operators: List[str],
-    preferred_features: List[str],
-    example_factors: List[str],
-    avoid_patterns: List[str],
-    memory_signal: Optional[Dict[str, Any]] = None,
-    library_diagnostics: Optional[Dict[str, Any]] = None,
+    preferred_operators: list[str],
+    preferred_features: list[str],
+    example_factors: list[str],
+    avoid_patterns: list[str],
+    memory_signal: dict[str, Any] | None = None,
+    library_diagnostics: dict[str, Any] | None = None,
     regime_context: str = "",
     n_proposals: int = 15,
-    success_rate: Optional[float] = None,
+    success_rate: float | None = None,
 ) -> str:
     """Build a rich context-aware user prompt for a specialist agent.
 
@@ -396,7 +395,7 @@ def build_specialist_prompt(
     """
     memory_signal = memory_signal or {}
     library_diagnostics = library_diagnostics or {}
-    sections: List[str] = []
+    sections: list[str] = []
 
     # Header
     sections.append(
@@ -538,9 +537,9 @@ def build_specialist_prompt(
 
 
 def build_critic_scoring_prompt(
-    candidates: List[Dict[str, str]],
-    existing_factors: Optional[List[str]] = None,
-    memory_signal: Optional[str] = None,
+    candidates: list[dict[str, str]],
+    existing_factors: list[str] | None = None,
+    memory_signal: str | None = None,
     regime_context: str = "",
 ) -> str:
     """Build a structured JSON-output scoring prompt for the critic agent.
@@ -562,7 +561,7 @@ def build_critic_scoring_prompt(
         Fully assembled critic scoring prompt.
     """
     existing_factors = existing_factors or []
-    sections: List[str] = []
+    sections: list[str] = []
 
     sections.append(
         "## CRITIC SCORING TASK\n"
@@ -618,8 +617,8 @@ def build_critic_scoring_prompt(
 
 
 def build_debate_synthesis_prompt(
-    all_proposals: List[Dict[str, Any]],
-    critic_scores: List[Dict[str, Any]],
+    all_proposals: list[dict[str, Any]],
+    critic_scores: list[dict[str, Any]],
     top_k: int = 10,
 ) -> str:
     """Build a consensus synthesis prompt for the debate orchestrator.
@@ -649,7 +648,7 @@ def build_debate_synthesis_prompt(
         reverse=True,
     )[:top_k * 2]  # take 2x top_k for synthesis
 
-    sections: List[str] = []
+    sections: list[str] = []
     sections.append(
         f"## DEBATE SYNTHESIS TASK\n"
         f"Multiple specialist agents proposed the following factors.\n"

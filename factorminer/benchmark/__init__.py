@@ -7,14 +7,14 @@ exports so older scripts keep working while the runtime path stays canonical.
 
 from __future__ import annotations
 
-from importlib import import_module
 import warnings
+from importlib import import_module
 
 from factorminer.benchmark.runtime import (
     BenchmarkManifest,
     BenchmarkRuntimeContract,
-    StressBenchmarkContract,
     StrategyGridBenchmarkContract,
+    StressBenchmarkContract,
     WalkForwardBenchmarkContract,
     build_benchmark_library,
     build_benchmark_runtime_contract,
@@ -57,8 +57,7 @@ _OPTIONAL_EXPORTS = {
 def __getattr__(name: str):
     if name in _LEGACY_EXPORTS:
         warnings.warn(
-            "factorminer.benchmark.%s is legacy; use factorminer.benchmark.runtime instead"
-            % name,
+            f"factorminer.benchmark.{name} is legacy; use factorminer.benchmark.runtime instead",
             DeprecationWarning,
             stacklevel=2,
         )

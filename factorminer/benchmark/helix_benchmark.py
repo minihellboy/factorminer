@@ -9,17 +9,16 @@ CLI usage:
 
 from __future__ import annotations
 
-import copy
 import argparse
+import copy
 import json
 import logging
 import math
-import sys
 import time
 import warnings
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -81,7 +80,7 @@ class MethodResult:
     elapsed_seconds: float = 0.0
     avg_turnover: float = 0.0
     # raw IC series for statistical tests (not serialized by default)
-    ic_series: Optional[np.ndarray] = field(default=None, repr=False)
+    ic_series: np.ndarray | None = field(default=None, repr=False)
     run_id: int = 0
 
     def to_dict(self) -> dict:
@@ -105,9 +104,9 @@ class DMTestResult:
 class AblationResult:
     """Result of one ablation study."""
 
-    configs: List[str]
-    results: Dict[str, MethodResult]
-    contributions: Optional[pd.DataFrame] = None
+    configs: list[str]
+    results: dict[str, MethodResult]
+    contributions: pd.DataFrame | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -120,7 +119,7 @@ class AblationResult:
 class OperatorSpeedResult:
     """Timing for individual operators."""
 
-    operator_timings_ms: Dict[str, float]   # operator_name -> ms
+    operator_timings_ms: dict[str, float]   # operator_name -> ms
     n_assets: int
     n_periods: int
     n_repeats: int
@@ -139,17 +138,17 @@ class PipelineSpeedResult:
 class BenchmarkResult:
     """Aggregate benchmark results — all methods, all metrics."""
 
-    methods: List[str]
+    methods: list[str]
     factor_library_metrics: pd.DataFrame    # IC, ICIR, Avg|rho| per method
     combination_metrics: pd.DataFrame       # EW/ICW IC and ICIR
     selection_metrics: pd.DataFrame         # LASSO, XGBoost
     speed_metrics: pd.DataFrame
-    statistical_tests: Dict[str, Any]
-    ablation_result: Optional[AblationResult] = None
-    raw_method_results: Dict[str, List[MethodResult]] = field(default_factory=dict)
+    statistical_tests: dict[str, Any]
+    ablation_result: AblationResult | None = None
+    raw_method_results: dict[str, list[MethodResult]] = field(default_factory=dict)
     turnover_metrics: pd.DataFrame = field(default_factory=pd.DataFrame)
     cost_pressure_metrics: pd.DataFrame = field(default_factory=pd.DataFrame)
-    runtime_artifacts: Dict[str, Any] = field(default_factory=dict)
+    runtime_artifacts: dict[str, Any] = field(default_factory=dict)
 
     # ------------------------------------------------------------------
     # Formatting helpers
@@ -189,7 +188,9 @@ class BenchmarkResult:
                 return float(v) * mult if not pd.isna(v) else 0.0
 
             bold = method in ("helix_phase2",)
-            fmt = lambda x, d=2: f"{x:.{d}f}"
+
+            def fmt(x, d=2):
+                return f"{x:.{d}f}"
 
             lib_ic = _g(lib_row, "ic_pct", 1.0)
             lib_icir = _g(lib_row, "icir", 1.0)
@@ -268,7 +269,6 @@ class BenchmarkResult:
         """Generate bar chart comparison (requires matplotlib)."""
         try:
             import matplotlib.pyplot as plt
-            import matplotlib.patches as mpatches
         except ImportError:
             logger.warning("matplotlib not available; skipping plot")
             return
@@ -320,7 +320,7 @@ class BenchmarkResult:
                 colors.append(color)
                 labels.append(method.replace("_", "\n"))
 
-            bars = ax.bar(range(len(values)), values, color=colors, alpha=0.85, edgecolor="white")
+            ax.bar(range(len(values)), values, color=colors, alpha=0.85, edgecolor="white")
             ax.set_xticks(range(len(labels)))
             ax.set_xticklabels(labels, fontsize=7, rotation=30, ha="right")
             ax.set_title(metric, fontsize=10)
@@ -430,7 +430,7 @@ class StatisticalComparisonTests:
     def _paired_valid_series(
         ic_series_1: np.ndarray,
         ic_series_2: np.ndarray,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Align paired series and drop rows with NaNs in either series."""
         min_len = min(len(ic_series_1), len(ic_series_2))
         s1 = np.asarray(ic_series_1[:min_len], dtype=np.float64)
@@ -586,7 +586,7 @@ class StatisticalComparisonTests:
         ic_series_2: np.ndarray,
         n_bootstrap: int = 1000,
         block_size: int = 20,
-    ) -> Tuple[float, float]:
+    ) -> tuple[float, float]:
         """95% block-bootstrap CI on mean IC difference.
 
         Returns
@@ -764,7 +764,7 @@ class SpeedBenchmark:
             "CsZscore": lambda: (X_s - X_s.mean(axis=0)) / (X_s.std(axis=0) + 1e-8),
         }
 
-        timings: Dict[str, float] = {}
+        timings: dict[str, float] = {}
         for name, fn in ops.items():
             timings[name] = self._time_callable(fn, n_repeats=n_repeats)
 
@@ -778,7 +778,7 @@ class SpeedBenchmark:
     def run_full_pipeline_benchmark(
         self,
         n_candidates: int = 200,
-        data: Optional[dict] = None,
+        data: dict | None = None,
     ) -> PipelineSpeedResult:
         """Benchmark end-to-end candidate evaluation pipeline."""
         if data is None:
@@ -895,11 +895,11 @@ class HelixBenchmark:
     def run_comparison(
         self,
         data: dict,
-        train_period: Tuple[int, int],
-        test_period: Tuple[int, int],
+        train_period: tuple[int, int],
+        test_period: tuple[int, int],
         n_target_factors: int = 40,
         n_runs: int = 1,
-        methods: Optional[List[str]] = None,
+        methods: list[str] | None = None,
     ) -> BenchmarkResult:
         """Run the full comparison benchmark.
 
@@ -934,10 +934,10 @@ class HelixBenchmark:
         train_data = _slice_data(data, *train_period)
         test_data = _slice_data(data, *test_period)
 
-        raw_results: Dict[str, List[MethodResult]] = {}
+        raw_results: dict[str, list[MethodResult]] = {}
         for method in methods:
             logger.info("Running method: %s", method)
-            method_runs: List[MethodResult] = []
+            method_runs: list[MethodResult] = []
             for run_id in range(n_runs):
                 try:
                     result = self.run_single_method(
@@ -1091,12 +1091,14 @@ class HelixBenchmark:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _get_candidates(self, method: str, n_factors: int) -> List[Tuple[str, str, str]]:
+    def _get_candidates(self, method: str, n_factors: int) -> list[tuple[str, str, str]]:
         """Get candidate (name, formula, category) tuples for a method."""
         # Import the catalogs module directly to avoid triggering the package
         # __init__ chain which has an unresolved dependency on
         # factorminer.agent.specialists.REGIME_SPECIALIST in some environments.
-        import importlib.util as _ilu, pathlib as _pl, sys as _sys
+        import importlib.util as _ilu
+        import pathlib as _pl
+        import sys as _sys
         _cat_path = _pl.Path(__file__).parent / "catalogs.py"
         if "factorminer.benchmark.catalogs" not in _sys.modules:
             _spec = _ilu.spec_from_file_location("factorminer.benchmark.catalogs", str(_cat_path))
@@ -1133,14 +1135,17 @@ class HelixBenchmark:
 
     def _evaluate_candidates(
         self,
-        candidates: List[Tuple[str, str, str]],
+        candidates: list[tuple[str, str, str]],
         data: dict,
         returns: np.ndarray,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """Evaluate candidates; returns list of result dicts."""
         from factorminer.core.parser import try_parse
         from factorminer.evaluation.metrics import (
-            compute_ic, compute_ic_mean, compute_icir, compute_ic_win_rate
+            compute_ic,
+            compute_ic_mean,
+            compute_ic_win_rate,
+            compute_icir,
         )
 
         results = []
@@ -1172,9 +1177,9 @@ class HelixBenchmark:
 
     def _build_library(
         self,
-        factor_results: List[dict],
+        factor_results: list[dict],
         n_factors: int,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """Build a diversified factor library with IC and correlation admission."""
         from factorminer.evaluation.metrics import compute_pairwise_correlation
 
@@ -1182,7 +1187,7 @@ class HelixBenchmark:
         passing = [r for r in factor_results if r["ic_mean"] >= self.ic_threshold]
         passing.sort(key=lambda x: x["ic_mean"], reverse=True)
 
-        library: List[dict] = []
+        library: list[dict] = []
         for candidate in passing:
             if len(library) >= n_factors:
                 break
@@ -1207,12 +1212,12 @@ class HelixBenchmark:
 
     def _library_metrics(
         self,
-        factor_results: List[dict],
+        factor_results: list[dict],
         returns: np.ndarray,
-    ) -> Tuple[float, float, float, Optional[np.ndarray]]:
+    ) -> tuple[float, float, float, np.ndarray | None]:
         """Compute library IC, ICIR, avg|rho|. Returns (ic, icir, rho, ic_series)."""
         from factorminer.evaluation.metrics import (
-            compute_pairwise_correlation, compute_ic_mean, compute_icir
+            compute_pairwise_correlation,
         )
 
         if not factor_results:
@@ -1248,10 +1253,10 @@ class HelixBenchmark:
 
     def _combination_metrics(
         self,
-        test_factor_results: List[dict],
-        library: List[dict],
+        test_factor_results: list[dict],
+        library: list[dict],
         test_returns: np.ndarray,
-    ) -> Tuple[float, float, float, float]:
+    ) -> tuple[float, float, float, float]:
         """Compute EW/ICW combination metrics on test data."""
         from factorminer.evaluation.combination import FactorCombiner
         from factorminer.evaluation.metrics import compute_ic, compute_ic_mean, compute_icir
@@ -1291,17 +1296,17 @@ class HelixBenchmark:
 
     def _selection_metrics(
         self,
-        train_factor_results: List[dict],
-        library: List[dict],
+        train_factor_results: list[dict],
+        library: list[dict],
         train_data: dict,
         train_returns: np.ndarray,
         test_data: dict,
         test_returns: np.ndarray,
         selector_type: str,
-    ) -> Tuple[float, float]:
+    ) -> tuple[float, float]:
         """Compute Lasso/XGBoost selection IC on test data."""
-        from factorminer.evaluation.selection import FactorSelector
         from factorminer.evaluation.metrics import compute_ic, compute_ic_mean, compute_icir
+        from factorminer.evaluation.selection import FactorSelector
 
         if len(train_factor_results) < 3:
             return 0.0, 0.0
@@ -1434,8 +1439,8 @@ class HelixBenchmark:
         if loop_kind != "helix_phase2":
             return {}
 
-        from factorminer.evaluation.causal import CausalConfig as RuntimeCausalConfig
         from factorminer.evaluation.capacity import CapacityConfig as RuntimeCapacityConfig
+        from factorminer.evaluation.causal import CausalConfig as RuntimeCausalConfig
         from factorminer.evaluation.regime import RegimeConfig as RuntimeRegimeConfig
         from factorminer.evaluation.significance import (
             SignificanceConfig as RuntimeSignificanceConfig,
@@ -1488,11 +1493,11 @@ class HelixBenchmark:
         run_id: int,
         mock: bool,
     ) -> tuple[MethodResult, dict[str, Any]]:
+        from factorminer.benchmark.runtime import evaluate_frozen_set, select_frozen_top_k
         from factorminer.core.helix_loop import HelixLoop
         from factorminer.core.library_io import load_library
         from factorminer.core.ralph_loop import RalphLoop
         from factorminer.core.session import MiningSession
-        from factorminer.benchmark.runtime import evaluate_frozen_set, select_frozen_top_k
         from factorminer.evaluation.runtime import evaluate_factors
 
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -1513,7 +1518,7 @@ class HelixBenchmark:
         else:
             loop = RalphLoop(**runtime_kwargs)
 
-        library = loop.run(
+        loop.run(
             target_size=n_target_factors,
             max_iterations=runtime_cfg.max_iterations,
         )
@@ -1647,8 +1652,8 @@ class HelixBenchmark:
 
     def _runtime_method_frames(
         self,
-        runtime_payloads: Dict[str, List[dict[str, Any]]],
-        methods: List[str],
+        runtime_payloads: dict[str, list[dict[str, Any]]],
+        methods: list[str],
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         turnover_rows: list[dict[str, Any]] = []
         cost_rows: list[dict[str, Any]] = []
@@ -1690,10 +1695,10 @@ class HelixBenchmark:
         cfg,
         output_dir: Path,
         *,
-        data_path: Optional[str] = None,
-        raw_df: Optional[pd.DataFrame] = None,
+        data_path: str | None = None,
+        raw_df: pd.DataFrame | None = None,
         mock: bool = False,
-        baseline_methods: Optional[List[str]] = None,
+        baseline_methods: list[str] | None = None,
         n_target_factors: int = 40,
         n_runs: int = 1,
     ) -> tuple[BenchmarkResult, dict[str, Any]]:
@@ -1727,13 +1732,13 @@ class HelixBenchmark:
         train_data = _slice_by_indices(static_data, train_indices)
         test_data = _slice_by_indices(static_data, test_indices)
 
-        raw_results: Dict[str, List[MethodResult]] = {}
-        runtime_payloads: Dict[str, List[dict[str, Any]]] = {}
+        raw_results: dict[str, list[MethodResult]] = {}
+        runtime_payloads: dict[str, list[dict[str, Any]]] = {}
         runtime_root = output_dir / "runtime_runs"
         runtime_root.mkdir(parents=True, exist_ok=True)
 
         for method in methods:
-            method_runs: List[MethodResult] = []
+            method_runs: list[MethodResult] = []
             for run_id in range(n_runs):
                 if method in runtime_methods:
                     result, payload = self._execute_runtime_loop(
@@ -1815,10 +1820,10 @@ class HelixBenchmark:
         cfg,
         output_dir: Path,
         *,
-        data_path: Optional[str] = None,
-        raw_df: Optional[pd.DataFrame] = None,
+        data_path: str | None = None,
+        raw_df: pd.DataFrame | None = None,
         mock: bool = False,
-        configs_to_run: Optional[List[str]] = None,
+        configs_to_run: list[str] | None = None,
         n_target_factors: int = 40,
         n_runs: int = 1,
     ) -> AblationResult:
@@ -1843,7 +1848,7 @@ class HelixBenchmark:
             "no_memory",
         ]
 
-        results: Dict[str, MethodResult] = {}
+        results: dict[str, MethodResult] = {}
         runtime_root = output_dir / "runtime_ablation"
         runtime_root.mkdir(parents=True, exist_ok=True)
 
@@ -1960,7 +1965,7 @@ def _slice_data(data: dict, start: int, end: int) -> dict:
     return {k: v[:, start:end] for k, v in data.items()}
 
 
-def _average_method_results(runs: List[MethodResult]) -> MethodResult:
+def _average_method_results(runs: list[MethodResult]) -> MethodResult:
     """Average numeric fields across multiple runs."""
     if not runs:
         return MethodResult(method="unknown")
@@ -1982,7 +1987,7 @@ def _average_method_results(runs: List[MethodResult]) -> MethodResult:
 
 
 def _build_library_df(
-    averaged: Dict[str, MethodResult], methods: List[str]
+    averaged: dict[str, MethodResult], methods: list[str]
 ) -> pd.DataFrame:
     rows = []
     for method in methods:
@@ -1999,7 +2004,7 @@ def _build_library_df(
 
 
 def _build_combination_df(
-    averaged: Dict[str, MethodResult], methods: List[str]
+    averaged: dict[str, MethodResult], methods: list[str]
 ) -> pd.DataFrame:
     rows = []
     for method in methods:
@@ -2015,7 +2020,7 @@ def _build_combination_df(
 
 
 def _build_selection_df(
-    averaged: Dict[str, MethodResult], methods: List[str]
+    averaged: dict[str, MethodResult], methods: list[str]
 ) -> pd.DataFrame:
     rows = []
     for method in methods:
@@ -2139,7 +2144,7 @@ def main() -> None:
 
     if result.statistical_tests:
         dm = result.statistical_tests.get("diebold_mariano", {})
-        print(f"\n--- Statistical Tests (Helix vs Ralph) ---")
+        print("\n--- Statistical Tests (Helix vs Ralph) ---")
         print(f"    DM stat: {dm.get('dm_stat', 0):.3f}  p={dm.get('p_value', 1):.4f}  dir={dm.get('direction','?')}")
         ci = result.statistical_tests.get("bootstrap_ci_95", {})
         print(f"    Bootstrap 95% CI on IC diff: [{ci.get('lower', 0):.4f}, {ci.get('upper', 0):.4f}]")

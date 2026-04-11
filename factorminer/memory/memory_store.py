@@ -9,8 +9,7 @@ Implements the experience memory M = {S, P_succ, P_fail, I} where:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
-from typing import Any, Dict, List, Optional
+from dataclasses import asdict, dataclass, field
 
 
 @dataclass
@@ -22,10 +21,10 @@ class MiningState:
     """
 
     library_size: int = 0
-    recent_admissions: List[dict] = field(default_factory=list)
-    recent_rejections: List[dict] = field(default_factory=list)
-    domain_saturation: Dict[str, float] = field(default_factory=dict)
-    admission_log: List[dict] = field(default_factory=list)
+    recent_admissions: list[dict] = field(default_factory=list)
+    recent_rejections: list[dict] = field(default_factory=list)
+    domain_saturation: dict[str, float] = field(default_factory=dict)
+    admission_log: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -53,7 +52,7 @@ class SuccessPattern:
     description: str
     template: str
     success_rate: str  # "High", "Medium", "Low"
-    example_factors: List[str] = field(default_factory=list)
+    example_factors: list[str] = field(default_factory=list)
     occurrence_count: int = 0
 
     def to_dict(self) -> dict:
@@ -81,7 +80,7 @@ class ForbiddenDirection:
 
     name: str
     description: str
-    correlated_factors: List[str] = field(default_factory=list)
+    correlated_factors: list[str] = field(default_factory=list)
     typical_correlation: float = 0.0
     reason: str = ""
     occurrence_count: int = 0
@@ -134,9 +133,9 @@ class ExperienceMemory:
     """
 
     state: MiningState = field(default_factory=MiningState)
-    success_patterns: List[SuccessPattern] = field(default_factory=list)
-    forbidden_directions: List[ForbiddenDirection] = field(default_factory=list)
-    insights: List[StrategicInsight] = field(default_factory=list)
+    success_patterns: list[SuccessPattern] = field(default_factory=list)
+    forbidden_directions: list[ForbiddenDirection] = field(default_factory=list)
+    insights: list[StrategicInsight] = field(default_factory=list)
     version: int = 0
 
     def to_dict(self) -> dict:

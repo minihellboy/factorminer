@@ -5,8 +5,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from factorminer.operators.registry import execute_operator, get_operator, list_operators, implemented_operators
-
+from factorminer.operators.registry import (
+    execute_operator,
+    get_operator,
+    implemented_operators,
+    list_operators,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -426,11 +430,11 @@ class TestGPUCPUEquivalence:
 
     @pytest.fixture
     def torch_available(self):
-        try:
-            import torch
-            return True
-        except ImportError:
+        import importlib.util
+
+        if importlib.util.find_spec("torch") is None:
             pytest.skip("PyTorch not available")
+        return True
 
     @pytest.mark.parametrize("op_name", ["Add", "Sub", "Mul", "Neg", "Abs", "Sign"])
     def test_arithmetic_equivalence(self, torch_available, x_simple, y_simple, op_name):

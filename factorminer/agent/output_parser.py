@@ -9,12 +9,10 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
 
 from factorminer.core.expression_tree import ExpressionTree
 from factorminer.core.parser import parse, try_parse
-from factorminer.core.types import OperatorType, OPERATOR_REGISTRY
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +37,7 @@ class CandidateFactor:
 
     name: str
     formula: str
-    expression_tree: Optional[ExpressionTree] = None
+    expression_tree: ExpressionTree | None = None
     category: str = "unknown"
     parse_error: str = ""
 
@@ -50,7 +48,7 @@ class CandidateFactor:
 
 def _infer_category(formula: str) -> str:
     """Infer a rough category from the outermost operators in the formula."""
-    lower = formula.lower()
+    formula.lower()
     # Check for cross-sectional operators at the top
     if any(op in formula for op in ("CsRank", "CsZScore", "CsDemean", "CsScale", "CsNeutralize", "CsQuantile")):
         # Look deeper for sub-category
@@ -128,7 +126,7 @@ def _clean_formula(formula: str) -> str:
     return formula.strip()
 
 
-def parse_llm_output(raw_text: str) -> Tuple[List[CandidateFactor], List[str]]:
+def parse_llm_output(raw_text: str) -> tuple[list[CandidateFactor], list[str]]:
     """Parse raw LLM text output into candidate factors.
 
     Parameters
@@ -144,8 +142,8 @@ def parse_llm_output(raw_text: str) -> Tuple[List[CandidateFactor], List[str]]:
     """
     text = _strip_markdown(raw_text)
 
-    candidates: List[CandidateFactor] = []
-    failed: List[str] = []
+    candidates: list[CandidateFactor] = []
+    failed: list[str] = []
     seen_names: set = set()
 
     # Try JSON pattern first (entire text)
@@ -167,8 +165,8 @@ def parse_llm_output(raw_text: str) -> Tuple[List[CandidateFactor], List[str]]:
         if not line or line.startswith("#") or line.startswith("---"):
             continue
 
-        name: Optional[str] = None
-        formula: Optional[str] = None
+        name: str | None = None
+        formula: str | None = None
 
         # Try numbered pattern: "1. name: formula"
         m = _NUMBERED_PATTERN.match(line)

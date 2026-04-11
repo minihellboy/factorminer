@@ -7,8 +7,6 @@ style inspired by the FactorMiner paper figures.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
-
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
@@ -47,7 +45,7 @@ def _apply_style() -> None:
     _STYLE_APPLIED = True
 
 
-def _save_or_show(fig: plt.Figure, save_path: Optional[str]) -> None:
+def _save_or_show(fig: plt.Figure, save_path: str | None) -> None:
     """Save figure to disk or display interactively."""
     if save_path is not None:
         fig.savefig(save_path, bbox_inches="tight", facecolor="white")
@@ -62,9 +60,9 @@ def _save_or_show(fig: plt.Figure, save_path: Optional[str]) -> None:
 
 def plot_correlation_heatmap(
     correlation_matrix: np.ndarray,
-    factor_names: List[str],
+    factor_names: list[str],
     title: str = "Factor Library Correlation Heatmap",
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
 ) -> None:
     """Generate pairwise Spearman correlation heatmap.
 
@@ -130,10 +128,10 @@ def plot_correlation_heatmap(
 
 def plot_ic_timeseries(
     ic_series: np.ndarray,
-    dates: List[str],
+    dates: list[str],
     rolling_window: int = 21,
     title: str = "Daily Mean Rank IC",
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
 ) -> None:
     """Plot IC time series with rolling average and cumulative IC.
 
@@ -216,7 +214,7 @@ def plot_ic_timeseries(
 def plot_quintile_returns(
     quintile_returns: dict,
     title: str = "Quintile Returns",
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
 ) -> None:
     """Plot Q1-Q5 quintile bar chart and cumulative returns.
 
@@ -294,7 +292,7 @@ def plot_quintile_returns(
 def plot_ablation_comparison(
     with_memory: dict,
     without_memory: dict,
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
 ) -> None:
     """Bar charts comparing Have Memory vs No Memory ablation.
 
@@ -375,8 +373,8 @@ def plot_ablation_comparison(
 # ---------------------------------------------------------------------------
 
 def plot_efficiency_benchmark(
-    benchmarks: Dict[str, Dict[str, float]],
-    save_path: Optional[str] = None,
+    benchmarks: dict[str, dict[str, float]],
+    save_path: str | None = None,
 ) -> None:
     """Grouped bar chart on log scale for computation time.
 
@@ -437,8 +435,8 @@ def plot_efficiency_benchmark(
 # ---------------------------------------------------------------------------
 
 def plot_cost_pressure(
-    results: Dict[float, dict],
-    save_path: Optional[str] = None,
+    results: dict[float, dict],
+    save_path: str | None = None,
 ) -> None:
     """Cumulative return plots under different transaction cost settings.
 
@@ -492,7 +490,7 @@ def plot_cost_pressure(
 
 def plot_mining_funnel(
     batch_stats: dict,
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
 ) -> None:
     """Funnel chart showing Stage 1 -> 2 -> 3 -> 4 filtering.
 
@@ -527,7 +525,7 @@ def plot_mining_funnel(
         zip(y_positions, values, labels, bar_colors)
     ):
         width = val / max_val if max_val > 0 else 0
-        bar = ax.barh(y, width, height=0.6, color=color, edgecolor="white",
+        ax.barh(y, width, height=0.6, color=color, edgecolor="white",
                       linewidth=1.5, left=(1 - width) / 2)
         # Label inside the bar
         ax.text(0.5, y, f"{label}\n{val:,}", ha="center", va="center",
@@ -540,10 +538,10 @@ def plot_mining_funnel(
         w_top = values[i] / max_val if max_val > 0 else 0
         w_bot = values[i + 1] / max_val if max_val > 0 else 0
 
-        left_top = (1 - w_top) / 2
-        right_top = (1 + w_top) / 2
-        left_bot = (1 - w_bot) / 2
-        right_bot = (1 + w_bot) / 2
+        (1 - w_top) / 2
+        (1 + w_top) / 2
+        (1 - w_bot) / 2
+        (1 + w_bot) / 2
 
         # Drop rate annotation
         if values[i] > 0:

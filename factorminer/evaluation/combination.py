@@ -7,8 +7,6 @@ the methodology described in the FactorMiner paper.
 
 from __future__ import annotations
 
-from typing import Dict, Optional
-
 import numpy as np
 
 
@@ -24,7 +22,7 @@ class FactorCombiner:
     # Public combination methods
     # ------------------------------------------------------------------
 
-    def equal_weight(self, factor_signals: Dict[int, np.ndarray]) -> np.ndarray:
+    def equal_weight(self, factor_signals: dict[int, np.ndarray]) -> np.ndarray:
         """Equal-Weight (EW): simple average of cross-sectionally standardized factors.
 
         Paper results: IC Mean=0.1451, ICIR=1.2053, IC Win Rate=85.0%.
@@ -52,8 +50,8 @@ class FactorCombiner:
 
     def ic_weighted(
         self,
-        factor_signals: Dict[int, np.ndarray],
-        ic_values: Dict[int, float],
+        factor_signals: dict[int, np.ndarray],
+        ic_values: dict[int, float],
     ) -> np.ndarray:
         """IC-Weighted (ICW): weight factors proportionally by their historical IC.
 
@@ -77,7 +75,7 @@ class FactorCombiner:
             raise ValueError("factor_signals must not be empty")
 
         ids = list(factor_signals.keys())
-        weights: Dict[int, float] = {}
+        weights: dict[int, float] = {}
         for fid in ids:
             ic = ic_values.get(fid, 0.0)
             if np.isfinite(ic) and ic > 0.0:
@@ -97,7 +95,7 @@ class FactorCombiner:
 
         return composite
 
-    def orthogonal(self, factor_signals: Dict[int, np.ndarray]) -> np.ndarray:
+    def orthogonal(self, factor_signals: dict[int, np.ndarray]) -> np.ndarray:
         """Orthogonal: Gram-Schmidt orthogonalization before averaging.
 
         Removes cross-factor collinearity by projecting each factor onto the

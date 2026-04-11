@@ -20,7 +20,7 @@ import math
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from factorminer.agent.llm_interface import LLMProvider
 from factorminer.agent.output_parser import CandidateFactor
@@ -64,7 +64,7 @@ class CriticScore:
     factor_name: str
     formula: str
     source_specialist: str
-    scores: Dict[str, float] = field(default_factory=lambda: {
+    scores: dict[str, float] = field(default_factory=lambda: {
         "novelty": 0.5,
         "economic_intuition": 0.5,
         "complexity_penalty": 0.5,
@@ -103,7 +103,7 @@ class CriticScore:
 # Scoring weights
 # ---------------------------------------------------------------------------
 
-_SCORE_WEIGHTS: Dict[str, float] = {
+_SCORE_WEIGHTS: dict[str, float] = {
     "novelty": 0.25,
     "economic_intuition": 0.30,
     "complexity_penalty": 0.15,
@@ -125,7 +125,7 @@ _LLM_SCORING_TOP_K = 40
 # ---------------------------------------------------------------------------
 
 # Operator categories for diversity measurement
-_OP_CATEGORIES: Dict[str, str] = {
+_OP_CATEGORIES: dict[str, str] = {
     "Add": "arithmetic", "Sub": "arithmetic", "Mul": "arithmetic",
     "Div": "arithmetic", "Neg": "arithmetic", "Abs": "arithmetic",
     "Square": "arithmetic", "Sqrt": "arithmetic", "Log": "arithmetic",
@@ -153,7 +153,7 @@ _OP_CATEGORIES: Dict[str, str] = {
 _OPERATOR_PATTERN = re.compile(r"([A-Z][a-zA-Z0-9]*)\s*\(")
 
 
-def _extract_operators(formula: str) -> List[str]:
+def _extract_operators(formula: str) -> list[str]:
     """Extract all operator names from a formula string."""
     return _OPERATOR_PATTERN.findall(formula)
 
@@ -171,9 +171,9 @@ def _formula_depth(formula: str) -> int:
     return max_depth
 
 
-def _tokenize_formula(formula: str) -> Set[str]:
+def _tokenize_formula(formula: str) -> set[str]:
     """Tokenize a formula into its operator and feature tokens."""
-    tokens: Set[str] = set()
+    tokens: set[str] = set()
     tokens.update(_OPERATOR_PATTERN.findall(formula))
     for feat in re.findall(r"\$[a-z]+", formula):
         tokens.add(feat)
@@ -200,7 +200,7 @@ def _edit_distance_normalized(a: str, b: str, max_len: int = 200) -> float:
     return prev[lb] / max(la, lb)
 
 
-def _token_idf_similarity(formula: str, existing: List[str]) -> float:
+def _token_idf_similarity(formula: str, existing: list[str]) -> float:
     """Compute TF-IDF-inspired token overlap similarity.
 
     Returns a value in [0, 1] where 1 means very similar to existing,
@@ -286,12 +286,12 @@ class CriticAgent:
 
     def score_batch(
         self,
-        candidates: List[str],
-        existing_factors: Optional[List[str]] = None,
-        memory_signal: Optional[str] = None,
+        candidates: list[str],
+        existing_factors: list[str] | None = None,
+        memory_signal: str | None = None,
         regime_context: str = "",
-        specialist_map: Optional[Dict[str, str]] = None,
-    ) -> List[CriticScore]:
+        specialist_map: dict[str, str] | None = None,
+    ) -> list[CriticScore]:
         """Score a flat list of candidate formula strings.
 
         Parameters
@@ -316,12 +316,12 @@ class CriticAgent:
         specialist_map = specialist_map or {}
 
         from factorminer.agent.output_parser import _try_build_candidate
-        cf_list: List[CandidateFactor] = []
+        cf_list: list[CandidateFactor] = []
         for i, formula in enumerate(candidates):
             cf = _try_build_candidate(f"candidate_{i}", formula)
             cf_list.append(cf)
 
-        proposals: Dict[str, List[CandidateFactor]] = {}
+        proposals: dict[str, list[CandidateFactor]] = {}
         for cf in cf_list:
             src = specialist_map.get(cf.formula, "unknown")
             proposals.setdefault(src, []).append(cf)
@@ -335,11 +335,11 @@ class CriticAgent:
 
     def review_candidates(
         self,
-        proposals: Dict[str, List[CandidateFactor]],
-        library_state: Optional[Dict[str, Any]] = None,
-        memory_signal: Optional[Dict[str, Any]] = None,
+        proposals: dict[str, list[CandidateFactor]],
+        library_state: dict[str, Any] | None = None,
+        memory_signal: dict[str, Any] | None = None,
         top_k: int = 40,
-    ) -> List[CriticScore]:
+    ) -> list[CriticScore]:
         """Review all specialist proposals and return ranked scores.
 
         This is the primary interface used by ``DebateGenerator``.
@@ -363,7 +363,7 @@ class CriticAgent:
         library_state = library_state or {}
         memory_signal = memory_signal or {}
 
-        existing_factors: List[str] = normalize_factor_references(
+        existing_factors: list[str] = normalize_factor_references(
             library_state.get("recent_admissions", [])
         )
         mem_str = self._memory_signal_to_str(memory_signal)
@@ -385,13 +385,13 @@ class CriticAgent:
 
     def _score_proposals(
         self,
-        proposals: Dict[str, List[CandidateFactor]],
-        existing_factors: List[str],
+        proposals: dict[str, list[CandidateFactor]],
+        existing_factors: list[str],
         memory_signal: str,
         regime_context: str,
-    ) -> List[CriticScore]:
+    ) -> list[CriticScore]:
         """Full multi-dimensional scoring pipeline."""
-        all_pairs: List[Tuple[str, CandidateFactor]] = []
+        all_pairs: list[tuple[str, CandidateFactor]] = []
         for spec_name, candidates in proposals.items():
             for c in candidates:
                 all_pairs.append((spec_name, c))
@@ -400,7 +400,7 @@ class CriticAgent:
             return []
 
         # Phase 1: Heuristic scoring
-        partial_scores: List[CriticScore] = []
+        partial_scores: list[CriticScore] = []
         for spec_name, candidate in all_pairs:
             scores_dict = self._heuristic_score(
                 formula=candidate.formula,
@@ -456,10 +456,10 @@ class CriticAgent:
     def _heuristic_score(
         self,
         formula: str,
-        existing_factors: List[str],
+        existing_factors: list[str],
         memory_signal: str,
         regime_context: str,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Compute heuristic dimension scores without LLM call."""
         operators = _extract_operators(formula)
         depth = _formula_depth(formula)
@@ -481,7 +481,7 @@ class CriticAgent:
             "regime_appropriateness": regime_score,
         }
 
-    def _score_novelty(self, formula: str, existing_factors: List[str]) -> float:
+    def _score_novelty(self, formula: str, existing_factors: list[str]) -> float:
         """Novelty: 1.0 = completely novel, 0.0 = exact duplicate."""
         if not existing_factors:
             return 0.8
@@ -512,7 +512,7 @@ class CriticAgent:
 
         return float(0.6 * depth_score + 0.4 * op_score)
 
-    def _score_operator_diversity(self, unique_ops: List[str]) -> float:
+    def _score_operator_diversity(self, unique_ops: list[str]) -> float:
         """Operator diversity: how many distinct operator categories appear?"""
         categories = {_OP_CATEGORIES.get(op, "other") for op in unique_ops}
         n_categories = len(categories)
@@ -590,7 +590,7 @@ class CriticAgent:
         return float(0.4 + 0.6 * (matches / total_signals))
 
     @staticmethod
-    def _compute_composite(scores: Dict[str, float]) -> float:
+    def _compute_composite(scores: dict[str, float]) -> float:
         """Compute weighted composite score from dimension scores."""
         total = 0.0
         weight_sum = 0.0
@@ -603,7 +603,7 @@ class CriticAgent:
         return float(total / weight_sum)
 
     def _brief_heuristic_critique(
-        self, scores: Dict[str, float], formula: str
+        self, scores: dict[str, float], formula: str
     ) -> str:
         """Generate a brief human-readable critique from heuristic scores."""
         parts = []
@@ -642,10 +642,10 @@ class CriticAgent:
 
     def _llm_economic_intuition(
         self,
-        candidates: List[CriticScore],
-        existing_factors: List[str],
+        candidates: list[CriticScore],
+        existing_factors: list[str],
         memory_signal: str,
-    ) -> Dict[str, Tuple[float, str]]:
+    ) -> dict[str, tuple[float, str]]:
         """Send top candidates to LLM for economic intuition scoring."""
         if not candidates:
             return {}
@@ -674,12 +674,12 @@ class CriticAgent:
 
     def _build_llm_scoring_prompt(
         self,
-        candidates: List[CriticScore],
-        existing_factors: List[str],
+        candidates: list[CriticScore],
+        existing_factors: list[str],
         memory_signal: str,
     ) -> str:
         """Build the structured scoring prompt for LLM economic intuition."""
-        sections: List[str] = []
+        sections: list[str] = []
 
         if existing_factors:
             sections.append("## EXISTING LIBRARY SAMPLE (last 10)")
@@ -720,11 +720,11 @@ class CriticAgent:
     def _parse_llm_scoring_response(
         self,
         raw: str,
-        candidates: List[CriticScore],
-    ) -> Dict[str, Tuple[float, str]]:
+        candidates: list[CriticScore],
+    ) -> dict[str, tuple[float, str]]:
         """Parse LLM scoring response into economic intuition scores."""
         valid_names = {cs.factor_name for cs in candidates}
-        results: Dict[str, Tuple[float, str]] = {}
+        results: dict[str, tuple[float, str]] = {}
         json_pattern = re.compile(r"\{[^{}]+\}")
 
         for match in json_pattern.findall(raw):
@@ -751,8 +751,8 @@ class CriticAgent:
     # ------------------------------------------------------------------
 
     def _apply_diversity_adjustment(
-        self, scores: List[CriticScore]
-    ) -> List[CriticScore]:
+        self, scores: list[CriticScore]
+    ) -> list[CriticScore]:
         """Slightly boost underrepresented specialists to maintain balance."""
         if not scores:
             return scores
@@ -795,9 +795,9 @@ class CriticAgent:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _memory_signal_to_str(memory_signal: Dict[str, Any]) -> str:
+    def _memory_signal_to_str(memory_signal: dict[str, Any]) -> str:
         """Flatten a memory signal dict to a compact string for embedding."""
-        parts: List[str] = []
+        parts: list[str] = []
         for key in (
             "recommended_directions", "strategic_insights",
             "complementary_patterns", "prompt_text",
@@ -811,11 +811,11 @@ class CriticAgent:
 
     @staticmethod
     def _fallback_uniform_scores(
-        proposals: Dict[str, List[CandidateFactor]],
-    ) -> List[CriticScore]:
+        proposals: dict[str, list[CandidateFactor]],
+    ) -> list[CriticScore]:
         """Generate uniform scores when all scoring mechanisms fail."""
         default_composite = 0.5
-        scores: List[CriticScore] = []
+        scores: list[CriticScore] = []
         for specialist_name, candidates in proposals.items():
             for c in candidates:
                 scores.append(CriticScore(

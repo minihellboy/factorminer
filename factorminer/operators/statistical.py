@@ -11,10 +11,8 @@ import numpy as np
 
 try:
     import torch
-    import torch.nn.functional as F
 except ImportError:
     torch = None  # type: ignore[assignment]
-    F = None  # type: ignore[assignment]
 
 
 # ===========================================================================
@@ -41,12 +39,12 @@ def _pad_front(result: np.ndarray, window: int, total_T: int) -> np.ndarray:
     return result
 
 
-def _unfold_torch(x: "torch.Tensor", window: int) -> "torch.Tensor":
+def _unfold_torch(x: torch.Tensor, window: int) -> torch.Tensor:
     """Unfold last dimension to get sliding windows: (M, T) -> (M, T-w+1, w)."""
     return x.unfold(dimension=1, size=window, step=1)
 
 
-def _pad_front_torch(result: "torch.Tensor", window: int, total_T: int) -> "torch.Tensor":
+def _pad_front_torch(result: torch.Tensor, window: int, total_T: int) -> torch.Tensor:
     M = result.shape[0]
     pad_len = total_T - result.shape[1]
     if pad_len > 0:
@@ -97,7 +95,7 @@ def skew_np(x: np.ndarray, window: int = 20) -> np.ndarray:
         return np.full_like(x, np.nan)
     m = np.nanmean(w, axis=2, keepdims=True)
     d = w - m
-    n = np.sum(~np.isnan(w), axis=2, keepdims=True).astype(np.float64)
+    np.sum(~np.isnan(w), axis=2, keepdims=True).astype(np.float64)
     m2 = np.nanmean(d ** 2, axis=2, keepdims=True)
     m3 = np.nanmean(d ** 3, axis=2, keepdims=True)
     with np.errstate(invalid="ignore", divide="ignore"):
@@ -247,7 +245,7 @@ def count_not_nan_np(x: np.ndarray, window: int = 10) -> np.ndarray:
 # PyTorch (GPU) implementations
 # ===========================================================================
 
-def mean_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def mean_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     w = _unfold_torch(x, window)  # (M, T-w+1, w)
@@ -255,7 +253,7 @@ def mean_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
     return _pad_front_torch(result, window, T)
 
 
-def std_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def std_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     w = _unfold_torch(x, window)
@@ -270,7 +268,7 @@ def std_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
     return _pad_front_torch(result, window, T)
 
 
-def var_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def var_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     w = _unfold_torch(x, window)
@@ -284,7 +282,7 @@ def var_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
     return _pad_front_torch(result, window, T)
 
 
-def skew_torch(x: "torch.Tensor", window: int = 20) -> "torch.Tensor":
+def skew_torch(x: torch.Tensor, window: int = 20) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     w = _unfold_torch(x, window)
@@ -299,7 +297,7 @@ def skew_torch(x: "torch.Tensor", window: int = 20) -> "torch.Tensor":
     return _pad_front_torch(result, window, T)
 
 
-def kurt_torch(x: "torch.Tensor", window: int = 20) -> "torch.Tensor":
+def kurt_torch(x: torch.Tensor, window: int = 20) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     w = _unfold_torch(x, window)
@@ -314,7 +312,7 @@ def kurt_torch(x: "torch.Tensor", window: int = 20) -> "torch.Tensor":
     return _pad_front_torch(result, window, T)
 
 
-def median_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def median_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     w = _unfold_torch(x, window)
@@ -322,7 +320,7 @@ def median_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
     return _pad_front_torch(result, window, T)
 
 
-def sum_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def sum_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     w = _unfold_torch(x, window)
@@ -332,7 +330,7 @@ def sum_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
     return _pad_front_torch(result, window, T)
 
 
-def prod_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def prod_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     w = _unfold_torch(x, window)
@@ -343,7 +341,7 @@ def prod_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
     return _pad_front_torch(result, window, T)
 
 
-def ts_max_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def ts_max_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     w = _unfold_torch(x, window)
@@ -354,7 +352,7 @@ def ts_max_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
     return _pad_front_torch(result, window, T)
 
 
-def ts_min_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def ts_min_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     w = _unfold_torch(x, window)
@@ -365,7 +363,7 @@ def ts_min_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
     return _pad_front_torch(result, window, T)
 
 
-def ts_argmax_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def ts_argmax_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     w = _unfold_torch(x, window)
@@ -374,7 +372,7 @@ def ts_argmax_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
     return _pad_front_torch(result, window, T)
 
 
-def ts_argmin_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def ts_argmin_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     w = _unfold_torch(x, window)
@@ -383,7 +381,7 @@ def ts_argmin_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
     return _pad_front_torch(result, window, T)
 
 
-def ts_rank_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def ts_rank_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     """Rolling percentile rank -- key GPU acceleration target (17x speedup)."""
     window = int(window)
     M, T = x.shape
@@ -398,7 +396,7 @@ def ts_rank_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
     return _pad_front_torch(result, window, T)
 
 
-def quantile_torch(x: "torch.Tensor", window: int = 10, q: float = 0.5) -> "torch.Tensor":
+def quantile_torch(x: torch.Tensor, window: int = 10, q: float = 0.5) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     w = _unfold_torch(x, window)
@@ -412,7 +410,7 @@ def quantile_torch(x: "torch.Tensor", window: int = 10, q: float = 0.5) -> "torc
     return _pad_front_torch(result, window, T)
 
 
-def count_nan_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def count_nan_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     w = _unfold_torch(x, window)
@@ -420,7 +418,7 @@ def count_nan_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
     return _pad_front_torch(result, window, T)
 
 
-def count_not_nan_torch(x: "torch.Tensor", window: int = 10) -> "torch.Tensor":
+def count_not_nan_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     w = _unfold_torch(x, window)

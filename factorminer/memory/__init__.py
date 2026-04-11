@@ -11,6 +11,9 @@ Phase 2 additions:
 - Enhanced Retrieval: KG + embedding augmented retrieval
 """
 
+from factorminer.memory.evolution import evolve_memory
+from factorminer.memory.experience_memory import ExperienceMemoryManager
+from factorminer.memory.formation import form_memory
 from factorminer.memory.memory_store import (
     ExperienceMemory,
     ForbiddenDirection,
@@ -18,17 +21,14 @@ from factorminer.memory.memory_store import (
     StrategicInsight,
     SuccessPattern,
 )
-from factorminer.memory.formation import form_memory
-from factorminer.memory.evolution import evolve_memory
 from factorminer.memory.retrieval import retrieve_memory
-from factorminer.memory.experience_memory import ExperienceMemoryManager
 
 # Phase 2: Optional imports (graceful if dependencies missing)
 try:
     from factorminer.memory.knowledge_graph import (
+        EdgeType,
         FactorKnowledgeGraph,
         FactorNode,
-        EdgeType,
     )
 except ImportError:
     pass
@@ -45,11 +45,11 @@ except ImportError:
 
 try:
     from factorminer.memory.online_regime_memory import (
-        OnlineRegimeMemory,
+        MemoryForgetCurve,
         OnlineMemoryUpdater,
+        OnlineRegimeMemory,
         RegimeSpecificPatternStore,
         RegimeTransitionForecaster,
-        MemoryForgetCurve,
     )
 except ImportError:
     pass

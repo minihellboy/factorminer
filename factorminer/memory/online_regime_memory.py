@@ -27,31 +27,31 @@ All components are:
 
 from __future__ import annotations
 
-import copy
 import json
 import logging
 import math
-import pickle
 import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, FrozenSet, List, Optional, Tuple
 
 import numpy as np
 
-from factorminer.evaluation.regime import RegimeState, StreamingRegimeDetector, StreamingRegimeConfig
-from factorminer.memory.memory_store import (
-    ExperienceMemory,
-    StrategicInsight,
-    SuccessPattern,
+from factorminer.evaluation.regime import (
+    RegimeState,
+    StreamingRegimeConfig,
+    StreamingRegimeDetector,
 )
 from factorminer.memory.evolution import (
     apply_confidence_decay,
     bump_pattern_confidence,
     penalise_pattern_confidence,
+)
+from factorminer.memory.memory_store import (
+    ExperienceMemory,
+    StrategicInsight,
 )
 from factorminer.memory.retrieval import retrieve_memory
 
@@ -68,16 +68,16 @@ class MemorySignal:
 
     Wraps the standard retrieval result with regime-specific additions.
     """
-    recommended_directions: List[dict]
-    forbidden_directions: List[dict]
-    insights: List[dict]
+    recommended_directions: list[dict]
+    forbidden_directions: list[dict]
+    insights: list[dict]
     library_state: dict
     prompt_text: str
     # Regime-specific additions
     current_regime: RegimeState = field(default_factory=RegimeState)
-    regime_patterns: List[dict] = field(default_factory=list)
-    cross_regime_patterns: List[dict] = field(default_factory=list)
-    forecasted_regime: Optional[RegimeState] = None
+    regime_patterns: list[dict] = field(default_factory=list)
+    cross_regime_patterns: list[dict] = field(default_factory=list)
+    forecasted_regime: RegimeState | None = None
     forecast_confidence: float = 0.0
 
     def to_dict(self) -> dict:
@@ -167,7 +167,7 @@ class RegimeSpecificPattern:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "RegimeSpecificPattern":
+    def from_dict(cls, d: dict) -> RegimeSpecificPattern:
         discovery_date = datetime.fromisoformat(
             d.get("discovery_date", datetime.now(tz=timezone.utc).isoformat())
         )
@@ -215,7 +215,7 @@ class RegimeSpecificPatternStore:
         self.cross_regime_threshold = cross_regime_specificity_threshold
         self._lock = threading.RLock()
         # key: (formula_template, regime_str)
-        self._patterns: Dict[Tuple[str, str], RegimeSpecificPattern] = {}
+        self._patterns: dict[tuple[str, str], RegimeSpecificPattern] = {}
 
     # --- public API ---
 
@@ -273,7 +273,7 @@ class RegimeSpecificPatternStore:
         current_regime: RegimeState,
         top_k: int = 10,
         min_confidence: float = 0.1,
-    ) -> List[RegimeSpecificPattern]:
+    ) -> list[RegimeSpecificPattern]:
         """Retrieve patterns most relevant to the current regime.
 
         Patterns are scored as:
@@ -295,7 +295,7 @@ class RegimeSpecificPatternStore:
             Sorted by descending relevance score.
         """
         with self._lock:
-            scored: List[Tuple[float, RegimeSpecificPattern]] = []
+            scored: list[tuple[float, RegimeSpecificPattern]] = []
             for pat in self._patterns.values():
                 if pat.confidence < min_confidence:
                     continue
@@ -309,7 +309,7 @@ class RegimeSpecificPatternStore:
         self,
         top_k: int = 10,
         min_confidence: float = 0.1,
-    ) -> List[RegimeSpecificPattern]:
+    ) -> list[RegimeSpecificPattern]:
         """Return patterns that generalise well across regimes.
 
         A pattern qualifies as cross-regime if its ``regime_specificity``
@@ -321,7 +321,7 @@ class RegimeSpecificPatternStore:
         list[RegimeSpecificPattern]
         """
         with self._lock:
-            cross: List[Tuple[float, RegimeSpecificPattern]] = []
+            cross: list[tuple[float, RegimeSpecificPattern]] = []
             for pat in self._patterns.values():
                 if pat.confidence < min_confidence:
                     continue
@@ -388,7 +388,7 @@ class RegimeSpecificPatternStore:
             }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "RegimeSpecificPatternStore":
+    def from_dict(cls, d: dict) -> RegimeSpecificPatternStore:
         store = cls(
             max_patterns=d.get("max_patterns", 500),
             min_ic=d.get("min_ic", 0.02),
@@ -475,13 +475,13 @@ class OnlineMemoryUpdater:
         self._last_decay_iteration: int = 0
 
         # Per-regime IC accumulators: regime_str -> deque of ICs
-        self._regime_ic_history: Dict[str, deque] = defaultdict(
+        self._regime_ic_history: dict[str, deque] = defaultdict(
             lambda: deque(maxlen=200)
         )
 
         # Outcome stats
-        self._outcome_counts: Dict[str, int] = defaultdict(int)
-        self._formula_regime_map: Dict[str, RegimeState] = {}
+        self._outcome_counts: dict[str, int] = defaultdict(int)
+        self._formula_regime_map: dict[str, RegimeState] = {}
 
     # --- public API ---
 
@@ -575,8 +575,8 @@ class OnlineMemoryUpdater:
         with self._lock:
             # Boost / penalise patterns in base memory by tag matching
             for pat in self._base_memory.success_patterns:
-                tag_new = str(new_regime)
-                tag_old = str(old_regime)
+                str(new_regime)
+                str(old_regime)
                 # We tag patterns heuristically via their description keywords
                 desc_lower = pat.description.lower()
                 name_lower = pat.name.lower()
@@ -680,7 +680,7 @@ class OnlineMemoryUpdater:
             }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "OnlineMemoryUpdater":
+    def from_dict(cls, d: dict) -> OnlineMemoryUpdater:
         mem = ExperienceMemory.from_dict(d["base_memory"])
         updater = cls(
             base_memory=mem,
@@ -737,18 +737,18 @@ class RegimeTransitionForecaster:
         self.refit_every = refit_every
 
         self._lock = threading.RLock()
-        self._feature_history: List[np.ndarray] = []
-        self._regime_history: List[RegimeState] = []
-        self._next_regime_labels: List[str] = []  # shifted by 1
+        self._feature_history: list[np.ndarray] = []
+        self._regime_history: list[RegimeState] = []
+        self._next_regime_labels: list[str] = []  # shifted by 1
 
         self._model = None  # sklearn LogisticRegression, lazy init
-        self._label_encoder: Dict[str, int] = {}
-        self._inv_label_encoder: Dict[int, str] = {}
+        self._label_encoder: dict[str, int] = {}
+        self._inv_label_encoder: dict[int, str] = {}
         self._predict_call_count: int = 0
         self._fitted: bool = False
 
         # Cache of unique regime states seen during training
-        self._known_regimes: Dict[str, RegimeState] = {}
+        self._known_regimes: dict[str, RegimeState] = {}
 
     def record_observation(
         self,
@@ -778,8 +778,8 @@ class RegimeTransitionForecaster:
 
     def fit(
         self,
-        regime_history: Optional[List[RegimeState]] = None,
-        feature_history: Optional[np.ndarray] = None,
+        regime_history: list[RegimeState] | None = None,
+        feature_history: np.ndarray | None = None,
     ) -> None:
         """Fit (or re-fit) the logistic regression model.
 
@@ -838,7 +838,7 @@ class RegimeTransitionForecaster:
     def predict_next_regime(
         self,
         current_features: np.ndarray,
-    ) -> Tuple[RegimeState, float]:
+    ) -> tuple[RegimeState, float]:
         """Predict the most probable next regime.
 
         Parameters
@@ -921,7 +921,7 @@ class RegimeTransitionForecaster:
         -------
         np.ndarray, shape (12,)
         """
-        from factorminer.evaluation.regime import TrendRegime, VolRegime, MeanRevRegime
+        from factorminer.evaluation.regime import MeanRevRegime, TrendRegime, VolRegime
 
         trend_oh = [
             float(regime.trend == TrendRegime.BULL),
@@ -957,7 +957,7 @@ class RegimeTransitionForecaster:
             }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "RegimeTransitionForecaster":
+    def from_dict(cls, d: dict) -> RegimeTransitionForecaster:
         forecaster = cls(
             min_samples_to_fit=d.get("min_samples_to_fit", 30),
             refit_every=d.get("refit_every", 20),
@@ -1027,8 +1027,8 @@ class OnlineRegimeMemory:
 
     def __init__(
         self,
-        base_memory: Optional[ExperienceMemory] = None,
-        config: Optional[dict] = None,
+        base_memory: ExperienceMemory | None = None,
+        config: dict | None = None,
     ) -> None:
         cfg = config or {}
         if base_memory is None:
@@ -1064,7 +1064,7 @@ class OnlineRegimeMemory:
     def update_market(
         self,
         returns: np.ndarray,
-        volumes: Optional[np.ndarray] = None,
+        volumes: np.ndarray | None = None,
     ) -> RegimeState:
         """Process one bar of market data and update the regime state.
 
@@ -1111,7 +1111,7 @@ class OnlineRegimeMemory:
         formula: str,
         signals: np.ndarray,
         ic: float,
-        market_data: Optional[dict] = None,
+        market_data: dict | None = None,
         outcome: str = "admitted",
     ) -> None:
         """Single update call: detect regime from market_data, update patterns.
@@ -1164,8 +1164,8 @@ class OnlineRegimeMemory:
 
     def retrieve(
         self,
-        library_state: Optional[dict] = None,
-        market_data: Optional[dict] = None,
+        library_state: dict | None = None,
+        market_data: dict | None = None,
         max_success: int = 8,
         max_forbidden: int = 10,
         max_insights: int = 10,
@@ -1308,7 +1308,7 @@ class OnlineRegimeMemory:
             }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "OnlineRegimeMemory":
+    def from_dict(cls, d: dict) -> OnlineRegimeMemory:
         mem_data = d["updater"]["base_memory"]
         base_mem = ExperienceMemory.from_dict(mem_data)
         cfg = {"forget_every_n_iterations": d.get("forget_every", 10)}
@@ -1366,8 +1366,8 @@ class OnlineRegimeMemory:
     @staticmethod
     def _format_regime_section(
         current: RegimeState,
-        regime_patterns: List[RegimeSpecificPattern],
-        cross_patterns: List[RegimeSpecificPattern],
+        regime_patterns: list[RegimeSpecificPattern],
+        cross_patterns: list[RegimeSpecificPattern],
         predicted: RegimeState,
         forecast_conf: float,
     ) -> str:
@@ -1414,7 +1414,7 @@ class _MemorySnapshot:
     avg_confidence: float
     n_regime_patterns: int
     staleness_score: float
-    pattern_confidences: List[float]
+    pattern_confidences: list[float]
 
 
 class MemoryForgetCurve:
@@ -1428,7 +1428,7 @@ class MemoryForgetCurve:
 
     def __init__(self, max_snapshots: int = 1000) -> None:
         self.max_snapshots = max_snapshots
-        self._snapshots: List[_MemorySnapshot] = []
+        self._snapshots: list[_MemorySnapshot] = []
         self._lock = threading.RLock()
 
     def record_snapshot(
@@ -1469,7 +1469,7 @@ class MemoryForgetCurve:
             if len(self._snapshots) > self.max_snapshots:
                 self._snapshots = self._snapshots[-self.max_snapshots:]
 
-    def get_pattern_lifetimes(self) -> List[float]:
+    def get_pattern_lifetimes(self) -> list[float]:
         """Estimate pattern lifetimes (iterations survived) from snapshot series.
 
         Returns
@@ -1585,7 +1585,7 @@ class MemoryForgetCurve:
             }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "MemoryForgetCurve":
+    def from_dict(cls, d: dict) -> MemoryForgetCurve:
         curve = cls(max_snapshots=d.get("max_snapshots", 1000))
         for sd in d.get("snapshots", []):
             snap = _MemorySnapshot(

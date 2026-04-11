@@ -10,7 +10,6 @@ import csv
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Union
 
 import numpy as np
 
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 def save_library(
     library: FactorLibrary,
-    path: Union[str, Path],
+    path: str | Path,
     save_signals: bool = True,
 ) -> None:
     """Save a FactorLibrary to disk.
@@ -66,7 +65,7 @@ def save_library(
 
     # -- Binary signal cache --
     if save_signals:
-        signal_arrays: Dict[str, np.ndarray] = {}
+        signal_arrays: dict[str, np.ndarray] = {}
         for f in library.list_factors():
             if f.signals is not None:
                 signal_arrays[f"factor_{f.id}"] = f.signals
@@ -80,7 +79,7 @@ def save_library(
             )
 
 
-def load_library(path: Union[str, Path]) -> FactorLibrary:
+def load_library(path: str | Path) -> FactorLibrary:
     """Load a FactorLibrary from disk.
 
     Parameters
@@ -96,7 +95,7 @@ def load_library(path: Union[str, Path]) -> FactorLibrary:
     path = Path(path)
     json_path = path.with_suffix(".json")
 
-    with open(json_path, "r") as fp:
+    with open(json_path) as fp:
         meta = json.load(fp)
 
     library = FactorLibrary(
@@ -144,7 +143,7 @@ def load_library(path: Union[str, Path]) -> FactorLibrary:
 # Export utilities
 # ======================================================================
 
-def export_csv(library: FactorLibrary, path: Union[str, Path]) -> None:
+def export_csv(library: FactorLibrary, path: str | Path) -> None:
     """Export the factor table to CSV.
 
     Columns: ID, Name, Formula, Category, IC_Mean, ICIR, IC_Win_Rate,
@@ -178,7 +177,7 @@ def export_csv(library: FactorLibrary, path: Union[str, Path]) -> None:
     logger.info("Exported %d factors to %s", library.size, path)
 
 
-def export_formulas(library: FactorLibrary, path: Union[str, Path]) -> None:
+def export_formulas(library: FactorLibrary, path: str | Path) -> None:
     """Export just the formulas for reproduction.
 
     One formula per line, prefixed with the factor ID and name.
@@ -204,7 +203,7 @@ def export_formulas(library: FactorLibrary, path: Union[str, Path]) -> None:
 
 # Representative subset of the 110 factors discovered by FactorMiner.
 # Each entry: (name, formula, category)
-PAPER_FACTORS: List[Dict[str, str]] = [
+PAPER_FACTORS: list[dict[str, str]] = [
     # Factor 001
     {
         "name": "Intraday Range Position",
@@ -869,7 +868,7 @@ PAPER_FACTORS: List[Dict[str, str]] = [
 
 
 def import_from_paper(
-    path: Optional[Union[str, Path]] = None,
+    path: str | Path | None = None,
 ) -> FactorLibrary:
     """Import the 110 factors from the paper's Appendix P.
 
@@ -891,7 +890,7 @@ def import_from_paper(
     """
     if path is not None:
         path = Path(path)
-        with open(path, "r") as fp:
+        with open(path) as fp:
             raw = json.load(fp)
         entries = raw if isinstance(raw, list) else raw.get("factors", [])
     else:

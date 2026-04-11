@@ -6,8 +6,9 @@ centralizing the repeated stage-chain execution and iteration telemetry.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Sequence
+from typing import Any
 
 import numpy as np
 
@@ -60,6 +61,41 @@ class LoopExecutionService:
         if self.candidate_count(payload) > 0:
             return "all candidates removed by canonicalization"
         return "generator produced 0 candidates"
+
+    def zero_admission_guidance(self, *, target_size: int, max_iterations: int) -> str | None:
+        """Explain likely causes when a run produced candidates but admitted nothing."""
+        session = getattr(self.loop, "_session", None)
+        if session is None:
+            return None
+
+        summary = session.get_summary()
+        total_candidates = int(summary.get("total_candidates", 0) or 0)
+        total_admitted = int(summary.get("total_admitted", 0) or 0)
+        if total_candidates <= 0 or total_admitted > 0 or self.loop.library.size > 0:
+            return None
+
+        config = getattr(self.loop, "config", None)
+        data_tensor = getattr(self.loop, "data_tensor", None)
+        if data_tensor is not None and getattr(data_tensor, "ndim", 0) >= 2:
+            panel = f"{data_tensor.shape[0]} assets x {data_tensor.shape[1]} periods"
+        else:
+            panel = "unknown panel size"
+
+        ic_threshold = getattr(config, "ic_threshold", "unknown")
+        icir_threshold = getattr(config, "icir_threshold", "unknown")
+        corr_threshold = getattr(config, "correlation_threshold", "unknown")
+
+        return (
+            "No factors were admitted after "
+            f"{session.total_iterations} iterations and {total_candidates} evaluated candidates. "
+            "This can be normal for smoke tests, tiny samples, strict IC/ICIR thresholds, or "
+            "high redundancy pressure. "
+            f"Panel={panel}; target={target_size}; max_iterations={max_iterations}; "
+            f"thresholds: ic={ic_threshold}, icir={icir_threshold}, "
+            f"correlation={corr_threshold}. "
+            "For exploration, try more iterations/bigger batches, a larger time panel, lower "
+            "screening thresholds, or `--mock` first to isolate setup from data quality."
+        )
 
     def build_telemetry(
         self,
@@ -115,4 +151,3 @@ class LoopExecutionService:
                 replaced_factor=str(result.replaced) if getattr(result, "replaced", None) else None,
             )
             session_logger.log_factor(factor_rec)
-

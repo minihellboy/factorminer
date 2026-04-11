@@ -7,8 +7,9 @@ Converts preprocessed panel data into dense 3-D arrays indexed by
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Literal, Optional, Sequence, Tuple, Union
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -67,9 +68,9 @@ class TensorConfig:
     features: list[str] = field(default_factory=lambda: list(DEFAULT_FEATURES))
     backend: Backend = "numpy"
     dtype: str = "float32"
-    train_end: Optional[str] = None
-    test_start: Optional[str] = None
-    m_fast: Optional[int] = None
+    train_end: str | None = None
+    test_start: str | None = None
+    m_fast: int | None = None
     seed: int = 42
     target_column: str = "target"
     target_columns: list[str] = field(default_factory=list)
@@ -263,7 +264,7 @@ class TensorDataset:
 
 def build_tensor(
     df: pd.DataFrame,
-    config: Optional[TensorConfig] = None,
+    config: TensorConfig | None = None,
 ) -> TensorDataset:
     """Build a dense 3-D tensor from preprocessed panel data.
 
@@ -310,7 +311,7 @@ def build_tensor(
         target_np = _build_3d(df, asset_ids, timestamps, [target_column])
         target_arrays_np[target_column] = target_np[:, :, 0]
 
-    target_np: Optional[np.ndarray] = None
+    target_np: np.ndarray | None = None
     default_target_name = config.default_target
     if target_arrays_np:
         target_np = target_arrays_np.get(default_target_name)
@@ -343,9 +344,9 @@ def build_tensor(
 
 def temporal_split(
     ds: TensorDataset,
-    train_end: Optional[str] = None,
-    test_start: Optional[str] = None,
-) -> Tuple[TensorDataset, TensorDataset]:
+    train_end: str | None = None,
+    test_start: str | None = None,
+) -> tuple[TensorDataset, TensorDataset]:
     """Split a :class:`TensorDataset` into train and test sets along time.
 
     Parameters
@@ -476,8 +477,8 @@ def sample_assets(
 
 def build_pipeline(
     df: pd.DataFrame,
-    config: Optional[TensorConfig] = None,
-) -> Union[TensorDataset, Tuple[TensorDataset, TensorDataset]]:
+    config: TensorConfig | None = None,
+) -> TensorDataset | tuple[TensorDataset, TensorDataset]:
     """End-to-end: compute target, build tensor, optionally split.
 
     Parameters

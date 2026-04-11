@@ -1,0 +1,61 @@
+{
+  "iterations": [
+    {
+      "iteration": 1,
+      "candidates_generated": 8,
+      "ic_passed": 4,
+      "correlation_passed": 3,
+      "admitted": 2,
+      "rejected": 6,
+      "replaced": 0,
+      "library_size": 2,
+      "best_ic": 0.12,
+      "mean_ic": 0.08,
+      "yield_rate": 0.25,
+      "elapsed_seconds": 1.2
+    },
+    {
+      "iteration": 2,
+      "candidates_generated": 6,
+      "ic_passed": 2,
+      "correlation_passed": 1,
+      "admitted": 1,
+      "rejected": 5,
+      "replaced": 0,
+      "library_size": 3,
+      "best_ic": 0.09,
+      "mean_ic": 0.05,
+      "yield_rate": 0.1666666667,
+      "elapsed_seconds": 1.0
+    }
+  ],
+  "factors": [
+    {
+      "expression": "Neg($close)",
+      "ic": 0.12,
+      "icir": 1.4,
+      "max_correlation": 0.18,
+      "admitted": true
+    },
+    {
+      "expression": "Div($volume, $amt)",
+      "ic": 0.07,
+      "icir": 0.9,
+      "max_correlation": 0.21,
+      "admitted": true
+    },
+    {
+      "expression": "Sub($open, $close)",
+      "ic": 0.01,
+      "rejection_reason": "IC below threshold",
+      "admitted": false
+    }
+  ],
+  "summary": {
+    "total_iterations": 2,
+    "total_candidates": 14,
+    "total_admitted": 3,
+    "overall_yield_rate": 0.2142857143,
+    "final_library_size": 3
+  }
+}

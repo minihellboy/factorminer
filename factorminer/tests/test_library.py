@@ -7,7 +7,6 @@ import pytest
 
 from factorminer.core.factor_library import Factor, FactorLibrary
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

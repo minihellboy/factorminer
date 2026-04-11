@@ -13,8 +13,10 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
+from factorminer.memory.evolution import evolve_memory
+from factorminer.memory.formation import form_memory
 from factorminer.memory.memory_store import (
     ExperienceMemory,
     ForbiddenDirection,
@@ -22,8 +24,6 @@ from factorminer.memory.memory_store import (
     StrategicInsight,
     SuccessPattern,
 )
-from factorminer.memory.formation import form_memory
-from factorminer.memory.evolution import evolve_memory
 from factorminer.memory.retrieval import retrieve_memory
 
 # Optional Phase 2 imports
@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 # Default knowledge base from the paper
 # ---------------------------------------------------------------------------
 
-def _default_success_patterns() -> List[SuccessPattern]:
+def _default_success_patterns() -> list[SuccessPattern]:
     """Initial success patterns from FactorMiner Table 4."""
     return [
         SuccessPattern(
@@ -149,7 +149,7 @@ def _default_success_patterns() -> List[SuccessPattern]:
     ]
 
 
-def _default_forbidden_directions() -> List[ForbiddenDirection]:
+def _default_forbidden_directions() -> list[ForbiddenDirection]:
     """Initial forbidden directions from FactorMiner Table 5."""
     return [
         ForbiddenDirection(
@@ -202,7 +202,7 @@ def _default_forbidden_directions() -> List[ForbiddenDirection]:
     ]
 
 
-def _default_insights() -> List[StrategicInsight]:
+def _default_insights() -> list[StrategicInsight]:
     """Initial strategic insights from the paper."""
     return [
         StrategicInsight(
@@ -267,7 +267,7 @@ class ExperienceMemoryManager:
         )
 
         # Phase 2: Optional knowledge graph
-        self.kg: Optional[FactorKnowledgeGraph] = None  # type: ignore[type-arg]
+        self.kg: FactorKnowledgeGraph | None = None  # type: ignore[type-arg]
         if enable_knowledge_graph:
             if FactorKnowledgeGraph is not None:
                 self.kg = FactorKnowledgeGraph()
@@ -278,7 +278,7 @@ class ExperienceMemoryManager:
                 )
 
         # Phase 2: Optional formula embedder
-        self.embedder: Optional[FormulaEmbedder] = None  # type: ignore[type-arg]
+        self.embedder: FormulaEmbedder | None = None  # type: ignore[type-arg]
         if enable_embeddings:
             if FormulaEmbedder is not None:
                 self.embedder = FormulaEmbedder()
@@ -292,7 +292,7 @@ class ExperienceMemoryManager:
     def version(self) -> int:
         return self.memory.version
 
-    def update(self, trajectory: List[dict]) -> Dict[str, Any]:
+    def update(self, trajectory: list[dict]) -> dict[str, Any]:
         """Process a batch trajectory: formation + evolution.
 
         Parameters
@@ -347,11 +347,11 @@ class ExperienceMemoryManager:
 
     def retrieve(
         self,
-        library_state: Optional[Dict[str, Any]] = None,
+        library_state: dict[str, Any] | None = None,
         max_success: int = 8,
         max_forbidden: int = 10,
         max_insights: int = 10,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Retrieve context-dependent memory signal for LLM prompt.
 
         Parameters
@@ -469,7 +469,7 @@ class ExperienceMemoryManager:
             if FormulaEmbedder is not None:
                 self.embedder = FormulaEmbedder()
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Return summary statistics about the current memory state.
 
         Returns
@@ -486,7 +486,7 @@ class ExperienceMemoryManager:
                 log.get("admission_rate", 0) for log in recent_logs
             ) / len(recent_logs)
 
-        stats: Dict[str, Any] = {
+        stats: dict[str, Any] = {
             "version": self.memory.version,
             "batch_counter": self._batch_counter,
             "library_size": self.memory.state.library_size,
@@ -543,7 +543,7 @@ class ExperienceMemoryManager:
     # Phase 2: Knowledge graph helpers
     # ------------------------------------------------------------------
 
-    def _update_knowledge_graph(self, trajectory: List[dict]) -> None:
+    def _update_knowledge_graph(self, trajectory: list[dict]) -> None:
         """Add factors from a trajectory to the knowledge graph.
 
         Extracts operators from formulas, creates FactorNode instances,
@@ -557,7 +557,7 @@ class ExperienceMemoryManager:
         op_pattern = re.compile(r"\b([A-Z][a-zA-Z]+)\(")
         feat_pattern = re.compile(r"\$\w+")
 
-        factor_ids: List[str] = []
+        factor_ids: list[str] = []
 
         for candidate in trajectory:
             fid = candidate.get("factor_id", "")
