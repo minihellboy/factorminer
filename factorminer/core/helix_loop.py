@@ -34,6 +34,7 @@ from factorminer.architecture import (
     RetrieveStage,
 )
 from factorminer.core.factor_library import FactorLibrary
+from factorminer.core.loop_services import LoopExecutionService
 from factorminer.core.parser import try_parse
 from factorminer.core.ralph_loop import (
     EvaluationResult,
@@ -42,8 +43,6 @@ from factorminer.core.ralph_loop import (
 from factorminer.evaluation.metrics import compute_ic
 from factorminer.memory.memory_store import ExperienceMemory
 from factorminer.memory.retrieval import retrieve_memory
-from factorminer.utils.logging import FactorRecord, IterationRecord
-
 logger = logging.getLogger(__name__)
 
 
@@ -266,6 +265,7 @@ class HelixLoop(RalphLoop):
         self._volume = volume
         self._kg_service = KnowledgeGraphService()
         self._forgetting_service = OnlineForgettingService(forgetting_lambda=forgetting_lambda)
+        self._loop_services = LoopExecutionService(self)
 
         # Track iterations without admissions for forgetting
         self._no_admission_streak: int = 0
@@ -466,28 +466,19 @@ class HelixLoop(RalphLoop):
             Iteration statistics.
         """
         t0 = time.time()
-        payload = IterationPayload(iteration=self.iteration, batch_size=batch_size)
-
-        self.stages["retrieve"].run(self, payload)
-        self.stages["generate"].run(self, payload)
+        payload = self._loop_services.new_payload(batch_size)
+        self._loop_services.run_stage_chain(payload, ("retrieve", "generate"))
         self.budget.record_llm_call()
 
         if not payload.candidates:
             logger.warning(
-                "Helix iteration %d: generator produced 0 candidates",
+                "Helix iteration %d: %s",
                 self.iteration,
+                self._loop_services.describe_empty_generation(payload),
             )
-            return self._empty_stats()
+            return self._loop_services.empty_stats()
 
-        if not payload.candidates:
-            logger.warning(
-                "Helix iteration %d: all candidates removed by canonicalization",
-                self.iteration,
-            )
-            return self._empty_stats()
-
-        self.stages["evaluate"].run(self, payload)
-        self.stages["library_update"].run(self, payload)
+        self._loop_services.run_stage_chain(payload, ("evaluate", "library_update"))
 
         provenance_library_state = {
             **payload.library_state,
@@ -505,50 +496,19 @@ class HelixLoop(RalphLoop):
             generator_family=self._generator_family(),
         )
 
-        self.stages["distill"].run(self, payload)
+        self._loop_services.run_stage_chain(payload, ("distill",))
 
         # Build stats
         elapsed = time.time() - t0
         self.budget.record_compute(elapsed)
-        stats = self._compute_stats(payload.results, payload.admitted_results, elapsed)
-        stats.update(payload.stage_metrics)
-        stats["iteration"] = self.iteration
-
-        # Log to reporter and session logger
-        self.reporter.log_batch(**stats)
-        if self._session_logger:
-            ic_values = [r.ic_mean for r in payload.results if r.parse_ok]
-            record = IterationRecord(
-                iteration=self.iteration,
-                candidates_generated=int(
-                    payload.stage_metrics.get("candidates_before_canon", len(payload.candidates))
-                ),
-                ic_passed=stats["ic_passed"],
-                correlation_passed=stats["corr_passed"],
-                admitted=stats["admitted"],
-                rejected=int(
-                    payload.stage_metrics.get("candidates_before_canon", len(payload.candidates))
-                )
-                - stats["admitted"],
-                replaced=stats["replaced"],
-                library_size=self.library.size,
-                best_ic=max(ic_values) if ic_values else 0.0,
-                mean_ic=float(np.mean(ic_values)) if ic_values else 0.0,
-                elapsed_seconds=elapsed,
-            )
-            self._session_logger.log_iteration(record)
-
-            for r in payload.results:
-                factor_rec = FactorRecord(
-                    expression=r.formula,
-                    ic=r.ic_mean if r.parse_ok else None,
-                    icir=r.icir if r.parse_ok else None,
-                    max_correlation=r.max_correlation if r.parse_ok else None,
-                    admitted=r.admitted,
-                    rejection_reason=r.rejection_reason or None,
-                    replaced_factor=str(r.replaced) if r.replaced else None,
-                )
-                self._session_logger.log_factor(factor_rec)
+        stats = self._loop_services.build_stats(payload, elapsed)
+        telemetry = self._loop_services.build_telemetry(
+            payload,
+            stats,
+            elapsed,
+            candidates_generated=self._loop_services.candidate_count(payload),
+        )
+        self._loop_services.log_telemetry(telemetry)
 
         return stats
 

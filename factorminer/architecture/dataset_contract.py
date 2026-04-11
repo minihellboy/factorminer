@@ -8,6 +8,15 @@ from typing import Any
 import numpy as np
 
 
+def _safe_len(value: Any) -> int:
+    if value is None:
+        return 0
+    try:
+        return len(value)
+    except TypeError:
+        return 0
+
+
 @dataclass(frozen=True)
 class DatasetContract:
     """Canonical description of how raw data became the mining tensors."""
@@ -27,6 +36,9 @@ class DatasetContract:
     @classmethod
     def from_runtime_dataset(cls, cfg: Any, dataset: Any) -> DatasetContract:
         target_specs = getattr(dataset, "target_specs", {}) or {}
+        asset_ids = getattr(dataset, "asset_ids", None)
+        timestamps = getattr(dataset, "timestamps", None)
+        splits = getattr(dataset, "splits", None) or {}
         return cls(
             feature_names=list(getattr(dataset, "data_dict", {}).keys()),
             data_shape=tuple(np.shape(getattr(dataset, "data_tensor", ()))),
@@ -42,11 +54,11 @@ class DatasetContract:
             },
             train_period=list(getattr(cfg.data, "train_period", [])),
             test_period=list(getattr(cfg.data, "test_period", [])),
-            asset_count=int(len(getattr(dataset, "asset_ids", []) or [])),
-            period_count=int(len(getattr(dataset, "timestamps", []) or [])),
+            asset_count=int(_safe_len(asset_ids)),
+            period_count=int(_safe_len(timestamps)),
             split_sizes={
                 name: int(getattr(split, "size", 0))
-                for name, split in (getattr(dataset, "splits", {}) or {}).items()
+                for name, split in splits.items()
             },
         )
 
