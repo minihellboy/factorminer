@@ -42,6 +42,89 @@ jobs:
       - name: Run test suite
         run: uv run pytest -q factorminer/tests
 
+      - name: Check package artifacts
+        run: |
+          rm -rf /tmp/factorminer-dist
+          uv build --out-dir /tmp/factorminer-dist
+          uv run python - <<'PY'
+          import tarfile
+          import zipfile
+          from pathlib import Path
+
+          dist = Path("/tmp/factorminer-dist")
+          wheel = next(dist.glob("*.whl"))
+          sdist = next(dist.glob("*.tar.gz"))
+
+          with zipfile.ZipFile(wheel) as zf:
+              wheel_names = set(zf.namelist())
+          assert "factorminer/configs/default.yaml" in wheel_names
+          assert not any(name.startswith("factorminer/tests/") for name in wheel_names)
+
+          with tarfile.open(sdist) as tf:
+              sdist_names = set(tf.getnames())
+          assert any(name.endswith("/factorminer/configs/default.yaml") for name in sdist_names)
+          assert not any("/factorminer/tests/" in name for name in sdist_names)
+          PY
+
       - name: Run CLI smoke test
         run: |
-          uv run factorminer --cpu -o /tmp/factorminer-ci-smoke mine --mock -n 1 -b 3 -t 1
+          cat > /tmp/factorminer-ci-smoke.yaml <<'YAML'
+          mining:
+            target_library_size: 1
+            batch_size: 8
+            max_iterations: 2
+            ic_threshold: 0.0001
+            icir_threshold: 0.0001
+            correlation_threshold: 1.0
+            replacement_ic_min: 0.001
+            replacement_ic_ratio: 1.0
+          evaluation:
+            backend: numpy
+            signal_failure_policy: synthetic
+          llm:
+            provider: mock
+            model: mock
+            batch_candidates: 8
+          YAML
+          uv run factorminer --config /tmp/factorminer-ci-smoke.yaml -o /tmp/factorminer-ci-smoke mine --mock -n 1 -b 8 -t 2
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("/tmp/factorminer-ci-smoke/factor_library.json")
+          payload = json.loads(path.read_text())
+          factors = payload.get("factors", [])
+          if not factors:
+              raise SystemExit("CI smoke produced an empty factor library")
+          print(f"CI smoke library factors: {len(factors)}")
+          PY
+
+      - name: Optional benchmark smoke
+        continue-on-error: true
+        run: |
+          cat > /tmp/factorminer-ci-benchmark.yaml <<'YAML'
+          mining:
+            ic_threshold: 0.0001
+            icir_threshold: 0.0001
+            correlation_threshold: 1.0
+            replacement_ic_min: 0.001
+            replacement_ic_ratio: 1.0
+          evaluation:
+            backend: numpy
+            signal_failure_policy: reject
+          data:
+            train_period: ["2024-01-02 09:30:00", "2024-01-02 15:00:00"]
+            test_period: ["2024-01-02 15:10:00", "2024-01-03 09:30:00"]
+          benchmark:
+            freeze_top_k: 2
+            freeze_universe: "CSI500"
+            report_universes: ["CSI500"]
+            baselines: ["factor_miner"]
+            mock_panel_shape: [120, 12]
+          llm:
+            provider: mock
+            model: mock
+          YAML
+          uv run factorminer --config /tmp/factorminer-ci-benchmark.yaml \
+            -o /tmp/factorminer-ci-benchmark \
+            benchmark table1 --mock --baseline factor_miner

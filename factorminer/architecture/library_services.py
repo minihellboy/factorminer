@@ -29,10 +29,10 @@ class FactorAdmissionService:
                     self.library.replace_factor(replaced, factor)
                     admitted.append(result)
                     logger.info(
-                        "Replaced factor %d with '%s' (IC=%.4f)",
+                        "Replaced factor %d with '%s' (paper IC=%.4f)",
                         replaced,
                         result.factor_name,
-                        result.ic_mean,
+                        getattr(result, "ic_paper_mean", result.ic_mean),
                     )
                 except KeyError:
                     logger.warning("Failed to replace factor %d (already removed?)", replaced)
@@ -50,7 +50,10 @@ class FactorAdmissionService:
             formula=result.formula,
             category=infer_family(result.formula),
             ic_mean=result.ic_mean,
+            ic_paper_mean=getattr(result, "ic_paper_mean", abs(float(result.ic_mean))),
+            ic_abs_mean=getattr(result, "ic_abs_mean", abs(float(result.ic_mean))),
             icir=result.icir,
+            ic_paper_icir=getattr(result, "ic_paper_icir", abs(float(result.icir))),
             ic_win_rate=result.ic_win_rate,
             max_correlation=result.max_correlation,
             batch_number=iteration,

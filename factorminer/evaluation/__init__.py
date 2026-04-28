@@ -41,9 +41,13 @@ from factorminer.evaluation.correlation import (
     compute_correlation_batch,
 )
 from factorminer.evaluation.metrics import (
+    METRIC_VERSION,
     compute_factor_stats,
     compute_ic,
+    compute_ic_abs_mean,
     compute_ic_mean,
+    compute_ic_paper_icir,
+    compute_ic_paper_mean,
     compute_ic_vectorized,
     compute_ic_win_rate,
     compute_icir,
@@ -90,10 +94,14 @@ from factorminer.evaluation.significance import (
 
 __all__ = [
     # metrics
+    "METRIC_VERSION",
     "compute_ic",
     "compute_ic_vectorized",
     "compute_icir",
     "compute_ic_mean",
+    "compute_ic_paper_mean",
+    "compute_ic_abs_mean",
+    "compute_ic_paper_icir",
     "compute_ic_win_rate",
     "compute_pairwise_correlation",
     "compute_factor_stats",

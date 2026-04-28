@@ -8,7 +8,10 @@ import pytest
 from factorminer.evaluation.metrics import (
     compute_factor_stats,
     compute_ic,
+    compute_ic_abs_mean,
     compute_ic_mean,
+    compute_ic_paper_icir,
+    compute_ic_paper_mean,
     compute_ic_win_rate,
     compute_icir,
     compute_pairwise_correlation,
@@ -144,11 +147,31 @@ class TestICIR:
 class TestICStats:
     """Test IC mean and win rate."""
 
-    def test_ic_mean_absolute(self):
+    def test_ic_mean_signed_and_legacy_abs(self):
         ic_series = np.array([0.1, -0.05, 0.08, -0.03, np.nan])
         result = compute_ic_mean(ic_series)
-        expected = np.mean(np.abs([0.1, 0.05, 0.08, 0.03]))
+        expected = np.mean([0.1, -0.05, 0.08, -0.03])
         np.testing.assert_almost_equal(result, expected)
+        np.testing.assert_almost_equal(
+            compute_ic_abs_mean(ic_series),
+            np.mean(np.abs([0.1, -0.05, 0.08, -0.03])),
+        )
+        np.testing.assert_almost_equal(
+            compute_ic_paper_mean(ic_series),
+            abs(expected),
+        )
+
+    def test_alternating_ic_distinguishes_paper_and_abs_mean(self):
+        ic_series = np.array([0.1, -0.1])
+        np.testing.assert_almost_equal(compute_ic_abs_mean(ic_series), 0.1)
+        np.testing.assert_almost_equal(compute_ic_paper_mean(ic_series), 0.0)
+        np.testing.assert_almost_equal(compute_ic_mean(ic_series), 0.0)
+
+    def test_consistently_negative_ic_has_positive_paper_metrics(self):
+        ic_series = np.array([-0.1, -0.08, -0.12, -0.09])
+        assert compute_ic_mean(ic_series) < 0.0
+        assert compute_ic_paper_mean(ic_series) > 0.0
+        assert compute_ic_paper_icir(ic_series) > 0.0
 
     def test_ic_win_rate(self):
         ic_series = np.array([0.1, -0.05, 0.08, -0.03, 0.02, np.nan])
@@ -270,8 +293,12 @@ class TestFactorStats:
         signals = rng.normal(0, 1, (M, T))
         returns = rng.normal(0, 0.01, (M, T))
         stats = compute_factor_stats(signals, returns)
+        assert stats["metric_version"] == "paper_ic_v2"
         assert "ic_mean" in stats
+        assert "ic_paper_mean" in stats
+        assert "ic_abs_mean" in stats
         assert "icir" in stats
+        assert "ic_paper_icir" in stats
         assert "ic_win_rate" in stats
         assert "Q1" in stats
         assert "long_short" in stats

@@ -90,6 +90,8 @@ def test_validate_data_reports_missing_required_columns(tmp_path):
     assert result.exit_code == 1, result.output
     assert "Missing required columns" in result.output
     assert "asset_id" in result.output
+    assert "Accepted aliases" in result.output
+    assert "Next command" in result.output
 
 
 def test_validate_data_strict_fails_on_warnings(tmp_path):
@@ -129,3 +131,37 @@ def test_validate_data_strict_fails_on_warnings(tmp_path):
     assert "Status: invalid (strict)" in result.output
     assert "duplicate asset/timestamp" in result.output
     assert "Potential leakage-risk column names detected" in result.output
+
+
+def test_validate_data_text_includes_next_steps_and_split_warnings(tmp_path):
+    path = _write_csv(
+        tmp_path,
+        "valid_old_data.csv",
+        pd.DataFrame(
+            {
+                "datetime": pd.to_datetime(
+                    ["2023-01-01 09:30:00", "2023-01-01 09:40:00"]
+                ),
+                "asset_id": ["A", "A"],
+                "open": [10.0, 10.2],
+                "high": [10.3, 10.4],
+                "low": [9.9, 10.1],
+                "close": [10.1, 10.3],
+                "volume": [1000.0, 1200.0],
+                "amount": [10100.0, 12360.0],
+            }
+        ),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["--cpu", "validate-data", path])
+
+    assert result.exit_code == 0, result.output
+    assert "Accepted aliases" in result.output
+    assert "asset_id: asset_id, ticker, symbol, code" in result.output
+    assert "Derived fields" in result.output
+    assert "vwap: derived as amount / volume" in result.output
+    assert "Configured split coverage" in result.output
+    assert "WARN: configured train split is empty" in result.output
+    assert "WARN: configured test split is empty" in result.output
+    assert f"uv run factorminer -o output mine --data {path}" in result.output

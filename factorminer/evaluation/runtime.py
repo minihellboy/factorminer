@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -332,11 +333,14 @@ def select_top_k(
     split_name: str,
     top_k: int | None = None,
 ) -> list[FactorEvaluationArtifact]:
-    """Sort succeeded artifacts by split abs-IC and return the top-k subset."""
+    """Sort succeeded artifacts by split paper IC and return the top-k subset."""
     succeeded = [a for a in artifacts if a.succeeded]
     succeeded.sort(
         key=lambda artifact: abs(
-            artifact.split_stats[split_name].get("ic_abs_mean", 0.0)
+            artifact.split_stats[split_name].get(
+                "ic_paper_mean",
+                artifact.split_stats[split_name].get("ic_abs_mean", 0.0),
+            )
         ),
         reverse=True,
     )
@@ -471,7 +475,8 @@ def generate_synthetic_signals(
 ) -> np.ndarray:
     """Deterministic pseudo-signals for demo/mock workflows."""
     m, t = returns_shape
-    seed = hash(formula_str) % (2**31)
+    digest = hashlib.sha256(formula_str.encode("utf-8")).digest()
+    seed = int.from_bytes(digest[:8], "big") % (2**31)
     rng = np.random.RandomState(seed)
     signals = rng.randn(m, t).astype(np.float64)
     nan_mask = rng.random((m, t)) < 0.02

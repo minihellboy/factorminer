@@ -116,10 +116,11 @@ class LibraryGeometry:
 
         target_id = geometry.correlated_factor_ids[0]
         target_factor = self.library.get_factor(target_id)
-        if candidate_ic < ic_ratio * target_factor.ic_mean:
+        target_ic = float(target_factor.ic_paper_mean or abs(target_factor.ic_mean))
+        if candidate_ic < ic_ratio * target_ic:
             return False, None, (
                 f"IC {candidate_ic:.4f} insufficient to replace factor {target_id} "
-                f"(needs >= {ic_ratio} * {target_factor.ic_mean:.4f})"
+                f"(needs >= {ic_ratio} * {target_ic:.4f})"
             )
 
         return True, target_id, f"Replacement over factor {target_id}"

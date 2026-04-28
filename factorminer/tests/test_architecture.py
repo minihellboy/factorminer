@@ -34,6 +34,7 @@ def test_paper_protocol_builds_from_config():
     assert protocol.train_test_protocol.freeze_top_k == cfg.benchmark.freeze_top_k
     assert "paper" in protocol.target_definitions
     assert protocol.redundancy_metric == cfg.evaluation.redundancy_metric
+    assert protocol.ic_metric == "paper_abs_mean_spearman_ic"
 
 
 def test_dataset_contract_tracks_shapes_and_targets():

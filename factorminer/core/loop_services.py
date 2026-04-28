@@ -122,7 +122,11 @@ class LoopExecutionService:
         if session_logger is None:
             return
 
-        ic_values = [r.ic_mean for r in telemetry.results if getattr(r, "parse_ok", False)]
+        ic_values = [
+            getattr(r, "ic_paper_mean", r.ic_mean)
+            for r in telemetry.results
+            if getattr(r, "parse_ok", False)
+        ]
         record = IterationRecord(
             iteration=telemetry.iteration,
             candidates_generated=telemetry.candidates_generated,
@@ -141,8 +145,12 @@ class LoopExecutionService:
         for result in telemetry.results:
             factor_rec = FactorRecord(
                 expression=result.formula,
-                ic=result.ic_mean if getattr(result, "parse_ok", False) else None,
-                icir=result.icir if getattr(result, "parse_ok", False) else None,
+                ic=getattr(result, "ic_paper_mean", result.ic_mean)
+                if getattr(result, "parse_ok", False)
+                else None,
+                icir=getattr(result, "ic_paper_icir", result.icir)
+                if getattr(result, "parse_ok", False)
+                else None,
                 max_correlation=(
                     result.max_correlation if getattr(result, "parse_ok", False) else None
                 ),

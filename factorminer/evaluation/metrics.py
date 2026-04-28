@@ -101,6 +101,8 @@ def compute_ic_vectorized(signals: np.ndarray, returns: np.ndarray) -> np.ndarra
 # IC-derived statistics
 # ---------------------------------------------------------------------------
 
+METRIC_VERSION = "paper_ic_v2"
+
 def compute_icir(ic_series: np.ndarray) -> float:
     """Compute ICIR = mean(IC) / std(IC).
 
@@ -124,7 +126,7 @@ def compute_icir(ic_series: np.ndarray) -> float:
 
 
 def compute_ic_mean(ic_series: np.ndarray) -> float:
-    """Compute mean absolute IC.
+    """Compute signed mean IC, ``mean(IC_t)``.
 
     Parameters
     ----------
@@ -137,7 +139,25 @@ def compute_ic_mean(ic_series: np.ndarray) -> float:
     valid = ic_series[~np.isnan(ic_series)]
     if len(valid) == 0:
         return 0.0
+    return float(np.mean(valid))
+
+
+def compute_ic_paper_mean(ic_series: np.ndarray) -> float:
+    """Compute the paper IC summary, ``abs(mean(IC_t))``."""
+    return abs(compute_ic_mean(ic_series))
+
+
+def compute_ic_abs_mean(ic_series: np.ndarray) -> float:
+    """Compute legacy diagnostic IC, ``mean(abs(IC_t))``."""
+    valid = ic_series[~np.isnan(ic_series)]
+    if len(valid) == 0:
+        return 0.0
     return float(np.mean(np.abs(valid)))
+
+
+def compute_ic_paper_icir(ic_series: np.ndarray) -> float:
+    """Compute the paper ICIR summary, ``abs(mean(IC_t)) / std(IC_t)``."""
+    return abs(compute_icir(ic_series))
 
 
 def compute_ic_win_rate(ic_series: np.ndarray) -> float:
@@ -350,17 +370,20 @@ def compute_factor_stats(
     Returns
     -------
     dict
-        Keys: ic_mean, ic_abs_mean, icir, ic_win_rate,
+        Keys: ic_mean, ic_paper_mean, ic_abs_mean, icir, ic_paper_icir, ic_win_rate,
               Q1..Q5, long_short, monotonicity, turnover
     """
     ic_series = compute_ic(signals, returns)
     valid_ic = ic_series[~np.isnan(ic_series)]
 
     stats: dict = {
+        "metric_version": METRIC_VERSION,
         "ic_series": ic_series,
-        "ic_mean": float(np.mean(valid_ic)) if len(valid_ic) > 0 else 0.0,
-        "ic_abs_mean": compute_ic_mean(ic_series),
+        "ic_mean": compute_ic_mean(ic_series),
+        "ic_paper_mean": compute_ic_paper_mean(ic_series),
+        "ic_abs_mean": compute_ic_abs_mean(ic_series),
         "icir": compute_icir(ic_series),
+        "ic_paper_icir": compute_ic_paper_icir(ic_series),
         "ic_win_rate": compute_ic_win_rate(ic_series),
         "ic_std": float(np.std(valid_ic, ddof=1)) if len(valid_ic) > 2 else 0.0,
         "n_periods": int((~np.isnan(ic_series)).sum()),

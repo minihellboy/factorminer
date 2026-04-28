@@ -36,6 +36,7 @@ def _merge_success_patterns(
             success_rate=pat.success_rate,
             example_factors=list(pat.example_factors),
             occurrence_count=pat.occurrence_count,
+            confidence=getattr(pat, "confidence", 1.0),
         )
 
     for pat in new:
@@ -67,6 +68,7 @@ def _merge_success_patterns(
                 success_rate=pat.success_rate,
                 example_factors=list(pat.example_factors),
                 occurrence_count=pat.occurrence_count,
+                confidence=getattr(pat, "confidence", 1.0),
             )
 
     return list(merged.values())
@@ -388,9 +390,16 @@ def apply_confidence_decay(
     return dataclasses.replace(memory, success_patterns=new_patterns)
 
 
+def _keyword_list(keywords: list[str] | str) -> list[str]:
+    """Normalize a single keyword or keyword list for confidence helpers."""
+    if isinstance(keywords, str):
+        return [keywords]
+    return list(keywords)
+
+
 def bump_pattern_confidence(
     memory: ExperienceMemory,
-    keywords: list,
+    keywords: list[str] | str,
     boost: float = 0.05,
     max_confidence: float = 1.0,
 ) -> ExperienceMemory:
@@ -417,11 +426,15 @@ def bump_pattern_confidence(
     """
     import dataclasses
 
+    normalized_keywords = _keyword_list(keywords)
     new_patterns = []
     for p in memory.success_patterns:
         desc = (getattr(p, "description", "") or "").lower()
         tmpl = (getattr(p, "template", "") or "").lower()
-        matched = any(kw.lower() in desc or kw.lower() in tmpl for kw in keywords)
+        matched = any(
+            kw.lower() in desc or kw.lower() in tmpl
+            for kw in normalized_keywords
+        )
         if matched:
             new_conf = min(getattr(p, "confidence", 1.0) + boost, max_confidence)
             try:
@@ -436,7 +449,7 @@ def bump_pattern_confidence(
 
 def penalise_pattern_confidence(
     memory: ExperienceMemory,
-    keywords: list,
+    keywords: list[str] | str,
     penalty: float = 0.15,
     min_confidence: float = 0.05,
 ) -> ExperienceMemory:
@@ -460,11 +473,15 @@ def penalise_pattern_confidence(
     """
     import dataclasses
 
+    normalized_keywords = _keyword_list(keywords)
     new_patterns = []
     for p in memory.success_patterns:
         desc = (getattr(p, "description", "") or "").lower()
         tmpl = (getattr(p, "template", "") or "").lower()
-        matched = any(kw.lower() in desc or kw.lower() in tmpl for kw in keywords)
+        matched = any(
+            kw.lower() in desc or kw.lower() in tmpl
+            for kw in normalized_keywords
+        )
         if matched:
             new_conf = getattr(p, "confidence", 1.0) * (1.0 - penalty)
             if new_conf < min_confidence:

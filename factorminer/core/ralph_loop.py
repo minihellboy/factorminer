@@ -142,7 +142,10 @@ class EvaluationResult:
     formula: str
     parse_ok: bool = False
     ic_mean: float = 0.0
+    ic_paper_mean: float = 0.0
+    ic_abs_mean: float = 0.0
     icir: float = 0.0
+    ic_paper_icir: float = 0.0
     ic_win_rate: float = 0.0
     max_correlation: float = 0.0
     correlated_with: str = ""
@@ -367,12 +370,16 @@ class ValidationPipeline:
             fast_signals = signals[self._fast_indices, :]
             fast_returns = self.returns[self._fast_indices, :]
             fast_stats = compute_factor_stats(fast_signals, fast_returns)
-            fast_ic = fast_stats["ic_abs_mean"]
+            fast_ic = fast_stats["ic_paper_mean"]
 
             if fast_ic < self.ic_threshold:
-                result.ic_mean = fast_ic
+                result.ic_mean = fast_stats["ic_mean"]
+                result.ic_paper_mean = fast_stats["ic_paper_mean"]
+                result.ic_abs_mean = fast_stats["ic_abs_mean"]
+                result.icir = fast_stats["icir"]
+                result.ic_paper_icir = fast_stats["ic_paper_icir"]
                 result.rejection_reason = (
-                    f"Fast-screen IC {fast_ic:.4f} < threshold {self.ic_threshold}"
+                    f"Fast-screen paper IC {fast_ic:.4f} < threshold {self.ic_threshold}"
                 )
                 result.stage_passed = 0
                 return result
@@ -384,8 +391,11 @@ class ValidationPipeline:
             self.target_panels,
         )
         paper_stats = result.target_stats["paper"]
-        result.ic_mean = paper_stats["ic_abs_mean"]
+        result.ic_mean = paper_stats["ic_mean"]
+        result.ic_paper_mean = paper_stats["ic_paper_mean"]
+        result.ic_abs_mean = paper_stats["ic_abs_mean"]
         result.icir = paper_stats["icir"]
+        result.ic_paper_icir = paper_stats["ic_paper_icir"]
         result.ic_win_rate = paper_stats["ic_win_rate"]
 
         quality = self.kernel.compute_quality_score(
@@ -410,8 +420,8 @@ class ValidationPipeline:
             result.effective_rank_gain = result.score_vector["geometry"]["effective_rank_gain"]
 
         # Stage 1 gate: IC threshold (full data)
-        quality_gate = result.ic_mean
-        quality_label = "IC"
+        quality_gate = result.ic_paper_mean
+        quality_label = "Paper IC"
         if self._research_enabled():
             quality_gate = result.research_score
             quality_label = "Research score"
@@ -422,8 +432,15 @@ class ValidationPipeline:
             )
             result.stage_passed = 0
             return result
-        if result.icir < self.icir_threshold:
-            result.rejection_reason = f"ICIR {result.icir:.4f} < threshold {self.icir_threshold}"
+        icir_gate = result.ic_paper_icir
+        icir_label = "Paper ICIR"
+        if self._research_enabled():
+            icir_gate = result.icir
+            icir_label = "Signed ICIR"
+        if icir_gate < self.icir_threshold:
+            result.rejection_reason = (
+                f"{icir_label} {icir_gate:.4f} < threshold {self.icir_threshold}"
+            )
             result.stage_passed = 0
             return result
         result.stage_passed = 1
@@ -446,7 +463,7 @@ class ValidationPipeline:
             return result
 
         # Stage 2: Correlation check against library (admission)
-        admitted, reason = self.kernel.admission_decision(result.ic_mean, signals)
+        admitted, reason = self.kernel.admission_decision(result.ic_paper_mean, signals)
         if admitted:
             result.admitted = True
             result.stage_passed = 3
@@ -458,7 +475,7 @@ class ValidationPipeline:
 
         # Stage 2.5: Replacement check for candidates that failed admission
         should_replace, replace_id, replace_reason = self.kernel.replacement_decision(
-            result.ic_mean,
+            result.ic_paper_mean,
             signals,
         )
         if should_replace and replace_id is not None:
@@ -498,7 +515,10 @@ class ValidationPipeline:
         target_id, _ = conflicting[0]
         target_factor = self.library.get_factor(target_id)
         target_score = float(
-            target_factor.research_metrics.get("primary_score", target_factor.ic_mean)
+            target_factor.research_metrics.get(
+                "primary_score",
+                target_factor.ic_paper_mean or abs(target_factor.ic_mean),
+            )
         )
         if result.research_score < max(
             self.replacement_ic_min, self.replacement_ic_ratio * target_score
@@ -1057,7 +1077,10 @@ class RalphLoop:
                 "factor_id": r.factor_name,
                 "formula": r.formula,
                 "ic": r.ic_mean,
+                "paper_ic": r.ic_paper_mean,
+                "ic_abs_mean": r.ic_abs_mean,
                 "icir": r.icir,
+                "paper_icir": r.ic_paper_icir,
                 "max_correlation": r.max_correlation,
                 "correlated_with": r.correlated_with,
                 "admitted": r.admitted,
@@ -1498,7 +1521,10 @@ class RalphLoop:
                 library_state=library_state,
                 evaluation={
                     "ic_mean": factor.ic_mean,
+                    "ic_paper_mean": factor.ic_paper_mean,
+                    "ic_abs_mean": factor.ic_abs_mean,
                     "icir": factor.icir,
+                    "ic_paper_icir": factor.ic_paper_icir,
                     "ic_win_rate": factor.ic_win_rate,
                     "max_correlation": factor.max_correlation,
                     "research_metrics": factor.research_metrics,

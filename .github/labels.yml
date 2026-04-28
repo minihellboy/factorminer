@@ -1,0 +1,18 @@
+- name: setup
+  color: "0e8a16"
+  description: Installation, config, environment, or first-run help
+- name: data
+  color: "1d76db"
+  description: Market data schema, loaders, validation, or sample data
+- name: metrics
+  color: "5319e7"
+  description: IC, ICIR, scoring, admission, or reporting semantics
+- name: docs
+  color: "0075ca"
+  description: README, FAQ, guides, or documentation fixes
+- name: paper-fidelity
+  color: "fbca04"
+  description: Behavior that affects paper reproduction or benchmark parity
+- name: good first issue
+  color: "7057ff"
+  description: Scoped issue suitable for a first contribution

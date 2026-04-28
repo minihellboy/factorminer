@@ -34,6 +34,10 @@ from factorminer.evaluation.correlation import (
 from factorminer.evaluation.metrics import (
     compute_factor_stats,
     compute_ic,
+    compute_ic_abs_mean,
+    compute_ic_mean,
+    compute_ic_paper_icir,
+    compute_ic_paper_mean,
     compute_icir,
 )
 
@@ -62,7 +66,10 @@ class EvaluationResult:
     formula: str
     ic_series: np.ndarray | None = None
     ic_mean: float = 0.0
+    ic_paper_mean: float = 0.0
+    ic_abs_mean: float = 0.0
     icir: float = 0.0
+    ic_paper_icir: float = 0.0
     max_correlation: float = 0.0
     correlated_with: str | None = None
     stage_passed: int = 0  # Highest stage passed (1-4), 0 if failed stage 1
@@ -77,7 +84,10 @@ class EvaluationResult:
             "factor_id": self.factor_name,
             "formula": self.formula,
             "ic": self.ic_mean,
+            "paper_ic": self.ic_paper_mean,
+            "ic_abs_mean": self.ic_abs_mean,
             "icir": self.icir,
+            "paper_icir": self.ic_paper_icir,
             "max_correlation": self.max_correlation,
             "correlated_with": self.correlated_with or "",
             "admitted": self.admitted,
@@ -158,16 +168,18 @@ class PipelineConfig:
 def _evaluate_single_candidate_ic(
     signals: np.ndarray,
     returns: np.ndarray,
-) -> tuple[np.ndarray, float, float]:
+) -> tuple[np.ndarray, float, float, float, float, float]:
     """Compute IC series, IC mean, and ICIR for a single candidate.
 
     Designed to be called in a worker process.
     """
     ic_series = compute_ic(signals, returns)
-    valid_ic = ic_series[~np.isnan(ic_series)]
-    ic_mean_val = float(np.mean(np.abs(valid_ic))) if len(valid_ic) > 0 else 0.0
+    ic_mean_val = compute_ic_mean(ic_series)
+    ic_paper_mean = compute_ic_paper_mean(ic_series)
+    ic_abs_mean = compute_ic_abs_mean(ic_series)
     icir_val = compute_icir(ic_series)
-    return ic_series, ic_mean_val, icir_val
+    ic_paper_icir = compute_ic_paper_icir(ic_series)
+    return ic_series, ic_mean_val, ic_paper_mean, ic_abs_mean, icir_val, ic_paper_icir
 
 
 # ---------------------------------------------------------------------------
@@ -357,21 +369,33 @@ class ValidationPipeline:
                 )))
                 continue
 
-            ic_abs_mean = float(np.mean(np.abs(valid_ic)))
+            ic_mean = compute_ic_mean(ic_series)
+            ic_paper_mean = compute_ic_paper_mean(ic_series)
+            ic_abs_mean = compute_ic_abs_mean(ic_series)
+            icir = compute_icir(ic_series)
+            ic_paper_icir = compute_ic_paper_icir(ic_series)
 
-            if ic_abs_mean < threshold:
+            if ic_paper_mean < threshold:
                 failed.append((c, EvaluationResult(
                     factor_name=c.name,
                     formula=c.formula,
                     ic_series=ic_series,
-                    ic_mean=ic_abs_mean,
+                    ic_mean=ic_mean,
+                    ic_paper_mean=ic_paper_mean,
+                    ic_abs_mean=ic_abs_mean,
+                    icir=icir,
+                    ic_paper_icir=ic_paper_icir,
                     stage_passed=0,
-                    rejection_reason=f"Stage 1: |IC|={ic_abs_mean:.4f} < {threshold}",
+                    rejection_reason=f"Stage 1: paper IC={ic_paper_mean:.4f} < {threshold}",
                 )))
             else:
                 # Store fast IC for later use
                 c.metadata["fast_ic_series"] = ic_series
-                c.metadata["fast_ic_mean"] = ic_abs_mean
+                c.metadata["fast_ic_mean"] = ic_mean
+                c.metadata["fast_ic_paper_mean"] = ic_paper_mean
+                c.metadata["fast_ic_abs_mean"] = ic_abs_mean
+                c.metadata["fast_icir"] = icir
+                c.metadata["fast_ic_paper_icir"] = ic_paper_icir
                 passed.append(c)
 
         return passed, failed
@@ -422,10 +446,10 @@ class ValidationPipeline:
                 c.metadata["correlated_with"] = correlated_with
                 passed.append(c)
             else:
-                ic_abs = c.metadata.get("fast_ic_mean", 0.0)
+                paper_ic = c.metadata.get("fast_ic_paper_mean", 0.0)
 
                 # Check if candidate qualifies for replacement
-                if ic_abs >= self.config.replacement_ic_min:
+                if paper_ic >= self.config.replacement_ic_min:
                     # Store full correlation map for replacement check
                     corr_map = {
                         fid: float(corrs[i])
@@ -440,7 +464,11 @@ class ValidationPipeline:
                         factor_name=c.name,
                         formula=c.formula,
                         ic_series=c.metadata.get("fast_ic_series"),
-                        ic_mean=ic_abs,
+                        ic_mean=c.metadata.get("fast_ic_mean", 0.0),
+                        ic_paper_mean=paper_ic,
+                        ic_abs_mean=c.metadata.get("fast_ic_abs_mean", 0.0),
+                        icir=c.metadata.get("fast_icir", 0.0),
+                        ic_paper_icir=c.metadata.get("fast_ic_paper_icir", 0.0),
                         max_correlation=max_corr,
                         correlated_with=correlated_with,
                         stage_passed=1,
@@ -468,12 +496,12 @@ class ValidationPipeline:
         results = []
 
         for c, corr_map in replacement_candidates:
-            ic_abs = c.metadata.get("fast_ic_mean", 0.0)
+            paper_ic = c.metadata.get("fast_ic_paper_mean", 0.0)
             max_corr = c.metadata.get("max_correlation", 0.0)
             correlated_with = c.metadata.get("correlated_with")
 
             decision = check_replacement(
-                candidate_ic_abs=ic_abs,
+                candidate_ic_abs=paper_ic,
                 max_corr=max_corr,
                 correlated_with=correlated_with,
                 library_ic_map=self.library.ic_map,
@@ -487,7 +515,11 @@ class ValidationPipeline:
                 factor_name=c.name,
                 formula=c.formula,
                 ic_series=c.metadata.get("fast_ic_series"),
-                ic_mean=ic_abs,
+                ic_mean=c.metadata.get("fast_ic_mean", 0.0),
+                ic_paper_mean=paper_ic,
+                ic_abs_mean=c.metadata.get("fast_ic_abs_mean", 0.0),
+                icir=c.metadata.get("fast_icir", 0.0),
+                ic_paper_icir=c.metadata.get("fast_ic_paper_icir", 0.0),
                 max_correlation=max_corr,
                 correlated_with=correlated_with,
                 admitted=decision.admitted,
@@ -522,7 +554,7 @@ class ValidationPipeline:
 
         # Greedy dedup: sort by IC descending, keep each if not correlated
         # with any already-kept candidate
-        ic_vals = [c.metadata.get("fast_ic_mean", 0.0) for c in candidates]
+        ic_vals = [c.metadata.get("fast_ic_paper_mean", 0.0) for c in candidates]
         order = sorted(range(len(candidates)), key=lambda i: -ic_vals[i])
 
         kept_indices = set()
@@ -536,7 +568,11 @@ class ValidationPipeline:
                     removed.append((candidates[idx], EvaluationResult(
                         factor_name=candidates[idx].name,
                         formula=candidates[idx].formula,
-                        ic_mean=ic_vals[idx],
+                        ic_mean=candidates[idx].metadata.get("fast_ic_mean", 0.0),
+                        ic_paper_mean=ic_vals[idx],
+                        ic_abs_mean=candidates[idx].metadata.get("fast_ic_abs_mean", 0.0),
+                        icir=candidates[idx].metadata.get("fast_icir", 0.0),
+                        ic_paper_icir=candidates[idx].metadata.get("fast_ic_paper_icir", 0.0),
                         max_correlation=float(abs(corr_matrix[idx, kept_idx])),
                         correlated_with=candidates[kept_idx].name,
                         stage_passed=2,
@@ -580,8 +616,11 @@ class ValidationPipeline:
         """Run full validation for a single candidate."""
         stats = compute_factor_stats(c.signals, self.returns)
         ic_series = stats["ic_series"]
+        ic_mean = stats["ic_mean"]
+        ic_paper_mean = stats["ic_paper_mean"]
         ic_abs_mean = stats["ic_abs_mean"]
         icir = stats["icir"]
+        ic_paper_icir = stats["ic_paper_icir"]
 
         max_corr = c.metadata.get("max_correlation", 0.0)
         correlated_with = c.metadata.get("correlated_with")
@@ -592,18 +631,21 @@ class ValidationPipeline:
             replaced = c._replacement_target
 
         # Apply final threshold
-        if ic_abs_mean < self.config.ic_threshold:
+        if ic_paper_mean < self.config.ic_threshold:
             return EvaluationResult(
                 factor_name=c.name,
                 formula=c.formula,
                 ic_series=ic_series,
-                ic_mean=ic_abs_mean,
+                ic_mean=ic_mean,
+                ic_paper_mean=ic_paper_mean,
+                ic_abs_mean=ic_abs_mean,
                 icir=icir,
+                ic_paper_icir=ic_paper_icir,
                 max_correlation=max_corr,
                 correlated_with=correlated_with,
                 stage_passed=3,
                 rejection_reason=(
-                    f"Stage 4: full |IC|={ic_abs_mean:.4f} < {self.config.ic_threshold}"
+                    f"Stage 4: full paper IC={ic_paper_mean:.4f} < {self.config.ic_threshold}"
                 ),
                 admitted=False,
                 full_stats=stats,
@@ -613,8 +655,11 @@ class ValidationPipeline:
             factor_name=c.name,
             formula=c.formula,
             ic_series=ic_series,
-            ic_mean=ic_abs_mean,
+            ic_mean=ic_mean,
+            ic_paper_mean=ic_paper_mean,
+            ic_abs_mean=ic_abs_mean,
             icir=icir,
+            ic_paper_icir=ic_paper_icir,
             max_correlation=max_corr,
             correlated_with=correlated_with,
             stage_passed=4,
@@ -647,23 +692,33 @@ class ValidationPipeline:
             for future in as_completed(futures_map):
                 c = futures_map[future]
                 try:
-                    ic_series, ic_abs_mean, icir = future.result()
+                    (
+                        ic_series,
+                        ic_mean,
+                        ic_paper_mean,
+                        ic_abs_mean,
+                        icir,
+                        ic_paper_icir,
+                    ) = future.result()
 
                     max_corr = c.metadata.get("max_correlation", 0.0)
                     correlated_with = c.metadata.get("correlated_with")
 
-                    if ic_abs_mean < self.config.ic_threshold:
+                    if ic_paper_mean < self.config.ic_threshold:
                         result = EvaluationResult(
                             factor_name=c.name,
                             formula=c.formula,
                             ic_series=ic_series,
-                            ic_mean=ic_abs_mean,
+                            ic_mean=ic_mean,
+                            ic_paper_mean=ic_paper_mean,
+                            ic_abs_mean=ic_abs_mean,
                             icir=icir,
+                            ic_paper_icir=ic_paper_icir,
                             max_correlation=max_corr,
                             correlated_with=correlated_with,
                             stage_passed=3,
                             rejection_reason=(
-                                f"Stage 4: full |IC|={ic_abs_mean:.4f} "
+                                f"Stage 4: full paper IC={ic_paper_mean:.4f} "
                                 f"< {self.config.ic_threshold}"
                             ),
                             admitted=False,
@@ -673,8 +728,11 @@ class ValidationPipeline:
                             factor_name=c.name,
                             formula=c.formula,
                             ic_series=ic_series,
-                            ic_mean=ic_abs_mean,
+                            ic_mean=ic_mean,
+                            ic_paper_mean=ic_paper_mean,
+                            ic_abs_mean=ic_abs_mean,
                             icir=icir,
+                            ic_paper_icir=ic_paper_icir,
                             max_correlation=max_corr,
                             correlated_with=correlated_with,
                             stage_passed=4,

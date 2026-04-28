@@ -30,7 +30,10 @@ from factorminer.data.preprocessor import preprocess
 from factorminer.evaluation.combination import FactorCombiner
 from factorminer.evaluation.metrics import (
     compute_ic,
+    compute_ic_abs_mean,
     compute_ic_mean,
+    compute_ic_paper_icir,
+    compute_ic_paper_mean,
     compute_ic_win_rate,
     compute_icir,
 )
@@ -118,7 +121,10 @@ def main():
             signals = tree.evaluate(data_dict)
             ic_series = compute_ic(signals, forward_returns)
             ic_mean = compute_ic_mean(ic_series)
+            paper_ic = compute_ic_paper_mean(ic_series)
+            abs_ic = compute_ic_abs_mean(ic_series)
             icir = compute_icir(ic_series)
+            paper_icir = compute_ic_paper_icir(ic_series)
             win_rate = compute_ic_win_rate(ic_series)
 
             results.append({
@@ -127,7 +133,10 @@ def main():
                 "formula": formula,
                 "category": category,
                 "ic_mean": ic_mean,
+                "ic_paper_mean": paper_ic,
+                "ic_abs_mean": abs_ic,
                 "icir": icir,
+                "ic_paper_icir": paper_icir,
                 "win_rate": win_rate,
                 "signals": signals,
                 "ic_series": ic_series,
@@ -139,15 +148,15 @@ def main():
     print(f"  Evaluated {len(results)} factors in {elapsed:.1f}s")
     print(f"  Parse failures: {parse_failures}, Eval failures: {eval_failures}")
 
-    # Sort by |IC|
-    results.sort(key=lambda x: abs(x["ic_mean"]), reverse=True)
+    # Sort by the paper metric: abs(mean(IC_t)).
+    results.sort(key=lambda x: x["ic_paper_mean"], reverse=True)
 
-    print("\n  Top 20 Factors by |IC|:")
-    print(f"  {'ID':<5} {'Name':<40} {'Cat':<15} {'IC':>8} {'ICIR':>8} {'Win%':>6}")
+    print("\n  Top 20 Factors by Paper IC:")
+    print(f"  {'ID':<5} {'Name':<40} {'Cat':<15} {'Paper IC':>8} {'IC Mean':>8} {'Win%':>6}")
     print(f"  {'-'*5} {'-'*40} {'-'*15} {'-'*8} {'-'*8} {'-'*6}")
     for r in results[:20]:
         print(f"  {r['id']:<5} {r['name'][:40]:<40} {r['category'][:15]:<15} "
-              f"{r['ic_mean']:>8.4f} {r['icir']:>8.3f} {r['win_rate']:>5.1%}")
+              f"{r['ic_paper_mean']:>8.4f} {r['ic_mean']:>8.4f} {r['win_rate']:>5.1%}")
 
     # Category breakdown
     print("\n  Category Breakdown:")
@@ -156,9 +165,9 @@ def main():
         cat = r["category"]
         if cat not in categories:
             categories[cat] = []
-        categories[cat].append(abs(r["ic_mean"]))
+        categories[cat].append(r["ic_paper_mean"])
     for cat, ics in sorted(categories.items(), key=lambda x: -np.mean(x[1])):
-        print(f"    {cat:<25} {len(ics):>3} factors  avg|IC|={np.mean(ics):.4f}")
+        print(f"    {cat:<25} {len(ics):>3} factors  avg paper IC={np.mean(ics):.4f}")
 
     # ================================================================
     # STEP 3: Build Factor Library with Admission Rules
@@ -171,8 +180,8 @@ def main():
     rejected_corr = 0
 
     for r in results:
-        ic_abs = abs(r["ic_mean"])
-        if ic_abs < 0.02:
+        paper_ic = r["ic_paper_mean"]
+        if paper_ic < 0.02:
             rejected_ic += 1
             continue
 
@@ -197,7 +206,10 @@ def main():
             formula=r["formula"],
             category=r["category"],
             ic_mean=r["ic_mean"],
+            ic_paper_mean=r["ic_paper_mean"],
+            ic_abs_mean=r["ic_abs_mean"],
             icir=r["icir"],
+            ic_paper_icir=r["ic_paper_icir"],
             ic_win_rate=r["win_rate"],
             max_correlation=max_corr,
             batch_number=1,
@@ -234,23 +246,23 @@ def main():
         # Equal weight
         ew = combiner.equal_weight(factor_signals)
         ew_ic = compute_ic(ew, forward_returns)
-        print(f"  Equal-Weight:  IC={compute_ic_mean(ew_ic):.4f}, "
-              f"ICIR={compute_icir(ew_ic):.3f}, "
+        print(f"  Equal-Weight:  Paper IC={compute_ic_paper_mean(ew_ic):.4f}, "
+              f"Paper ICIR={compute_ic_paper_icir(ew_ic):.3f}, "
               f"Win={compute_ic_win_rate(ew_ic):.1%}")
 
         # IC-weighted
         icw = combiner.ic_weighted(factor_signals, ic_values)
         icw_ic = compute_ic(icw, forward_returns)
-        print(f"  IC-Weighted:   IC={compute_ic_mean(icw_ic):.4f}, "
-              f"ICIR={compute_icir(icw_ic):.3f}, "
+        print(f"  IC-Weighted:   Paper IC={compute_ic_paper_mean(icw_ic):.4f}, "
+              f"Paper ICIR={compute_ic_paper_icir(icw_ic):.3f}, "
               f"Win={compute_ic_win_rate(icw_ic):.1%}")
 
         # Orthogonal
         try:
             ortho = combiner.orthogonal(factor_signals)
             ortho_ic = compute_ic(ortho, forward_returns)
-            print(f"  Orthogonal:    IC={compute_ic_mean(ortho_ic):.4f}, "
-                  f"ICIR={compute_icir(ortho_ic):.3f}, "
+            print(f"  Orthogonal:    Paper IC={compute_ic_paper_mean(ortho_ic):.4f}, "
+                  f"Paper ICIR={compute_ic_paper_icir(ortho_ic):.3f}, "
                   f"Win={compute_ic_win_rate(ortho_ic):.1%}")
         except Exception as e:
             print(f"  Orthogonal:    skipped ({e})")
@@ -441,7 +453,10 @@ def main():
 
     print(f"  Mock data: {M} assets x {T} periods")
     print(f"  Paper factors evaluated: {len(results)}/110")
-    print(f"  Factors with |IC| > 0.02: {sum(1 for r in results if abs(r['ic_mean']) > 0.02)}")
+    print(
+        "  Factors with paper IC > 0.02: "
+        f"{sum(1 for r in results if r['ic_paper_mean'] > 0.02)}"
+    )
     print(f"  Library (admission-filtered): {library.size} factors")
     print(f"  Mining loop (3 iter): {result_library.size} factors discovered")
     print("")

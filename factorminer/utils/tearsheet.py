@@ -15,7 +15,9 @@ from scipy.stats import rankdata
 
 from factorminer.evaluation.metrics import (
     compute_ic,
-    compute_ic_mean,
+    compute_ic_abs_mean,
+    compute_ic_paper_icir,
+    compute_ic_paper_mean,
     compute_ic_win_rate,
     compute_icir,
     compute_quintile_returns,
@@ -148,8 +150,10 @@ class FactorTearSheet:
 
         # Compute all metrics
         ic_mean = float(np.mean(valid_ic)) if len(valid_ic) > 0 else 0.0
-        ic_abs_mean = compute_ic_mean(ic_series)
+        ic_paper_mean = compute_ic_paper_mean(ic_series)
+        ic_abs_mean = compute_ic_abs_mean(ic_series)
         icir = compute_icir(ic_series)
+        ic_paper_icir = compute_ic_paper_icir(ic_series)
         win_rate = compute_ic_win_rate(ic_series)
         quintile = compute_quintile_returns(signals, returns)
         turnover = compute_turnover(signals)
@@ -157,8 +161,10 @@ class FactorTearSheet:
 
         metrics = {
             "ic_mean": ic_mean,
+            "ic_paper_mean": ic_paper_mean,
             "ic_abs_mean": ic_abs_mean,
             "icir": icir,
+            "ic_paper_icir": ic_paper_icir,
             "ic_win_rate": win_rate,
             "Q1_return": quintile.get("Q1", 0.0),
             "Q5_return": quintile.get("Q5", 0.0),

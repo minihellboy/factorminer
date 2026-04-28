@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Metric semantics
+    url: https://github.com/minihellboy/factorminer/blob/main/docs/metrics.md
+    about: Read the current IC and ICIR definitions before opening metric questions.
+  - name: FAQ
+    url: https://github.com/minihellboy/factorminer/blob/main/docs/faq.md
+    about: Common answers for setup, data columns, API keys, and reproducibility.

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 from click.testing import CliRunner
 
@@ -88,6 +90,8 @@ def test_cli_mine_then_evaluate_golden_path(tmp_path, monkeypatch):
 
     library_path = output_dir / "factor_library.json"
     assert library_path.exists()
+    library_payload = json.loads(library_path.read_text(encoding="utf-8"))
+    assert len(library_payload["factors"]) >= 1
     assert (output_dir / "run_manifest.json").exists()
     assert (output_dir / "factor_lifecycle.jsonl").exists()
 

@@ -429,8 +429,16 @@ def _evaluate_runtime_library(
                 "name": artifact.name,
                 "formula": artifact.formula,
                 "category": artifact.category,
-                "train_ic": artifact.split_stats["train"]["ic_abs_mean"],
-                "train_icir": abs(artifact.split_stats["train"]["icir"]),
+                "train_ic": artifact.split_stats["train"].get(
+                    "ic_paper_mean",
+                    artifact.split_stats["train"]["ic_abs_mean"],
+                ),
+                "train_ic_mean": artifact.split_stats["train"]["ic_mean"],
+                "train_ic_abs_mean": artifact.split_stats["train"]["ic_abs_mean"],
+                "train_icir": artifact.split_stats["train"].get(
+                    "ic_paper_icir",
+                    abs(artifact.split_stats["train"]["icir"]),
+                ),
             }
             for artifact in frozen
         ],
