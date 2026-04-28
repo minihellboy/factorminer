@@ -12,12 +12,12 @@ import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
 
 import numpy as np
 
 from factorminer.agent.llm_interface import LLMProvider
 from factorminer.core.types import OperatorSpec
+from factorminer.operators.sandbox import compile_numpy_operator
 
 logger = logging.getLogger(__name__)
 
@@ -91,43 +91,6 @@ class ValidationResult:
     nan_ratio: float = 1.0
     differentiates_from_existing: bool = False
     ic_contribution: float = 0.0
-
-
-# ---------------------------------------------------------------------------
-# Sandbox security: allowed names in exec()
-# ---------------------------------------------------------------------------
-
-_SAFE_GLOBALS: dict[str, Any] = {
-    "np": np,
-    "numpy": np,
-    "__builtins__": {},
-}
-
-# Explicitly blocked tokens in submitted code.  If any of these appear in the
-# raw source string, the code is rejected *before* exec().
-_BLOCKED_TOKENS: tuple[str, ...] = (
-    "import ",
-    "__import__",
-    "os.",
-    "sys.",
-    "subprocess",
-    "open(",
-    "exec(",
-    "eval(",
-    "compile(",
-    "getattr(",
-    "setattr(",
-    "delattr(",
-    "globals(",
-    "locals(",
-    "__class__",
-    "__subclasses__",
-    "__bases__",
-    "__mro__",
-    "breakpoint(",
-    "exit(",
-    "quit(",
-)
 
 
 # ---------------------------------------------------------------------------
@@ -410,27 +373,7 @@ class OperatorInventor:
             The compiled ``compute`` function, or None if compilation
             failed or the code was rejected for security reasons.
         """
-        # Pre-scan for blocked tokens
-        code_lower = code.lower()
-        for token in _BLOCKED_TOKENS:
-            if token.lower() in code_lower:
-                logger.warning("Blocked token '%s' found in operator code", token)
-                return None
-
-        # Restricted exec
-        safe_ns: dict[str, Any] = dict(_SAFE_GLOBALS)
-        try:
-            exec(code, safe_ns)  # noqa: S102 -- intentional sandboxed exec
-        except Exception as exc:
-            logger.warning("Operator compilation failed: %s", exc)
-            return None
-
-        fn = safe_ns.get("compute")
-        if fn is None or not callable(fn):
-            logger.warning("No callable 'compute' found in operator code")
-            return None
-
-        return fn
+        return compile_numpy_operator(code)
 
     def _check_differentiation(self, fn: Callable, proposal: ProposedOperator) -> bool:
         """Check that the operator output is not too correlated with existing operators.

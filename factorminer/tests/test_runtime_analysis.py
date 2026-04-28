@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,6 +21,7 @@ from factorminer.evaluation.runtime import (
     SignalComputationError,
     compute_tree_signals,
     evaluate_factors,
+    generate_synthetic_signals,
 )
 
 
@@ -142,6 +146,24 @@ def test_compute_tree_signals_obeys_failure_policy():
             returns_shape=returns_shape,
             signal_failure_policy="raise",
         )
+
+
+def test_synthetic_signals_are_stable_across_processes():
+    """Synthetic fallback must not depend on Python's randomized hash seed."""
+    script = (
+        "import json;"
+        "from factorminer.evaluation.runtime import generate_synthetic_signals;"
+        "arr=generate_synthetic_signals('Neg($close)', (3, 5));"
+        "print(json.dumps(arr.tolist()))"
+    )
+    first = subprocess.check_output([sys.executable, "-c", script], text=True)
+    second = subprocess.check_output([sys.executable, "-c", script], text=True)
+
+    assert json.loads(first) == json.loads(second)
+
+    same = generate_synthetic_signals("Neg($close)", (3, 5))
+    different = generate_synthetic_signals("CsRank($close)", (3, 5))
+    assert not np.array_equal(np.nan_to_num(same), np.nan_to_num(different))
 
 
 def test_evaluate_factors_records_strict_recomputation_failure(small_data):

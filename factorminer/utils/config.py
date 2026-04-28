@@ -51,7 +51,7 @@ class EvaluationConfig:
     num_workers: int = 40
     fast_screen_assets: int = 100
     gpu_device: str = "cuda:0"
-    backend: str = "gpu"
+    backend: str = "numpy"
     redundancy_metric: str = "spearman"
     signal_failure_policy: str = "reject"
 
@@ -418,6 +418,7 @@ class BenchmarkConfig:
     )
     cost_bps: list[float] = field(default_factory=lambda: [1.0, 4.0, 7.0, 10.0, 11.0])
     efficiency_panel_shape: list[int] = field(default_factory=lambda: [12610, 500])
+    mock_panel_shape: list[int] | None = None
 
     def validate(self) -> None:
         if self.mode not in ("paper", "research"):
@@ -438,6 +439,11 @@ class BenchmarkConfig:
             raise ValueError("benchmark.efficiency_panel_shape must be [periods, assets]")
         if any(dim < 1 for dim in self.efficiency_panel_shape):
             raise ValueError("benchmark.efficiency_panel_shape values must be >= 1")
+        if self.mock_panel_shape is not None:
+            if len(self.mock_panel_shape) != 2:
+                raise ValueError("benchmark.mock_panel_shape must be [periods, assets]")
+            if any(dim < 1 for dim in self.mock_panel_shape):
+                raise ValueError("benchmark.mock_panel_shape values must be >= 1")
 
 
 @dataclass

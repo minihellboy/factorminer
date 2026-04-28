@@ -154,6 +154,7 @@ def setup_logger(
     logger = logging.getLogger(name)
     logger.setLevel(level)
     logger.handlers.clear()
+    logger.propagate = False
 
     # Console handler with colors
     console = logging.StreamHandler(stream)

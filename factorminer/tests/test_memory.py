@@ -6,8 +6,9 @@ import json
 import tempfile
 from pathlib import Path
 
+from factorminer.evaluation.regime import MeanRevRegime, RegimeState, TrendRegime, VolRegime
 from factorminer.memory.embeddings import FormulaEmbedder
-from factorminer.memory.evolution import evolve_memory
+from factorminer.memory.evolution import bump_pattern_confidence, evolve_memory
 from factorminer.memory.experience_memory import ExperienceMemoryManager
 from factorminer.memory.formation import form_memory
 from factorminer.memory.kg_retrieval import retrieve_memory_enhanced
@@ -19,6 +20,7 @@ from factorminer.memory.memory_store import (
     StrategicInsight,
     SuccessPattern,
 )
+from factorminer.memory.online_regime_memory import OnlineMemoryUpdater
 
 # ---------------------------------------------------------------------------
 # Initialization
@@ -321,6 +323,71 @@ class TestMemoryStoreSerialization:
         assert restored.name == pat.name
         assert restored.occurrence_count == pat.occurrence_count
         assert restored.success_rate == pat.success_rate
+        assert restored.confidence == 1.0
+
+    def test_old_success_pattern_payload_defaults_confidence(self):
+        restored = SuccessPattern.from_dict(
+            {
+                "name": "Legacy",
+                "description": "legacy payload",
+                "template": "CsRank($close)",
+                "success_rate": "Medium",
+            }
+        )
+        assert restored.confidence == 1.0
+
+    def test_confidence_helpers_accept_single_keyword(self):
+        memory = ExperienceMemory(
+            success_patterns=[
+                SuccessPattern(
+                    name="Momentum",
+                    description="bull momentum",
+                    template="CsRank($close)",
+                    success_rate="Medium",
+                    occurrence_count=2,
+                    confidence=0.4,
+                )
+            ]
+        )
+        bumped = bump_pattern_confidence(memory, "bull", boost=0.2)
+        assert abs(bumped.success_patterns[0].confidence - 0.6) < 1e-12
+
+    def test_online_forgetting_and_regime_change_use_regime_labels(self):
+        memory = ExperienceMemory(
+            success_patterns=[
+                SuccessPattern(
+                    name="Bull Momentum",
+                    description="bull low_vol momentum",
+                    template="CsRank($close)",
+                    success_rate="High",
+                    occurrence_count=2,
+                    confidence=1.0,
+                )
+            ]
+        )
+        updater = OnlineMemoryUpdater(
+            memory,
+            forgetting_rate=0.9,
+            min_confidence=0.05,
+            regime_boost=0.1,
+            regime_penalty=0.1,
+        )
+        updater.apply_forgetting(iterations_elapsed=2)
+        assert abs(updater.base_memory.success_patterns[0].confidence - 0.81) < 1e-12
+
+        updater.on_regime_change(
+            RegimeState(
+                trend=TrendRegime.BEAR,
+                vol=VolRegime.HIGH_VOL,
+                mean_rev=MeanRevRegime.MEAN_REVERTING,
+            ),
+            RegimeState(
+                trend=TrendRegime.BULL,
+                vol=VolRegime.LOW_VOL,
+                mean_rev=MeanRevRegime.TRENDING,
+            ),
+        )
+        assert updater.base_memory.insights
 
     def test_forbidden_direction_roundtrip(self):
         fd = ForbiddenDirection(

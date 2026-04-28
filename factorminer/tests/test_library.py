@@ -109,6 +109,26 @@ class TestAdmission:
         retrieved = empty_library.get_factor(fid)
         assert retrieved.name == "f1"
 
+    def test_factor_from_legacy_dict_defaults_new_metric_fields(self):
+        factor = Factor.from_dict(
+            {
+                "id": 7,
+                "name": "legacy",
+                "formula": "Neg($close)",
+                "category": "test",
+                "ic_mean": -0.06,
+                "icir": -0.8,
+                "ic_win_rate": 0.4,
+                "max_correlation": 0.1,
+                "batch_number": 3,
+            }
+        )
+
+        assert factor.metric_version == "legacy_abs_ic"
+        assert factor.ic_paper_mean == pytest.approx(0.06)
+        assert factor.ic_abs_mean == pytest.approx(0.06)
+        assert factor.ic_paper_icir == pytest.approx(0.8)
+
 
 # ---------------------------------------------------------------------------
 # Replacement

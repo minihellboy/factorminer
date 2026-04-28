@@ -21,11 +21,11 @@ The implementation is based on *FactorMiner: A Self-Evolving Agent with Skills a
 
 Current implementation snapshot:
 
-- `119` Python files under `factorminer/`
-- `46,736` lines of Python
+- `132` Python files under `factorminer/`
+- `51,273` lines of Python
 - `70` registered DSL operators
 - `110` paper factors shipped in the built-in catalog
-- `441` passing tests in `factorminer/tests`
+- `477` collected tests in `factorminer/tests`
 
 Primary execution surfaces:
 
@@ -37,6 +37,9 @@ Primary execution surfaces:
 ## Documentation Map
 
 - [Architecture Deep Dive](docs/architecture.md)
+- [Metric Semantics](docs/metrics.md)
+- [FAQ](docs/faq.md)
+- [Reproducibility Guide](docs/reproducibility.md)
 - [Repo Audit](docs/repo-audit.md)
 - [Contributing](CONTRIBUTING.md)
 - [Roadmap](ROADMAP.md)
@@ -140,6 +143,8 @@ Notes:
 
 - `uv sync --group dev --all-extras` is the intended full contributor setup.
 - The GPU extra is Linux-oriented because `cupy-cuda12x` is not generally installable on macOS.
+- The packaged default config uses the portable NumPy backend. Pass `--gpu` only when CUDA is available.
+- Wheels and sdists include `factorminer/configs/*.yaml` and exclude the internal test package.
 - Use `uv run ...` for all local commands.
 
 ### `pip` fallback
@@ -158,6 +163,16 @@ python3 -m pip install -e ".[all]"
 uv run python run_demo.py
 ```
 
+### One-command quickstart
+
+```bash
+uv run factorminer quickstart
+```
+
+This runs `doctor`, mines a tiny mock library into
+`/tmp/factorminer-quickstart`, generates a static HTML report, and prints the
+next commands for real data.
+
 ### Deterministic quickstart examples
 
 For a runnable, data-shaped walkthrough with sample CSVs and safe `/tmp` output paths, see [examples/quickstart/README.md](examples/quickstart/README.md).
@@ -170,6 +185,9 @@ uv run factorminer --help
 
 Primary commands:
 
+- `doctor`
+- `init-config`
+- `quickstart`
 - `mine`
 - `helix`
 - `evaluate`
@@ -177,13 +195,35 @@ Primary commands:
 - `visualize`
 - `benchmark`
 - `export`
+- `session inspect`
 
 ## Common Workflows
 
 ### Mine with mock data
 
 ```bash
-uv run factorminer --cpu mine --mock -n 2 -b 8 -t 10
+uv run factorminer mine --mock -n 2 -b 8 -t 10
+```
+
+Omitting `--gpu` and `--cpu` respects the configured backend. The shipped default is `numpy`; `--gpu` and `--cpu` are explicit overrides.
+
+Paper-mode admission and benchmark selection use `ic_paper_mean =
+abs(mean(IC_t))` and `ic_paper_icir = abs(mean(IC_t)) / std(IC_t)`. The legacy
+diagnostic `ic_abs_mean = mean(abs(IC_t))` is still reported but is not the
+default paper quality gate. See [Metric Semantics](docs/metrics.md).
+
+### First-run health check
+
+```bash
+uv run factorminer doctor
+uv run factorminer doctor --json
+```
+
+### Create a local starter config
+
+```bash
+uv run factorminer init-config factorminer.local.yaml
+uv run factorminer --config factorminer.local.yaml mine --mock
 ```
 
 ### Run Helix with selected Phase 2 features
@@ -235,6 +275,13 @@ uv run factorminer --cpu --config factorminer/configs/paper_repro.yaml \
 uv run factorminer --cpu benchmark ablation-strategy --mock --baseline factor_miner
 ```
 
+### Inspect a completed or partial session
+
+```bash
+uv run factorminer session inspect output
+uv run factorminer session inspect output --json
+```
+
 ## Benchmark Surface
 
 Available benchmark commands:
@@ -266,6 +313,7 @@ Top-level config sections:
 Important configuration themes:
 
 - `evaluation.backend`: `numpy`, `c`, or `gpu`
+- `--gpu/--cpu`: explicit CLI backend override; omitted means use config
 - `evaluation.redundancy_metric`: `spearman`, `pearson`, or `distance_correlation`
 - `memory.policy`: `paper`, `none`, `kg`, `family_aware`, or `regime_aware`
 - `benchmark.strategy_ablation.*`: runtime grid over memory policy, dependence metric, and backend
@@ -329,7 +377,15 @@ uv run ruff check .
 ### Build a wheel
 
 ```bash
-uv run python -m pip wheel --no-deps . -w dist
+uv build
+```
+
+### Scoped type-health check
+
+Full-repo mypy is intentionally non-blocking for now. The current cleanup target reports the fixed stabilization surface without making CI depend on it:
+
+```bash
+uv run mypy --ignore-missing-imports --follow-imports=skip factorminer/utils/config.py factorminer/evaluation/runtime.py factorminer/operators/sandbox.py factorminer/operators/custom.py factorminer/operators/auto_inventor.py factorminer/memory/evolution.py factorminer/memory/online_regime_memory.py factorminer/cli.py
 ```
 
 ## License

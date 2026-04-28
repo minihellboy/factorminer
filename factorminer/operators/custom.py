@@ -14,8 +14,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 from factorminer.core.types import (
     OPERATOR_REGISTRY as SPEC_REGISTRY,
 )
@@ -25,19 +23,9 @@ from factorminer.core.types import (
     SignatureType,
 )
 from factorminer.operators.registry import OPERATOR_REGISTRY as RUNTIME_REGISTRY
+from factorminer.operators.sandbox import compile_numpy_operator
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Safe compilation (shared with auto_inventor.py)
-# ---------------------------------------------------------------------------
-
-_SAFE_GLOBALS: dict[str, Any] = {
-    "np": np,
-    "numpy": np,
-    "__builtins__": {},
-}
 
 
 def _compile_operator_code(code: str) -> Callable | None:
@@ -45,16 +33,7 @@ def _compile_operator_code(code: str) -> Callable | None:
 
     Returns the ``compute`` function or None on failure.
     """
-    safe_ns: dict[str, Any] = dict(_SAFE_GLOBALS)
-    try:
-        exec(code, safe_ns)  # noqa: S102 -- sandboxed exec
-    except Exception as exc:
-        logger.warning("Failed to compile custom operator code: %s", exc)
-        return None
-    fn = safe_ns.get("compute")
-    if fn is None or not callable(fn):
-        return None
-    return fn
+    return compile_numpy_operator(code)
 
 
 # ---------------------------------------------------------------------------

@@ -54,6 +54,7 @@ class SuccessPattern:
     success_rate: str  # "High", "Medium", "Low"
     example_factors: list[str] = field(default_factory=list)
     occurrence_count: int = 0
+    confidence: float = 1.0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -67,6 +68,7 @@ class SuccessPattern:
             success_rate=d.get("success_rate", "Medium"),
             example_factors=d.get("example_factors", []),
             occurrence_count=d.get("occurrence_count", 0),
+            confidence=d.get("confidence", 1.0),
         )
 
 

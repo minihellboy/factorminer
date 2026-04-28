@@ -59,20 +59,26 @@ def _artifact(
         split_stats={
             "train": {
                 "ic_mean": train_ic,
+                "ic_paper_mean": abs(train_ic),
                 "ic_abs_mean": abs(train_ic),
                 "icir": train_icir,
+                "ic_paper_icir": abs(train_icir),
                 "ic_win_rate": 0.6,
             },
             "test": {
                 "ic_mean": train_ic / 2.0,
+                "ic_paper_mean": abs(train_ic / 2.0),
                 "ic_abs_mean": abs(train_ic / 2.0),
                 "icir": train_icir / 2.0,
+                "ic_paper_icir": abs(train_icir / 2.0),
                 "ic_win_rate": 0.5,
             },
             "full": {
                 "ic_mean": train_ic,
+                "ic_paper_mean": abs(train_ic),
                 "ic_abs_mean": abs(train_ic),
                 "icir": train_icir,
+                "ic_paper_icir": abs(train_icir),
                 "ic_win_rate": 0.6,
             },
         },
@@ -206,6 +212,27 @@ def test_build_benchmark_library_rejects_low_ic_candidates():
     assert stats["admitted"] == 1
 
 
+def test_build_benchmark_library_uses_paper_ic_not_legacy_abs_ic():
+    cfg = load_config()
+    artifact = _artifact(1, "Neg($close)", 0.0, 0.0, 1.0)
+    for split in ("train", "test", "full"):
+        artifact.split_stats[split]["ic_mean"] = 0.0
+        artifact.split_stats[split]["ic_paper_mean"] = 0.0
+        artifact.split_stats[split]["ic_abs_mean"] = 0.1
+        artifact.split_stats[split]["icir"] = 0.0
+        artifact.split_stats[split]["ic_paper_icir"] = 0.0
+
+    library, stats = build_benchmark_library(
+        [artifact],
+        cfg,
+        split_name="train",
+        ic_threshold=0.01,
+    )
+
+    assert library.size == 0
+    assert stats["threshold_rejections"] == 1
+
+
 def test_benchmark_table1_cli_invokes_runtime(monkeypatch, tmp_path):
     captured = {}
 
@@ -320,6 +347,9 @@ def test_table1_manifest_includes_saved_library_provenance(monkeypatch, tmp_path
 
     provenance = manifest["baseline_provenance"]["factor_miner"]
     assert provenance["kind"] == "saved_library"
+    assert provenance["metric_version"] == "paper_ic_v2"
+    assert manifest["metric_version"] == "paper_ic_v2"
+    assert result["metric_version"] == "paper_ic_v2"
     assert provenance["library_summary"]["factor_count"] == 1
     assert provenance["session_summary"]["total_iterations"] == 2
     assert provenance["source_files"]["library_json"]["path"].endswith("factor_miner_library.json")

@@ -58,9 +58,9 @@ evaluation:
   # GPU device identifier (used when backend is "gpu")
   gpu_device: "cuda:0"
 
-  # Computation backend: "gpu" (fastest), "numpy" (portable CPU),
+  # Computation backend: "numpy" (portable CPU), "gpu" (CUDA),
   # or "c" (compiled CPU kernels via Bottleneck)
-  backend: "gpu"
+  backend: "numpy"
 
   # Redundancy/dependence metric used for admission, replacement,
   # and library geometry diagnostics.
@@ -202,6 +202,10 @@ benchmark:
 
   # Reference panel shape [periods, assets] used for efficiency benchmarks
   efficiency_panel_shape: [12610, 500]
+
+  # Optional mock benchmark panel shape [periods, assets]. Leave null for the
+  # benchmark's paper-scale mock defaults; CI can set a tiny smoke panel here.
+  mock_panel_shape: null
 
   # Optional runtime ablation grid over memory policy × dependence metric × backend.
   # This is only used by the canonical runtime benchmark surface.

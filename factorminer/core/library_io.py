@@ -51,6 +51,7 @@ def save_library(
         "correlation_threshold": library.correlation_threshold,
         "ic_threshold": library.ic_threshold,
         "dependence_metric": library.dependence_metric.name,
+        "metric_version": getattr(library, "metric_version", "paper_ic_v2"),
         "next_id": library._next_id,
         "factors": [f.to_dict() for f in library.list_factors()],
     }
@@ -103,6 +104,7 @@ def load_library(path: str | Path) -> FactorLibrary:
         ic_threshold=meta.get("ic_threshold", 0.04),
         dependence_metric=meta.get("dependence_metric", "spearman"),
     )
+    library.metric_version = meta.get("metric_version", "legacy_abs_ic")
     library._next_id = meta.get("next_id", 1)
 
     # Restore factors
@@ -146,15 +148,16 @@ def load_library(path: str | Path) -> FactorLibrary:
 def export_csv(library: FactorLibrary, path: str | Path) -> None:
     """Export the factor table to CSV.
 
-    Columns: ID, Name, Formula, Category, IC_Mean, ICIR, IC_Win_Rate,
-    Max_Correlation, Batch, Admission_Date
+    Columns: ID, Name, Formula, Category, IC_Mean, Paper_IC, IC_Abs_Mean,
+    ICIR, Paper_ICIR, IC_Win_Rate, Max_Correlation, Batch, Admission_Date
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     fieldnames = [
-        "ID", "Name", "Formula", "Category", "IC_Mean", "ICIR",
-        "IC_Win_Rate", "Max_Correlation", "Batch", "Admission_Date",
+        "ID", "Name", "Formula", "Category", "IC_Mean", "Paper_IC",
+        "IC_Abs_Mean", "ICIR", "Paper_ICIR", "IC_Win_Rate", "Max_Correlation",
+        "Batch", "Admission_Date",
     ]
 
     with open(path, "w", newline="") as fp:
@@ -167,7 +170,10 @@ def export_csv(library: FactorLibrary, path: str | Path) -> None:
                 "Formula": f.formula,
                 "Category": f.category,
                 "IC_Mean": f"{f.ic_mean:.6f}",
+                "Paper_IC": f"{float(f.ic_paper_mean or 0.0):.6f}",
+                "IC_Abs_Mean": f"{float(f.ic_abs_mean or 0.0):.6f}",
                 "ICIR": f"{f.icir:.6f}",
+                "Paper_ICIR": f"{float(f.ic_paper_icir or 0.0):.6f}",
                 "IC_Win_Rate": f"{f.ic_win_rate:.4f}",
                 "Max_Correlation": f"{f.max_correlation:.4f}",
                 "Batch": f.batch_number,

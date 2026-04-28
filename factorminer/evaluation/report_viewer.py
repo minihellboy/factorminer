@@ -122,12 +122,26 @@ def _factor_rows(library_payload: Mapping[str, Any]) -> list[dict[str, Any]]:
             {
                 "id": factor.get("id", "-"),
                 "name": factor.get("name", "-"),
+                "formula": factor.get("formula", "-"),
                 "category": factor.get("category", "-"),
                 "ic_mean": factor.get("ic_mean"),
+                "ic_paper_mean": factor.get(
+                    "ic_paper_mean",
+                    abs(float(factor.get("ic_mean", 0.0) or 0.0)),
+                ),
+                "ic_abs_mean": factor.get(
+                    "ic_abs_mean",
+                    abs(float(factor.get("ic_mean", 0.0) or 0.0)),
+                ),
                 "icir": factor.get("icir"),
+                "ic_paper_icir": factor.get(
+                    "ic_paper_icir",
+                    abs(float(factor.get("icir", 0.0) or 0.0)),
+                ),
                 "ic_win_rate": factor.get("ic_win_rate"),
                 "max_correlation": factor.get("max_correlation"),
                 "batch_number": factor.get("batch_number", "-"),
+                "metric_version": factor.get("metric_version", "legacy_abs_ic"),
                 "family_hint": family_hint,
                 "provenance_loop": provenance.get("loop_type", "-"),
             }
@@ -135,7 +149,7 @@ def _factor_rows(library_payload: Mapping[str, Any]) -> list[dict[str, Any]]:
 
     rows.sort(
         key=lambda row: (
-            -float(row["ic_mean"] or 0.0),
+            -float(row["ic_paper_mean"] or 0.0),
             int(row["batch_number"]) if str(row["batch_number"]).isdigit() else 0,
             int(row["id"]) if str(row["id"]).isdigit() else 0,
         )
@@ -216,6 +230,36 @@ def _session_counts(session_payload: Mapping[str, Any] | None) -> dict[str, Any]
             if isinstance(it, Mapping)
         ],
     }
+
+
+def _metric_definitions() -> list[dict[str, str]]:
+    return [
+        {
+            "metric": "ic_mean",
+            "definition": "signed mean(IC_t)",
+            "usage": "diagnostic sign and weighting",
+        },
+        {
+            "metric": "ic_paper_mean",
+            "definition": "abs(mean(IC_t))",
+            "usage": "paper-mode admission, sorting, Top-K freeze, and benchmark selection",
+        },
+        {
+            "metric": "ic_abs_mean",
+            "definition": "mean(abs(IC_t))",
+            "usage": "legacy diagnostic only",
+        },
+        {
+            "metric": "icir",
+            "definition": "signed mean(IC_t) / std(IC_t)",
+            "usage": "diagnostic sign-aware ICIR",
+        },
+        {
+            "metric": "ic_paper_icir",
+            "definition": "abs(mean(IC_t)) / std(IC_t)",
+            "usage": "paper-mode ICIR gate and reporting",
+        },
+    ]
 
 
 def _benchmark_sections(benchmark_source: JSONSource) -> list[ReportSection]:
@@ -337,14 +381,19 @@ def build_report_payload(
     factor_rows = _factor_rows(library)
     family_counts = Counter(row["family_hint"] for row in factor_rows)
     category_counts = Counter(row["category"] for row in factor_rows)
+    session_counts = _session_counts(session_log)
 
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "metric_definitions": _metric_definitions(),
         "library": {
             "source": _json_label(library_source, "factor_library"),
             "count": len(factor_rows),
             "correlation_threshold": library.get("correlation_threshold"),
             "ic_threshold": library.get("ic_threshold"),
+            "admission_metric": "ic_paper_mean",
+            "icir_metric": "ic_paper_icir",
+            "metric_version": library.get("metric_version", "legacy_abs_ic"),
             "dependence_metric": library.get("dependence_metric", "unknown"),
             "factors": factor_rows,
             "family_counts": family_counts.most_common(10),
@@ -354,10 +403,13 @@ def build_report_payload(
             "source": _json_label(session_log_source, "session_log")
             if session_log_source
             else None,
-            "counts": _session_counts(session_log),
+            "counts": session_counts,
         }
         if session_log is not None
         else None,
+        "artifact_warnings": _artifact_warnings(library, len(factor_rows), session_counts),
+        "recomputation_failures": _recomputation_failures(library, session_log),
+        "next_commands": _next_commands(library_source),
         "benchmarks": [
             {
                 "label": section.label,
@@ -370,6 +422,8 @@ def build_report_payload(
                         "formula": item.get("formula", "-"),
                         "category": item.get("category", "-"),
                         "train_ic": item.get("train_ic"),
+                        "train_ic_mean": item.get("train_ic_mean"),
+                        "train_ic_abs_mean": item.get("train_ic_abs_mean"),
                         "train_icir": item.get("train_icir"),
                     }
                     for item in section.payload.get("frozen_top_k", [])
@@ -379,6 +433,88 @@ def build_report_payload(
             for section in benchmark_sections
         ],
     }
+
+
+def _artifact_warnings(
+    library_payload: Mapping[str, Any],
+    library_count: int,
+    session_counts: Mapping[str, Any] | None,
+) -> list[str]:
+    warnings_out: list[str] = []
+    if library_payload.get("metric_version") in (None, "legacy_abs_ic"):
+        warnings_out.append(
+            "This library lacks a current metric_version; missing paper IC fields are inferred from legacy saved values."
+        )
+    legacy_factors = [
+        str(factor.get("id", "?"))
+        for factor in library_payload.get("factors", [])
+        if isinstance(factor, Mapping)
+        and (
+            "ic_paper_mean" not in factor
+            or "ic_abs_mean" not in factor
+            or "ic_paper_icir" not in factor
+        )
+    ]
+    if legacy_factors:
+        sample = ", ".join(legacy_factors[:10])
+        suffix = "" if len(legacy_factors) <= 10 else f" and {len(legacy_factors) - 10} more"
+        warnings_out.append(
+            f"Factors missing new metric fields were loaded with compatibility defaults: {sample}{suffix}."
+        )
+    if not session_counts:
+        return warnings_out
+    final_size = session_counts.get("final_library_size")
+    if final_size is not None and int(final_size or 0) != library_count:
+        warnings_out.append(
+            f"Session final library size is {final_size}, but factor_library.json contains {library_count} factors."
+        )
+    admitted_factors = session_counts.get("admitted_factors")
+    if admitted_factors is not None and int(admitted_factors or 0) < library_count:
+        warnings_out.append(
+            f"Session log has {admitted_factors} admitted factor records, below the library count {library_count}."
+        )
+    return warnings_out
+
+
+def _recomputation_failures(
+    library_payload: Mapping[str, Any],
+    session_payload: Mapping[str, Any] | None,
+) -> list[str]:
+    """Collect recomputation failure messages from artifacts that include them."""
+    failures: list[str] = []
+    for factor in library_payload.get("factors", []):
+        if not isinstance(factor, Mapping):
+            continue
+        error = (
+            factor.get("recompute_error")
+            or factor.get("recomputation_error")
+            or factor.get("signal_error")
+            or factor.get("error")
+        )
+        if error:
+            failures.append(f"{factor.get('id', '?')}: {factor.get('name', '-')}: {error}")
+
+    if session_payload:
+        for factor in session_payload.get("factors", []):
+            if not isinstance(factor, Mapping):
+                continue
+            error = factor.get("recompute_error") or factor.get("recomputation_error")
+            if error:
+                failures.append(f"{factor.get('expression', '-')}: {error}")
+
+    return failures[:20]
+
+
+def _next_commands(library_source: JSONSource) -> list[str]:
+    if isinstance(library_source, Mapping):
+        library_arg = "factor_library.json"
+    else:
+        library_arg = str(_resolve_json_path(library_source, default_filename="factor_library.json"))
+    return [
+        f"factorminer evaluate {library_arg} --mock --period both",
+        f"factorminer combine {library_arg} --mock --method all",
+        f"factorminer visualize {library_arg} --mock --top-k 10 --tearsheet",
+    ]
 
 
 def _markdown_table(headers: Sequence[str], rows: Sequence[Sequence[Any]]) -> str:
@@ -424,19 +560,36 @@ def render_markdown_report(payload: Mapping[str, Any]) -> str:
     lines.append(
         f"- Source: `{library.get('source', '-')}`  \n"
         f"- Factors: `{library.get('count', 0)}`  \n"
-        f"- IC threshold: `{_fmt_num(library.get('ic_threshold'))}`  \n"
+        f"- Admission metric: `{library.get('admission_metric', 'ic_paper_mean')}`  \n"
+        f"- Metric version: `{library.get('metric_version', 'unknown')}`  \n"
+        f"- Paper IC threshold: `{_fmt_num(library.get('ic_threshold'))}`  \n"
         f"- Correlation threshold: `{_fmt_num(library.get('correlation_threshold'))}`  \n"
         f"- Dependence metric: `{library.get('dependence_metric', 'unknown')}`"
     )
     lines.append("")
+    lines.append("## Metric Definitions")
+    lines.append(
+        _markdown_table(
+            ["Metric", "Definition", "Used For"],
+            [
+                [row["metric"], row["definition"], row["usage"]]
+                for row in payload.get("metric_definitions", [])
+            ],
+        )
+    )
+    lines.append("")
+    lines.append("## Top Factors by Paper IC")
     lines.append(
         _markdown_table(
             [
                 "ID",
                 "Name",
+                "Formula",
                 "Category",
-                "IC",
-                "ICIR",
+                "IC Mean",
+                "Paper IC",
+                "Abs IC",
+                "Paper ICIR",
                 "Win Rate",
                 "Max Corr",
                 "Batch",
@@ -446,9 +599,12 @@ def render_markdown_report(payload: Mapping[str, Any]) -> str:
                 [
                     row["id"],
                     row["name"],
+                    row["formula"],
                     row["category"],
                     row["ic_mean"],
-                    row["icir"],
+                    row["ic_paper_mean"],
+                    row["ic_abs_mean"],
+                    row["ic_paper_icir"],
                     row["ic_win_rate"],
                     row["max_correlation"],
                     row["batch_number"],
@@ -524,6 +680,18 @@ def render_markdown_report(payload: Mapping[str, Any]) -> str:
                 )
             )
 
+    if payload.get("artifact_warnings"):
+        lines.append("")
+        lines.append("## Artifact Warnings")
+        for warning in payload["artifact_warnings"]:
+            lines.append(f"- {warning}")
+
+    if payload.get("recomputation_failures"):
+        lines.append("")
+        lines.append("## Recompute Failures")
+        for failure in payload["recomputation_failures"]:
+            lines.append(f"- {failure}")
+
     benchmarks = payload.get("benchmarks", [])
     lines.append("")
     lines.append("## Benchmarks")
@@ -547,7 +715,7 @@ def render_markdown_report(payload: Mapping[str, Any]) -> str:
                 lines.append("")
                 lines.append(
                     _markdown_table(
-                        ["Name", "Category", "Train IC", "Train ICIR"],
+                        ["Name", "Category", "Train Paper IC", "Train Paper ICIR"],
                         [
                             [item["name"], item["category"], item["train_ic"], item["train_icir"]]
                             for item in section["freeze_top_k"]
@@ -560,14 +728,14 @@ def render_markdown_report(payload: Mapping[str, Any]) -> str:
                     _markdown_table(
                         [
                             "Universe",
-                            "Library IC",
-                            "Library ICIR",
+                            "Library Paper IC",
+                            "Library Paper ICIR",
                             "Avg |rho|",
-                            "Selected IC",
-                            "Selected ICIR",
+                            "Selected Paper IC",
+                            "Selected Paper ICIR",
                             "Avg Turnover",
-                            "Combo IC",
-                            "Combo ICIR",
+                            "Combo Paper IC",
+                            "Combo Paper ICIR",
                             "Factor Count",
                         ],
                         [
@@ -587,6 +755,12 @@ def render_markdown_report(payload: Mapping[str, Any]) -> str:
                         ],
                     )
                 )
+
+    if payload.get("next_commands"):
+        lines.append("")
+        lines.append("## Next Commands")
+        for command in payload["next_commands"]:
+            lines.append(f"- `{command}`")
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -627,17 +801,31 @@ def render_html_report(payload: Mapping[str, Any]) -> str:
         '<div class="cards">',
         _card("Source", library.get("source", "-")),
         _card("Factors", library.get("count", 0)),
-        _card("IC threshold", _fmt_num(library.get("ic_threshold"))),
+        _card("Admission metric", library.get("admission_metric", "ic_paper_mean")),
+        _card("Metric version", library.get("metric_version", "unknown")),
+        _card("Paper IC threshold", _fmt_num(library.get("ic_threshold"))),
         _card("Correlation threshold", _fmt_num(library.get("correlation_threshold"))),
         _card("Dependence metric", library.get("dependence_metric", "unknown")),
         "</div>",
+        "<h2>Metric Definitions</h2>",
+        _html_table(
+            ["Metric", "Definition", "Used For"],
+            [
+                [row["metric"], row["definition"], row["usage"]]
+                for row in payload.get("metric_definitions", [])
+            ],
+        ),
+        "<h2>Top Factors by Paper IC</h2>",
         _html_table(
             [
                 "ID",
                 "Name",
+                "Formula",
                 "Category",
-                "IC",
-                "ICIR",
+                "IC Mean",
+                "Paper IC",
+                "Abs IC",
+                "Paper ICIR",
                 "Win Rate",
                 "Max Corr",
                 "Batch",
@@ -647,9 +835,12 @@ def render_html_report(payload: Mapping[str, Any]) -> str:
                 [
                     row["id"],
                     row["name"],
+                    row["formula"],
                     row["category"],
                     row["ic_mean"],
-                    row["icir"],
+                    row["ic_paper_mean"],
+                    row["ic_abs_mean"],
+                    row["ic_paper_icir"],
                     row["ic_win_rate"],
                     row["max_correlation"],
                     row["batch_number"],
@@ -713,6 +904,18 @@ def render_html_report(payload: Mapping[str, Any]) -> str:
             ]
         )
 
+    if payload.get("artifact_warnings"):
+        parts.extend(["<section>", "<h2>Artifact Warnings</h2>", "<ul>"])
+        for warning in payload["artifact_warnings"]:
+            parts.append(f"<li>{html.escape(str(warning))}</li>")
+        parts.extend(["</ul>", "</section>"])
+
+    if payload.get("recomputation_failures"):
+        parts.extend(["<section>", "<h2>Recompute Failures</h2>", "<ul>"])
+        for failure in payload["recomputation_failures"]:
+            parts.append(f"<li>{html.escape(str(failure))}</li>")
+        parts.extend(["</ul>", "</section>"])
+
     parts.append("<section><h2>Benchmarks</h2>")
     if not benchmarks:
         parts.append('<p class="muted">No benchmark JSON provided.</p>')
@@ -733,7 +936,7 @@ def render_html_report(payload: Mapping[str, Any]) -> str:
             if section.get("freeze_top_k"):
                 parts.append(
                     _html_table(
-                        ["Name", "Category", "Train IC", "Train ICIR"],
+                        ["Name", "Category", "Train Paper IC", "Train Paper ICIR"],
                         [
                             [item["name"], item["category"], item["train_ic"], item["train_icir"]]
                             for item in section["freeze_top_k"]
@@ -745,14 +948,14 @@ def render_html_report(payload: Mapping[str, Any]) -> str:
                     _html_table(
                         [
                             "Universe",
-                            "Library IC",
-                            "Library ICIR",
+                            "Library Paper IC",
+                            "Library Paper ICIR",
                             "Avg |rho|",
-                            "Selected IC",
-                            "Selected ICIR",
+                            "Selected Paper IC",
+                            "Selected Paper ICIR",
                             "Avg Turnover",
-                            "Combo IC",
-                            "Combo ICIR",
+                            "Combo Paper IC",
+                            "Combo Paper ICIR",
                             "Factor Count",
                         ],
                         [
@@ -772,7 +975,15 @@ def render_html_report(payload: Mapping[str, Any]) -> str:
                         ],
                     )
                 )
-    parts.extend(["</section>", "</body>", "</html>"])
+    parts.append("</section>")
+
+    if payload.get("next_commands"):
+        parts.extend(["<section>", "<h2>Next Commands</h2>", "<ul>"])
+        for command in payload["next_commands"]:
+            parts.append(f"<li><code>{html.escape(str(command))}</code></li>")
+        parts.extend(["</ul>", "</section>"])
+
+    parts.extend(["</body>", "</html>"])
     return "\n".join(parts)
 
 

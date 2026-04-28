@@ -1144,6 +1144,8 @@ class HelixBenchmark:
         from factorminer.evaluation.metrics import (
             compute_ic,
             compute_ic_mean,
+            compute_ic_paper_icir,
+            compute_ic_paper_mean,
             compute_ic_win_rate,
             compute_icir,
         )
@@ -1159,14 +1161,18 @@ class HelixBenchmark:
                     continue
                 ic_series = compute_ic(signals, returns)
                 ic_mean = compute_ic_mean(ic_series)
+                paper_ic = compute_ic_paper_mean(ic_series)
                 icir = compute_icir(ic_series)
+                paper_icir = compute_ic_paper_icir(ic_series)
                 win_rate = compute_ic_win_rate(ic_series)
                 results.append({
                     "name": name,
                     "formula": formula,
                     "category": category,
                     "ic_mean": ic_mean,
+                    "ic_paper_mean": paper_ic,
                     "icir": icir,
+                    "ic_paper_icir": paper_icir,
                     "ic_win_rate": win_rate,
                     "signals": signals,
                     "ic_series": ic_series,
@@ -1259,7 +1265,11 @@ class HelixBenchmark:
     ) -> tuple[float, float, float, float]:
         """Compute EW/ICW combination metrics on test data."""
         from factorminer.evaluation.combination import FactorCombiner
-        from factorminer.evaluation.metrics import compute_ic, compute_ic_mean, compute_icir
+        from factorminer.evaluation.metrics import (
+            compute_ic,
+            compute_ic_paper_icir,
+            compute_ic_paper_mean,
+        )
 
         if not test_factor_results:
             return 0.0, 0.0, 0.0, 0.0
@@ -1279,16 +1289,16 @@ class HelixBenchmark:
         try:
             ew_composite = combiner.equal_weight(factor_signals)
             ew_ic_series = compute_ic(ew_composite.T, test_returns)
-            ew_ic = compute_ic_mean(ew_ic_series)
-            ew_icir = compute_icir(ew_ic_series)
+            ew_ic = compute_ic_paper_mean(ew_ic_series)
+            ew_icir = compute_ic_paper_icir(ew_ic_series)
         except Exception:
             ew_ic, ew_icir = 0.0, 0.0
 
         try:
             icw_composite = combiner.ic_weighted(factor_signals, ic_values)
             icw_ic_series = compute_ic(icw_composite.T, test_returns)
-            icw_ic = compute_ic_mean(icw_ic_series)
-            icw_icir = compute_icir(icw_ic_series)
+            icw_ic = compute_ic_paper_mean(icw_ic_series)
+            icw_icir = compute_ic_paper_icir(icw_ic_series)
         except Exception:
             icw_ic, icw_icir = 0.0, 0.0
 
@@ -1305,7 +1315,11 @@ class HelixBenchmark:
         selector_type: str,
     ) -> tuple[float, float]:
         """Compute Lasso/XGBoost selection IC on test data."""
-        from factorminer.evaluation.metrics import compute_ic, compute_ic_mean, compute_icir
+        from factorminer.evaluation.metrics import (
+            compute_ic,
+            compute_ic_paper_icir,
+            compute_ic_paper_mean,
+        )
         from factorminer.evaluation.selection import FactorSelector
 
         if len(train_factor_results) < 3:
@@ -1354,7 +1368,7 @@ class HelixBenchmark:
                 axis=0,
             )
             ic_series = compute_ic(composite.T, test_returns)
-            return compute_ic_mean(ic_series), compute_icir(ic_series)
+            return compute_ic_paper_mean(ic_series), compute_ic_paper_icir(ic_series)
         except Exception as exc:
             logger.debug("Selection metrics failed for %s: %s", selector_type, exc)
             return 0.0, 0.0
@@ -1631,8 +1645,16 @@ class HelixBenchmark:
                     "name": artifact.name,
                     "formula": artifact.formula,
                     "category": artifact.category,
-                    "train_ic": artifact.split_stats["train"]["ic_abs_mean"],
-                    "train_icir": abs(artifact.split_stats["train"]["icir"]),
+                    "train_ic": artifact.split_stats["train"].get(
+                        "ic_paper_mean",
+                        artifact.split_stats["train"]["ic_abs_mean"],
+                    ),
+                    "train_ic_mean": artifact.split_stats["train"]["ic_mean"],
+                    "train_ic_abs_mean": artifact.split_stats["train"]["ic_abs_mean"],
+                    "train_icir": artifact.split_stats["train"].get(
+                        "ic_paper_icir",
+                        abs(artifact.split_stats["train"]["icir"]),
+                    ),
                 }
                 for artifact in selected
             ],

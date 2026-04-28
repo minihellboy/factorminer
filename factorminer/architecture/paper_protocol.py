@@ -93,7 +93,7 @@ class PaperProtocol:
         return cls(
             target_definitions=targets,
             default_target=str(getattr(data_cfg, "default_target", "paper")),
-            ic_metric="mean_absolute_spearman_ic",
+            ic_metric="paper_abs_mean_spearman_ic",
             redundancy_metric=str(
                 getattr(eval_cfg, "redundancy_metric", getattr(cfg, "redundancy_metric", "spearman"))
             ),

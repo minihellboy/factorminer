@@ -90,8 +90,8 @@ class EvaluationKernel:
         ):
             paper_stats = target_stats.get("paper") or next(iter(target_stats.values()))
             return {
-                "quality_gate": float(paper_stats["ic_abs_mean"]),
-                "icir": float(paper_stats["icir"]),
+                "quality_gate": float(paper_stats["ic_paper_mean"]),
+                "icir": float(paper_stats["ic_paper_icir"]),
                 "research_score": 0.0,
                 "score_vector": None,
                 "admitted": None,

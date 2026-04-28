@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 
 from factorminer.operators.auto_inventor import (
@@ -64,6 +66,14 @@ def test_compile_safely_blocks_eval():
     assert fn is None
 
 
+def test_compile_safely_blocks_introspection_tokens():
+    """Introspection escape hatches should be rejected before exec."""
+    code = "def compute(x):\n    return x.__class__"
+    inventor = _make_inventor()
+    fn = inventor._compile_safely(code)
+    assert fn is None
+
+
 # -----------------------------------------------------------------------
 # CustomOperatorStore: register and list
 # -----------------------------------------------------------------------
@@ -90,6 +100,38 @@ def test_custom_operator_store_register_and_list(tmp_path):
     store.register(op)
     assert "TestOp" in store.list_operators()
     assert store.get_operator("TestOp") is not None
+
+
+def test_custom_operator_reload_uses_shared_sandbox(tmp_path):
+    """Persisted operators should reject the same blocked tokens as proposals."""
+    store_dir = tmp_path / "ops"
+    store_dir.mkdir()
+    (store_dir / "index.json").write_text(
+        json.dumps(
+            [
+                {
+                    "name": "UnsafeOp",
+                    "arity": 1,
+                    "category": "AUTO_INVENTED",
+                    "signature": "ELEMENT_WISE",
+                    "param_names": [],
+                    "param_defaults": {},
+                    "param_ranges": {},
+                    "description": "unsafe",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (store_dir / "UnsafeOp.py").write_text(
+        "def compute(x):\n    return open('/tmp/nope').read()\n",
+        encoding="utf-8",
+    )
+
+    store = CustomOperatorStore(store_dir=str(store_dir))
+    store.load()
+
+    assert store.list_operators() == []
 
 
 # -----------------------------------------------------------------------

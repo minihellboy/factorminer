@@ -31,6 +31,9 @@ def test_build_report_payload_summarizes_library_session_and_benchmarks() -> Non
     )
 
     assert payload["library"]["count"] == 2
+    assert payload["library"]["admission_metric"] == "ic_paper_mean"
+    assert payload["metric_definitions"][1]["metric"] == "ic_paper_mean"
+    assert payload["artifact_warnings"]
     assert payload["library"]["family_counts"][0] == ("mean_reversion", 1)
     assert payload["session"]["counts"]["admitted"] == 3
     assert payload["session"]["counts"]["rejection_reasons"][0] == ("IC below threshold", 1)
@@ -50,10 +53,14 @@ def test_render_markdown_report_contains_expected_sections() -> None:
 
     assert "# FactorMiner Static Report" in markdown
     assert "## Library Summary" in markdown
+    assert "## Metric Definitions" in markdown
+    assert "Top Factors by Paper IC" in markdown
     assert "mean_reversion" in markdown
+    assert "Formula" in markdown
     assert "## Lifecycle and Admission" in markdown
     assert "IC below threshold" in markdown
     assert "## Benchmarks" in markdown
+    assert "## Next Commands" in markdown
     assert "CSI500" in markdown
     assert "factor_miner_no_memory" in markdown
 
@@ -69,8 +76,11 @@ def test_render_html_report_contains_tables_and_sections() -> None:
 
     assert "<!doctype html>" in html.lower()
     assert "<h2>Library Summary</h2>" in html
+    assert "<h2>Metric Definitions</h2>" in html
+    assert "Top Factors by Paper IC" in html
     assert "<table>" in html
     assert "mean_reversion" in html
+    assert "<h2>Next Commands</h2>" in html
     assert "CSI500" in html
 
 

@@ -34,8 +34,10 @@ def _make_stats(
 ) -> dict:
     return {
         "ic_mean": ic_mean,
+        "ic_paper_mean": abs(ic_mean),
         "ic_abs_mean": ic_abs_mean,
         "icir": icir,
+        "ic_paper_icir": abs(icir),
         "ic_win_rate": ic_win_rate,
         "turnover": turnover,
         "ic_series": np.array([ic_mean, -ic_mean / 2.0, ic_mean / 3.0], dtype=np.float64),
@@ -186,7 +188,7 @@ def test_evaluate_recomputes_and_selects_top_k_by_train_split(tmp_path, monkeypa
     )
 
     assert result.exit_code == 0, result.output
-    assert "Evaluating top 1 factors by train |IC| for train/test comparison" in result.output
+    assert "Evaluating top 1 factors by train paper IC for train/test comparison" in result.output
     assert "factor_two" in result.output
     assert "factor_one" not in result.output
     assert "0.7000" in result.output
@@ -254,7 +256,7 @@ def test_combine_uses_fit_split_for_factor_preselection(tmp_path, monkeypatch):
     )
 
     assert result.exit_code == 0, result.output
-    assert "Pre-selected top 1 factors by train |IC|" in result.output
+    assert "Pre-selected top 1 factors by train paper IC" in result.output
     assert "Fit split:  train" in result.output
     assert "Eval split: test" in result.output
     assert captured_factor_ids == [2]

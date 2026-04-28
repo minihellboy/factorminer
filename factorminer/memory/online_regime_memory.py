@@ -58,6 +58,12 @@ from factorminer.memory.retrieval import retrieve_memory
 logger = logging.getLogger(__name__)
 
 
+def _regime_labels(regime: RegimeState) -> tuple[str, ...]:
+    """Return deterministic searchable labels for a composite regime."""
+    label = regime.label()
+    return tuple(part for part in label.split("/") if part)
+
+
 # ---------------------------------------------------------------------------
 # MemorySignal — returned by OnlineRegimeMemory.retrieve()
 # ---------------------------------------------------------------------------
@@ -439,7 +445,7 @@ class OnlineMemoryUpdater:
         The underlying experience memory (will be mutated in place via
         evolution helpers).
     forgetting_rate : float
-        Per-iteration exponential decay rate applied to pattern confidence.
+        Per-iteration confidence retention factor applied to pattern confidence.
     regime_sensitivity : float
         Weight given to regime-specific IC boosts vs generic boosts.
         0 = ignore regime, 1 = fully regime-sensitive.
@@ -455,7 +461,7 @@ class OnlineMemoryUpdater:
     def __init__(
         self,
         base_memory: ExperienceMemory,
-        forgetting_rate: float = 0.01,
+        forgetting_rate: float = 0.99,
         regime_sensitivity: float = 0.5,
         min_confidence: float = 0.05,
         regime_boost: float = 0.1,
@@ -547,10 +553,10 @@ class OnlineMemoryUpdater:
             Number of mining iterations since last call to this method.
         """
         with self._lock:
+            elapsed = max(1, int(iterations_elapsed))
             self._base_memory = apply_confidence_decay(
                 self._base_memory,
-                forgetting_rate=self.forgetting_rate,
-                iterations_elapsed=iterations_elapsed,
+                decay_factor=self.forgetting_rate ** elapsed,
                 min_confidence=self.min_confidence,
             )
             self._last_decay_iteration = self._iteration
@@ -580,8 +586,8 @@ class OnlineMemoryUpdater:
                 # We tag patterns heuristically via their description keywords
                 desc_lower = pat.description.lower()
                 name_lower = pat.name.lower()
-                new_labels_lower = {lbl.lower() for lbl in new_regime.labels}
-                old_labels_lower = {lbl.lower() for lbl in old_regime.labels}
+                new_labels_lower = {lbl.lower() for lbl in _regime_labels(new_regime)}
+                old_labels_lower = {lbl.lower() for lbl in _regime_labels(old_regime)}
 
                 if any(lbl in desc_lower or lbl in name_lower for lbl in new_labels_lower):
                     self._base_memory = bump_pattern_confidence(
@@ -601,7 +607,8 @@ class OnlineMemoryUpdater:
             )
             evidence = (
                 f"Based on EW streaming statistics. New regime labels: "
-                f"{new_regime.labels}. Old: {old_regime.labels}."
+                f"{', '.join(_regime_labels(new_regime))}. Old: "
+                f"{', '.join(_regime_labels(old_regime))}."
             )
             new_insight = StrategicInsight(
                 insight=insight_text,
@@ -684,7 +691,7 @@ class OnlineMemoryUpdater:
         mem = ExperienceMemory.from_dict(d["base_memory"])
         updater = cls(
             base_memory=mem,
-            forgetting_rate=d.get("forgetting_rate", 0.01),
+            forgetting_rate=d.get("forgetting_rate", 0.99),
             regime_sensitivity=d.get("regime_sensitivity", 0.5),
             min_confidence=d.get("min_confidence", 0.05),
             regime_boost=d.get("regime_boost", 0.1),
@@ -1017,7 +1024,7 @@ class OnlineRegimeMemory:
     config : dict
         Optional configuration overrides.  Keys and defaults:
 
-        - ``forgetting_rate`` (0.01): per-iteration decay
+        - ``forgetting_rate`` (0.99): per-iteration confidence retention
         - ``regime_sensitivity`` (0.5): how much to weight regime-specific patterns
         - ``min_confidence`` (0.05): pruning threshold
         - ``forget_every_n_iterations`` (10): call ``apply_forgetting`` every N evals
@@ -1044,7 +1051,7 @@ class OnlineRegimeMemory:
         )
         self._updater = OnlineMemoryUpdater(
             base_memory=base_memory,
-            forgetting_rate=cfg.get("forgetting_rate", 0.01),
+            forgetting_rate=cfg.get("forgetting_rate", 0.99),
             regime_sensitivity=cfg.get("regime_sensitivity", 0.5),
             min_confidence=cfg.get("min_confidence", 0.05),
         )
@@ -1159,7 +1166,7 @@ class OnlineRegimeMemory:
                 self._updater.apply_forgetting(
                     iterations_elapsed=self._forget_every
                 )
-                decay = (1.0 - self._updater.forgetting_rate) ** self._forget_every
+                decay = self._updater.forgetting_rate ** self._forget_every
                 self._pattern_store.apply_decay(decay)
 
     def retrieve(

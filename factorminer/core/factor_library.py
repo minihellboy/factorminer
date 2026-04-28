@@ -33,11 +33,15 @@ class Factor:
     name: str
     formula: str
     category: str  # e.g., "VWAP", "Regime-switching", "Momentum", etc.
-    ic_mean: float  # Mean IC across evaluation period
-    icir: float  # IC Information Ratio
+    ic_mean: float  # Signed mean IC across evaluation period
+    icir: float  # Signed IC Information Ratio
     ic_win_rate: float  # Fraction of periods with positive IC
     max_correlation: float  # Max |rho| with any other library factor at admission
     batch_number: int  # Which mining batch admitted this factor
+    ic_paper_mean: float | None = None  # Paper metric: abs(mean(IC_t))
+    ic_abs_mean: float | None = None  # Legacy diagnostic: mean(abs(IC_t))
+    ic_paper_icir: float | None = None  # Paper metric: abs(mean(IC_t)) / std(IC_t)
+    metric_version: str = "paper_ic_v2"
     admission_date: str = ""
     signals: np.ndarray | None = field(default=None, repr=False)  # (M, T)
     research_metrics: dict = field(default_factory=dict)
@@ -46,6 +50,12 @@ class Factor:
     def __post_init__(self) -> None:
         if not self.admission_date:
             self.admission_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if self.ic_paper_mean is None:
+            self.ic_paper_mean = abs(float(self.ic_mean))
+        if self.ic_abs_mean is None:
+            self.ic_abs_mean = abs(float(self.ic_mean))
+        if self.ic_paper_icir is None:
+            self.ic_paper_icir = abs(float(self.icir))
 
     def to_dict(self) -> dict:
         """Serialize to a JSON-compatible dictionary (excludes signals)."""
@@ -55,10 +65,14 @@ class Factor:
             "formula": self.formula,
             "category": self.category,
             "ic_mean": self.ic_mean,
+            "ic_paper_mean": self.ic_paper_mean,
+            "ic_abs_mean": self.ic_abs_mean,
             "icir": self.icir,
+            "ic_paper_icir": self.ic_paper_icir,
             "ic_win_rate": self.ic_win_rate,
             "max_correlation": self.max_correlation,
             "batch_number": self.batch_number,
+            "metric_version": self.metric_version,
             "admission_date": self.admission_date,
             "research_metrics": self.research_metrics,
             "provenance": self.provenance,
@@ -73,10 +87,14 @@ class Factor:
             formula=d["formula"],
             category=d["category"],
             ic_mean=d["ic_mean"],
+            ic_paper_mean=d.get("ic_paper_mean", abs(float(d.get("ic_mean", 0.0)))),
+            ic_abs_mean=d.get("ic_abs_mean", abs(float(d.get("ic_mean", 0.0)))),
             icir=d["icir"],
+            ic_paper_icir=d.get("ic_paper_icir", abs(float(d.get("icir", 0.0)))),
             ic_win_rate=d["ic_win_rate"],
             max_correlation=d["max_correlation"],
             batch_number=d["batch_number"],
+            metric_version=d.get("metric_version", "legacy_abs_ic"),
             admission_date=d.get("admission_date", ""),
             research_metrics=d.get("research_metrics", {}),
             provenance=d.get("provenance", {}),
@@ -105,6 +123,7 @@ class FactorLibrary:
         self._next_id: int = 1
         self.correlation_threshold = correlation_threshold
         self.ic_threshold = ic_threshold
+        self.metric_version = "paper_ic_v2"
         if isinstance(dependence_metric, DependenceMetric):
             self.dependence_metric = dependence_metric
         else:
@@ -234,7 +253,8 @@ class FactorLibrary:
                 candidate_signals, factor.signals
             )
             if corr >= self.correlation_threshold:
-                correlated_factors.append((fid, corr, factor.ic_mean))
+                existing_paper_ic = float(factor.ic_paper_mean or abs(factor.ic_mean))
+                correlated_factors.append((fid, corr, existing_paper_ic))
 
         if len(correlated_factors) != 1:
             return False, None, (
@@ -280,8 +300,8 @@ class FactorLibrary:
         self._extend_correlation_matrix(factor)
 
         logger.info(
-            "Admitted factor %d '%s' (IC=%.4f, max_corr=%.4f, category=%s)",
-            factor.id, factor.name, factor.ic_mean,
+            "Admitted factor %d '%s' (paper IC=%.4f, max_corr=%.4f, category=%s)",
+            factor.id, factor.name, float(factor.ic_paper_mean or abs(factor.ic_mean)),
             factor.max_correlation, factor.category,
         )
         return factor.id
@@ -319,8 +339,11 @@ class FactorLibrary:
             self._recompute_matrix_slot(old_index, new_factor)
 
         logger.info(
-            "Replaced factor %d with %d '%s' (IC=%.4f)",
-            old_id, new_factor.id, new_factor.name, new_factor.ic_mean,
+            "Replaced factor %d with %d '%s' (paper IC=%.4f)",
+            old_id,
+            new_factor.id,
+            new_factor.name,
+            float(new_factor.ic_paper_mean or abs(new_factor.ic_mean)),
         )
 
     def remove_factor(self, factor_id: int) -> None:
@@ -495,7 +518,7 @@ class FactorLibrary:
         cat_ic_sums: dict[str, float] = defaultdict(float)
         for f in self.factors.values():
             cat_counts[f.category] += 1
-            cat_ic_sums[f.category] += f.ic_mean
+            cat_ic_sums[f.category] += float(f.ic_paper_mean or abs(f.ic_mean))
 
         diag["category_counts"] = dict(cat_counts)
         diag["category_avg_ic"] = {
@@ -554,6 +577,7 @@ class FactorLibrary:
                     "formula": f.formula,
                     "category": f.category,
                     "ic_mean": f.ic_mean,
+                    "ic_paper_mean": f.ic_paper_mean,
                     "batch": f.batch_number,
                 }
                 for f in recent

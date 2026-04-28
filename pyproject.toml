@@ -89,6 +89,10 @@ Issues = "https://github.com/minihellboy/factorminer/issues"
 
 [tool.setuptools.packages.find]
 include = ["factorminer*"]
+exclude = ["factorminer.tests*"]
+
+[tool.setuptools.package-data]
+"factorminer.configs" = ["*.yaml"]
 
 [tool.ruff]
 line-length = 100

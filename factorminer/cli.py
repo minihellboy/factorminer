@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
+import warnings
 from dataclasses import fields
+from importlib.util import find_spec
 from pathlib import Path
 
 import click
 import numpy as np
+import yaml
 
+from factorminer.configs import DEFAULT_CONFIG_PATH, load_default_yaml
 from factorminer.utils.config import load_config
 
 logger = logging.getLogger(__name__)
@@ -27,6 +33,35 @@ def _setup_logging(verbose: bool) -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    if not verbose:
+        warnings.filterwarnings("ignore", message="Mean of empty slice", category=RuntimeWarning)
+        warnings.filterwarnings(
+            "ignore",
+            message="Degrees of freedom <= 0 for slice.",
+            category=RuntimeWarning,
+        )
+
+
+def _deep_merge_dict(base: dict, override: dict) -> dict:
+    """Recursively merge two plain dictionaries."""
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge_dict(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _load_raw_config_data(config_path: str | None) -> dict:
+    """Load raw YAML including top-level fields not mapped to dataclasses."""
+    raw = load_default_yaml()
+    if config_path:
+        with open(config_path) as f:
+            user_raw = yaml.safe_load(f) or {}
+        if isinstance(user_raw, dict):
+            raw = _deep_merge_dict(raw, user_raw)
+    return raw
 
 
 def _load_data(cfg, data_path: str | None, mock: bool):
@@ -470,17 +505,20 @@ def _print_benchmark_summary(title: str, payload: dict) -> None:
 
 def _print_recomputed_factor_table(artifacts, split_name: str) -> None:
     click.echo(
-        f"{'ID':>4s}  {'Name':<35s}  {'IC Mean':>8s}  {'|IC|':>8s}  "
-        f"{'ICIR':>7s}  {'Win%':>6s}  {'Turn':>6s}"
+        f"{'ID':>4s}  {'Name':<35s}  {'IC Mean':>8s}  {'Paper IC':>8s}  "
+        f"{'Abs IC':>8s}  {'Paper ICIR':>10s}  {'Win%':>6s}  {'Turn':>6s}"
     )
-    click.echo("-" * 90)
+    click.echo("-" * 108)
 
     for artifact in artifacts:
         stats = artifact.split_stats[split_name]
         click.echo(
             f"{artifact.factor_id:4d}  {artifact.name:<35s}  "
-            f"{stats['ic_mean']:8.4f}  {stats['ic_abs_mean']:8.4f}  "
-            f"{stats['icir']:7.3f}  {stats['ic_win_rate'] * 100:5.1f}%  "
+            f"{stats['ic_mean']:8.4f}  "
+            f"{stats.get('ic_paper_mean', abs(stats['ic_mean'])):8.4f}  "
+            f"{stats['ic_abs_mean']:8.4f}  "
+            f"{stats.get('ic_paper_icir', abs(stats['icir'])):10.3f}  "
+            f"{stats['ic_win_rate'] * 100:5.1f}%  "
             f"{stats['turnover']:6.3f}"
         )
 
@@ -491,15 +529,29 @@ def _print_split_summary(artifacts, split_name: str) -> None:
         return
 
     ic_values = [artifact.split_stats[split_name]["ic_mean"] for artifact in artifacts]
+    paper_ic_values = [
+        artifact.split_stats[split_name].get(
+            "ic_paper_mean",
+            abs(artifact.split_stats[split_name]["ic_mean"]),
+        )
+        for artifact in artifacts
+    ]
     abs_ic_values = [artifact.split_stats[split_name]["ic_abs_mean"] for artifact in artifacts]
-    icir_values = [artifact.split_stats[split_name]["icir"] for artifact in artifacts]
-    click.echo("-" * 90)
+    paper_icir_values = [
+        artifact.split_stats[split_name].get(
+            "ic_paper_icir",
+            abs(artifact.split_stats[split_name]["icir"]),
+        )
+        for artifact in artifacts
+    ]
+    click.echo("-" * 108)
     click.echo(f"  Total factors:    {len(artifacts)}")
     click.echo(f"  Mean IC:          {np.mean(ic_values):.4f}")
-    click.echo(f"  Mean |IC|:        {np.mean(abs_ic_values):.4f}")
-    click.echo(f"  Mean ICIR:        {np.mean(icir_values):.3f}")
-    click.echo(f"  Max |IC|:         {max(abs_ic_values):.4f}")
-    click.echo(f"  Min |IC|:         {min(abs_ic_values):.4f}")
+    click.echo(f"  Mean paper IC:    {np.mean(paper_ic_values):.4f}")
+    click.echo(f"  Mean abs IC:      {np.mean(abs_ic_values):.4f}")
+    click.echo(f"  Mean paper ICIR:  {np.mean(paper_icir_values):.3f}")
+    click.echo(f"  Max paper IC:     {max(paper_ic_values):.4f}")
+    click.echo(f"  Min paper IC:     {min(paper_ic_values):.4f}")
 
 
 def _load_library_from_path(library_path: str):
@@ -532,6 +584,308 @@ def _load_library_from_path(library_path: str):
         raise click.Abort()
 
 
+def _json_safe(value):
+    """Convert common runtime values to JSON-serializable objects."""
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
+def _check(status: str, name: str, detail: str, **extra) -> dict:
+    return {"status": status, "name": name, "detail": detail, **extra}
+
+
+def _doctor_checks(cfg, raw: dict, output_dir: Path) -> list[dict]:
+    """Collect local install and runtime readiness checks."""
+    checks: list[dict] = []
+
+    default_data = load_default_yaml()
+    if DEFAULT_CONFIG_PATH.exists() and default_data:
+        checks.append(_check("ok", "packaged_config", f"Found {DEFAULT_CONFIG_PATH}"))
+    else:
+        checks.append(_check("error", "packaged_config", "Missing packaged default.yaml"))
+
+    backend = cfg.evaluation.backend
+    checks.append(_check("ok", "effective_backend", backend))
+    if backend == "gpu":
+        try:
+            import torch
+
+            cuda_ok = bool(torch.cuda.is_available())
+            status = "ok" if cuda_ok else "error"
+            detail = "CUDA is available" if cuda_ok else "GPU backend requested but CUDA is unavailable"
+            checks.append(_check(status, "cuda", detail))
+        except Exception as exc:
+            checks.append(_check("error", "cuda", f"GPU backend requested but torch failed: {exc}"))
+
+    optional_modules = {
+        "openai": "openai",
+        "anthropic": "anthropic",
+        "google-generativeai": "google.generativeai",
+        "sentence-transformers": "sentence_transformers",
+        "faiss-cpu": "faiss",
+    }
+    for package, module in optional_modules.items():
+        if find_spec(module) is None:
+            checks.append(_check("warning", f"optional:{package}", "Not installed"))
+        else:
+            checks.append(_check("ok", f"optional:{package}", "Installed"))
+
+    provider = cfg.llm.provider
+    api_key = raw.get("llm", {}).get("api_key") if isinstance(raw.get("llm"), dict) else None
+    env_names = {
+        "google": ("GOOGLE_API_KEY", "GEMINI_API_KEY"),
+        "openai": ("OPENAI_API_KEY",),
+        "anthropic": ("ANTHROPIC_API_KEY",),
+    }
+    if provider == "mock":
+        checks.append(_check("ok", "llm", "Mock provider selected; no API key required"))
+    elif api_key or any(os.getenv(name) for name in env_names.get(provider, ())):
+        checks.append(_check("ok", "llm", f"{provider} credentials available"))
+    else:
+        checks.append(_check("warning", "llm", f"{provider} selected but no API key was found"))
+
+    data_path = raw.get("data_path")
+    if data_path:
+        path = Path(data_path).expanduser()
+        status = "ok" if path.exists() else "error"
+        detail = f"Configured data path exists: {path}" if path.exists() else f"Configured data path is missing: {path}"
+        checks.append(_check(status, "data_path", detail))
+    else:
+        checks.append(_check("warning", "data_path", "No data_path configured; use --mock or --data"))
+
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(prefix=".factorminer-doctor-", dir=output_dir, delete=True):
+            pass
+        checks.append(_check("ok", "output_dir", f"Writable: {output_dir}"))
+    except Exception as exc:
+        checks.append(_check("error", "output_dir", f"Not writable: {output_dir} ({exc})"))
+
+    return checks
+
+
+def _print_doctor_report(checks: list[dict]) -> None:
+    click.echo("FactorMiner Doctor")
+    click.echo("=" * 60)
+    for item in checks:
+        label = item["status"].upper()
+        click.echo(f"[{label:<7}] {item['name']}: {item['detail']}")
+
+
+def _starter_config() -> dict:
+    """Return a CPU-safe, mock-friendly starter config."""
+    config = load_default_yaml()
+    config = _deep_merge_dict(config, {
+        "output_dir": "./output",
+        "data_path": None,
+        "mining": {
+            "target_library_size": 5,
+            "batch_size": 8,
+            "max_iterations": 3,
+            "ic_threshold": 0.0001,
+            "icir_threshold": 0.0001,
+            "correlation_threshold": 1.0,
+            "replacement_ic_min": 0.001,
+            "replacement_ic_ratio": 1.0,
+        },
+        "evaluation": {
+            "backend": "numpy",
+            "signal_failure_policy": "synthetic",
+        },
+        "llm": {
+            "provider": "mock",
+            "model": "mock",
+            "batch_candidates": 8,
+        },
+    })
+    return config
+
+
+def _accepted_alias_lines() -> list[str]:
+    """Describe loader-supported column aliases for data validation output."""
+    from factorminer.data.loader import COLUMN_ALIASES, REQUIRED_COLUMNS
+
+    lines = []
+    for canonical in REQUIRED_COLUMNS:
+        aliases = COLUMN_ALIASES.get(canonical, [])
+        accepted = ", ".join([canonical, *aliases])
+        lines.append(f"  {canonical}: {accepted}")
+    return lines
+
+
+def _split_row_counts_for_validation(report, cfg, hdf_key: str) -> dict[str, int] | None:
+    """Best-effort row counts for configured train/test periods."""
+    datetime_source = report.canonical_mapping.get("datetime")
+    if not datetime_source:
+        return None
+
+    try:
+        import pandas as pd
+
+        from factorminer.data.validation import _read_raw_frame
+
+        df = _read_raw_frame(Path(report.path), report.fmt, hdf_key=hdf_key)
+        timestamps = pd.to_datetime(df[datetime_source], errors="coerce")
+        train_start, train_end = [pd.Timestamp(value) for value in cfg.data.train_period]
+        test_start, test_end = [pd.Timestamp(value) for value in cfg.data.test_period]
+        return {
+            "train": int(((timestamps >= train_start) & (timestamps <= train_end)).sum()),
+            "test": int(((timestamps >= test_start) & (timestamps <= test_end)).sum()),
+        }
+    except Exception:
+        return None
+
+
+def _render_validation_next_steps(report, cfg, path: str, hdf_key: str) -> str:
+    """Render actionable guidance after the validator's structural report."""
+    lines: list[str] = []
+    lines.append("")
+    lines.append("Accepted aliases")
+    lines.append("-" * 60)
+    lines.extend(_accepted_alias_lines())
+    lines.append("")
+    lines.append("Derived fields")
+    lines.append("-" * 60)
+    lines.append("  vwap: derived as amount / volume when missing, falling back to close if needed")
+    lines.append("  returns: derived from close-to-close prices when the feature column is missing")
+
+    split_counts = _split_row_counts_for_validation(report, cfg, hdf_key)
+    lines.append("")
+    lines.append("Configured split coverage")
+    lines.append("-" * 60)
+    if split_counts is None:
+        lines.append("  Could not compute split coverage from the datetime column.")
+    else:
+        lines.append(
+            f"  train {cfg.data.train_period[0]}..{cfg.data.train_period[1]}: "
+            f"{split_counts['train']} rows"
+        )
+        lines.append(
+            f"  test  {cfg.data.test_period[0]}..{cfg.data.test_period[1]}: "
+            f"{split_counts['test']} rows"
+        )
+        if split_counts["train"] == 0:
+            lines.append("  WARN: configured train split is empty for this file.")
+        if split_counts["test"] == 0:
+            lines.append("  WARN: configured test split is empty for this file.")
+
+    lines.append("")
+    lines.append("Next command")
+    lines.append("-" * 60)
+    lines.append(f"  uv run factorminer -o output mine --data {path}")
+    return "\n".join(lines)
+
+
+def _read_json(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        with open(path) as f:
+            payload = json.load(f)
+        return payload if isinstance(payload, dict) else {"value": payload}
+    except Exception as exc:
+        return {"_error": str(exc)}
+
+
+def _inspect_session_dir(output_dir: Path) -> dict:
+    """Summarize a FactorMiner output directory."""
+    artifacts = {
+        "run_manifest": output_dir / "run_manifest.json",
+        "session": output_dir / "session.json",
+        "session_log": output_dir / "session_log.json",
+        "factor_library": output_dir / "factor_library.json",
+    }
+    payloads = {name: _read_json(path) for name, path in artifacts.items()}
+    warnings_out: list[str] = []
+    for name, path in artifacts.items():
+        payload = payloads[name]
+        if payload is None:
+            warnings_out.append(f"Missing {name}: {path}")
+        elif "_error" in payload:
+            warnings_out.append(f"Could not parse {name}: {payload['_error']}")
+
+    manifest = payloads.get("run_manifest") or {}
+    session_payload = payloads.get("session") or {}
+    session_log = payloads.get("session_log") or {}
+    library = payloads.get("factor_library") or {}
+
+    factors = library.get("factors")
+    if not isinstance(factors, list):
+        factors = []
+    library_count = len(factors)
+    session_final_size = session_payload.get("last_library_size")
+    manifest_size = manifest.get("library_size")
+    if session_final_size is not None and session_final_size != library_count:
+        warnings_out.append(
+            f"session.json last_library_size={session_final_size} but factor_library.json has {library_count}"
+        )
+    if manifest_size is not None and manifest_size != library_count:
+        warnings_out.append(
+            f"run_manifest.json library_size={manifest_size} but factor_library.json has {library_count}"
+        )
+
+    summary = session_log.get("summary", {}) if isinstance(session_log, dict) else {}
+    iterations = session_payload.get("total_iterations") or len(session_log.get("iterations", []))
+    total_candidates = summary.get("total_candidates", 0)
+    total_admitted = summary.get("total_admitted", 0)
+    yield_rate = summary.get("overall_yield_rate")
+    if yield_rate is None and total_candidates:
+        yield_rate = total_admitted / total_candidates
+
+    config_summary = session_payload.get("config") or manifest.get("config_summary", {})
+    dataset_summary = manifest.get("dataset_summary", {})
+
+    return {
+        "output_dir": output_dir,
+        "status": session_payload.get("status", "unknown"),
+        "library_size": library_count,
+        "session_final_library_size": session_final_size,
+        "manifest_library_size": manifest_size,
+        "iterations": iterations,
+        "yield_rate": yield_rate,
+        "backend": config_summary.get("backend"),
+        "data_tensor_shape": dataset_summary.get("data_tensor_shape"),
+        "returns_shape": dataset_summary.get("returns_shape"),
+        "warnings": warnings_out,
+        "artifacts": {
+            name: {"path": path, "present": payloads[name] is not None}
+            for name, path in artifacts.items()
+        },
+    }
+
+
+def _print_session_inspection(payload: dict) -> None:
+    click.echo("FactorMiner Session")
+    click.echo("=" * 60)
+    click.echo(f"Output dir: {payload['output_dir']}")
+    click.echo(f"Status: {payload['status']}")
+    click.echo(f"Library size: {payload['library_size']}")
+    click.echo(f"Iterations: {payload['iterations']}")
+    if payload.get("yield_rate") is not None:
+        click.echo(f"Yield: {payload['yield_rate'] * 100:.1f}%")
+    if payload.get("backend"):
+        click.echo(f"Backend: {payload['backend']}")
+    if payload.get("data_tensor_shape"):
+        click.echo(f"Data tensor: {payload['data_tensor_shape']}")
+    if payload.get("returns_shape"):
+        click.echo(f"Returns: {payload['returns_shape']}")
+
+    if payload["warnings"]:
+        click.echo("\nWarnings:")
+        for warning in payload["warnings"]:
+            click.echo(f"  - {warning}")
+
+    click.echo("\nArtifacts:")
+    for name, info in payload["artifacts"].items():
+        status = "present" if info["present"] else "missing"
+        click.echo(f"  - {name}: {status} ({info['path']})")
+
+
 # ---------------------------------------------------------------------------
 # Global options
 # ---------------------------------------------------------------------------
@@ -543,7 +897,11 @@ def _load_library_from_path(library_path: str):
     default=None,
     help="Path to a YAML config file (merges with defaults).",
 )
-@click.option("--gpu/--cpu", default=True, help="Enable or disable GPU evaluation backend.")
+@click.option(
+    "--gpu/--cpu",
+    default=None,
+    help="Override evaluation backend. Omit to use the configured backend.",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Enable debug-level logging.")
 @click.option(
     "--output-dir", "-o",
@@ -553,12 +911,20 @@ def _load_library_from_path(library_path: str):
 )
 @click.version_option(package_name="factorminer")
 @click.pass_context
-def main(ctx: click.Context, config: str | None, gpu: bool, verbose: bool, output_dir: str) -> None:
+def main(
+    ctx: click.Context,
+    config: str | None,
+    gpu: bool | None,
+    verbose: bool,
+    output_dir: str,
+) -> None:
     """FactorMiner -- LLM-powered quantitative factor mining."""
     _setup_logging(verbose)
 
     overrides: dict = {}
-    if not gpu:
+    if gpu is True:
+        overrides.setdefault("evaluation", {})["backend"] = "gpu"
+    elif gpu is False:
         overrides.setdefault("evaluation", {})["backend"] = "numpy"
 
     try:
@@ -567,30 +933,89 @@ def main(ctx: click.Context, config: str | None, gpu: bool, verbose: bool, outpu
         click.echo(f"Error loading config: {e}")
         raise click.Abort()
 
-    # Stash the raw YAML data for access to top-level fields like data_path
-    try:
-        import yaml
-
-        from factorminer.configs import DEFAULT_CONFIG_PATH
-        raw = {}
-        if DEFAULT_CONFIG_PATH.exists():
-            with open(DEFAULT_CONFIG_PATH) as f:
-                raw = yaml.safe_load(f) or {}
-        if config:
-            with open(config) as f:
-                user_raw = yaml.safe_load(f) or {}
-            raw.update(user_raw)
-        cfg._raw = raw
-    except Exception:
-        cfg._raw = {}
+    # Stash raw YAML for top-level fields like data_path/output_dir.
+    raw_config = _load_raw_config_data(config)
+    setattr(cfg, "_raw", raw_config)
 
     if output_dir == "output":
-        output_dir = cfg._raw.get("output_dir", output_dir)
+        output_dir = raw_config.get("output_dir", output_dir)
 
     ctx.ensure_object(dict)
     ctx.obj["config"] = cfg
     ctx.obj["verbose"] = verbose
     ctx.obj["output_dir"] = Path(output_dir)
+
+
+# ---------------------------------------------------------------------------
+# doctor / init-config / session inspect
+# ---------------------------------------------------------------------------
+
+@main.command("doctor")
+@click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON.")
+@click.option(
+    "--config",
+    "doctor_config",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="Path to a YAML config file.",
+)
+@click.pass_context
+def doctor(ctx: click.Context, json_output: bool, doctor_config: str | None) -> None:
+    """Check local install, config, optional dependencies, and output paths."""
+    cfg = ctx.obj["config"]
+    raw = getattr(cfg, "_raw", {})
+    if doctor_config:
+        cfg = load_config(config_path=doctor_config)
+        raw = _load_raw_config_data(doctor_config)
+    output_dir = ctx.obj["output_dir"]
+    checks = _doctor_checks(cfg, raw, output_dir)
+    payload = {
+        "ok": not any(item["status"] == "error" for item in checks),
+        "checks": checks,
+    }
+    if json_output:
+        click.echo(json.dumps(_json_safe(payload), indent=2))
+    else:
+        _print_doctor_report(checks)
+    if not payload["ok"]:
+        ctx.exit(1)
+
+
+@main.command("init-config")
+@click.argument(
+    "path",
+    required=False,
+    type=click.Path(dir_okay=False),
+    default="factorminer.local.yaml",
+)
+@click.option("--force", is_flag=True, help="Overwrite an existing config file.")
+def init_config(path: str, force: bool) -> None:
+    """Write a CPU-safe starter YAML config."""
+    output_path = Path(path)
+    if output_path.exists() and not force:
+        raise click.ClickException(f"{output_path} already exists. Pass --force to overwrite.")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        yaml.safe_dump(_starter_config(), f, sort_keys=False)
+    click.echo(f"Wrote starter config to {output_path}")
+
+
+@main.group("session")
+def session_group() -> None:
+    """Inspect FactorMiner session artifacts."""
+
+
+@session_group.command("inspect")
+@click.argument("output_dir", type=click.Path(exists=True, file_okay=False))
+@click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON.")
+def session_inspect(output_dir: str, json_output: bool) -> None:
+    """Summarize run artifacts in an output directory."""
+    payload = _inspect_session_dir(Path(output_dir))
+    if json_output:
+        click.echo(json.dumps(_json_safe(payload), indent=2))
+    else:
+        _print_session_inspection(payload)
 
 
 # ---------------------------------------------------------------------------
@@ -637,6 +1062,7 @@ def validate_data(
         click.echo(json.dumps(report.to_dict(strict=strict), indent=2, sort_keys=True))
     else:
         click.echo(render_validation_report(report, strict=strict))
+        click.echo(_render_validation_next_steps(report, ctx.obj["config"], path, hdf_key))
 
     code = report.exit_code(strict=strict)
     if code != 0:
@@ -700,6 +1126,96 @@ def report(
         click.echo(rendered)
     else:
         click.echo(f"Report written to: {report_output}")
+
+
+# ---------------------------------------------------------------------------
+# quickstart
+# ---------------------------------------------------------------------------
+
+@main.command("quickstart")
+@click.option(
+    "--output-dir",
+    "quickstart_output_dir",
+    type=click.Path(file_okay=False),
+    default="/tmp/factorminer-quickstart",
+    show_default=True,
+    help="Directory for quickstart artifacts.",
+)
+@click.option("--iterations", "-n", type=int, default=2, show_default=True)
+@click.option("--batch-size", "-b", type=int, default=8, show_default=True)
+@click.option("--target", "-t", type=int, default=2, show_default=True)
+@click.pass_context
+def quickstart(
+    ctx: click.Context,
+    quickstart_output_dir: str,
+    iterations: int,
+    batch_size: int,
+    target: int,
+) -> None:
+    """Run a mock end-to-end mining session and generate a static report."""
+    output_dir = Path(quickstart_output_dir)
+    starter = _starter_config()
+    starter["output_dir"] = str(output_dir)
+    starter["mining"]["target_library_size"] = target
+    starter["mining"]["batch_size"] = batch_size
+    starter["mining"]["max_iterations"] = iterations
+    starter["llm"]["batch_candidates"] = batch_size
+
+    cfg = load_config(overrides=starter)
+    setattr(cfg, "_raw", starter)
+
+    original_cfg = ctx.obj["config"]
+    original_output_dir = ctx.obj["output_dir"]
+    ctx.obj["config"] = cfg
+    ctx.obj["output_dir"] = output_dir
+
+    click.echo("Running doctor with mock quickstart settings...")
+    checks = _doctor_checks(cfg, starter, output_dir)
+    _print_doctor_report(checks)
+    if any(item["status"] == "error" for item in checks):
+        ctx.obj["config"] = original_cfg
+        ctx.obj["output_dir"] = original_output_dir
+        raise click.Abort()
+
+    try:
+        ctx.invoke(
+            mine,
+            iterations=iterations,
+            batch_size=batch_size,
+            target=target,
+            resume=None,
+            mock=True,
+            data_path=None,
+        )
+    finally:
+        ctx.obj["config"] = original_cfg
+        ctx.obj["output_dir"] = original_output_dir
+
+    library_path = output_dir / "factor_library.json"
+    session_log_path = output_dir / "session_log.json"
+    report_path = output_dir / "quickstart_report.html"
+    if library_path.exists():
+        from factorminer.evaluation.report_viewer import generate_report
+
+        generate_report(
+            library_path,
+            session_log_source=session_log_path if session_log_path.exists() else None,
+            format="html",
+            output_path=report_path,
+        )
+        click.echo(f"Static report written to: {report_path}")
+    else:
+        click.echo("Quickstart completed without a factor_library.json artifact.")
+
+    click.echo("")
+    click.echo("Next real-data commands")
+    click.echo("-" * 60)
+    click.echo("uv run factorminer validate-data path/to/market_data.csv")
+    click.echo("uv run factorminer init-config factorminer.local.yaml")
+    click.echo(
+        "uv run factorminer -c factorminer.local.yaml -o output-real "
+        "mine --data path/to/market_data.csv"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -880,9 +1396,11 @@ def evaluate(
 
     if top_k is not None and top_k < len([a for a in artifacts if a.succeeded]):
         if period == "both":
-            click.echo(f"  Evaluating top {top_k} factors by train |IC| for train/test comparison")
+            click.echo(
+                f"  Evaluating top {top_k} factors by train paper IC for train/test comparison"
+            )
         else:
-            click.echo(f"  Evaluating top {top_k} factors by {selection_split} |IC|")
+            click.echo(f"  Evaluating top {top_k} factors by {selection_split} paper IC")
 
     for split_name in split_names:
         click.echo("-" * 60)
@@ -893,11 +1411,20 @@ def evaluate(
     if period == "both" and selected:
         click.echo("-" * 60)
         click.echo("Decay summary (train -> test)")
-        click.echo(f"{'ID':>4s}  {'Name':<35s}  {'Train |IC|':>10s}  {'Test |IC|':>9s}  {'Delta':>8s}")
+        click.echo(
+            f"{'ID':>4s}  {'Name':<35s}  {'Train Paper IC':>14s}  "
+            f"{'Test Paper IC':>13s}  {'Delta':>8s}"
+        )
         click.echo("-" * 80)
         for artifact in selected:
-            train_ic = artifact.split_stats["train"]["ic_abs_mean"]
-            test_ic = artifact.split_stats["test"]["ic_abs_mean"]
+            train_ic = artifact.split_stats["train"].get(
+                "ic_paper_mean",
+                artifact.split_stats["train"]["ic_abs_mean"],
+            )
+            test_ic = artifact.split_stats["test"].get(
+                "ic_paper_mean",
+                artifact.split_stats["test"]["ic_abs_mean"],
+            )
             click.echo(
                 f"{artifact.factor_id:4d}  {artifact.name:<35s}  "
                 f"{train_ic:10.4f}  {test_ic:9.4f}  {test_ic - train_ic:8.4f}"
@@ -991,7 +1518,9 @@ def combine(
         raise click.Abort()
 
     if top_k is not None and top_k < len([a for a in artifacts if a.succeeded]):
-        click.echo(f"  Pre-selected top {len(selected_artifacts)} factors by {fit_split} |IC|")
+        click.echo(
+            f"  Pre-selected top {len(selected_artifacts)} factors by {fit_split} paper IC"
+        )
 
     click.echo(f"  Fit split:  {fit_split}")
     click.echo(f"  Eval split: {eval_split}")
@@ -1076,6 +1605,7 @@ def combine(
 
             stats = backtester.quintile_backtest(composite, eval_returns_tn)
             click.echo(f"    IC Mean:      {stats['ic_mean']:.4f}")
+            click.echo(f"    Paper IC:     {abs(stats['ic_mean']):.4f}")
             click.echo(f"    ICIR:         {stats['icir']:.4f}")
             click.echo(f"    Long-Short:   {stats['ls_return']:.4f}")
             click.echo(f"    Monotonicity: {stats['monotonicity']:.2f}")
@@ -1124,7 +1654,12 @@ def combine(
 @click.option("--mock", is_flag=True, help="Use mock data for visualization.")
 @click.option("--period", type=click.Choice(["train", "test", "both"]), default="test", help="Evaluation split to visualize.")
 @click.option("--factor-id", "factor_ids", type=int, multiple=True, help="Specific factor ID(s) to visualize.")
-@click.option("--top-k", type=int, default=None, help="Top-K factors by split |IC| for set-level plots.")
+@click.option(
+    "--top-k",
+    type=int,
+    default=None,
+    help="Top-K factors by split paper IC for set-level plots.",
+)
 @click.option("--tearsheet", is_flag=True, help="Generate a full factor tear sheet.")
 @click.option("--correlation", is_flag=True, help="Plot factor correlation heatmap.")
 @click.option("--ic-timeseries", is_flag=True, help="Plot IC time series.")

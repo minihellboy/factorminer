@@ -31,6 +31,7 @@ from factorminer.benchmark.catalogs import (
 from factorminer.core.factor_library import Factor, FactorLibrary
 from factorminer.core.library_io import load_library
 from factorminer.core.session import MiningSession
+from factorminer.evaluation.metrics import METRIC_VERSION
 from factorminer.evaluation.runtime import (
     EvaluationDataset,
     FactorEvaluationArtifact,
@@ -60,6 +61,7 @@ class BenchmarkManifest:
     benchmark_name: str
     mode: str
     seed: int
+    metric_version: str
     baseline: str
     freeze_universe: str
     report_universes: list[str]
@@ -232,9 +234,23 @@ def _catalog_provenance(baseline: str, candidate_count: int, seed: int) -> dict[
     return {
         "kind": "catalog",
         "source": baseline,
+        "baseline_kind": _baseline_kind(baseline),
         "candidate_count": candidate_count,
         "seed": seed,
+        "metric_version": METRIC_VERSION,
     }
+
+
+def _baseline_kind(baseline: str) -> str:
+    if baseline in {"gplearn", "alphaforge_style", "alphaagent_style"}:
+        return "catalog_proxy"
+    if baseline in {"alpha101_classic", "alpha101_adapted", "random_exploration"}:
+        return "catalog_baseline"
+    if baseline == "factor_miner":
+        return "builtin_paper_catalog"
+    if baseline == "factor_miner_no_memory":
+        return "synthetic_no_memory_proxy"
+    return "unknown"
 
 
 def _saved_library_provenance(
@@ -266,6 +282,8 @@ def _saved_library_provenance(
     provenance: dict[str, Any] = {
         "kind": "saved_library",
         "source": baseline,
+        "baseline_kind": "saved_library",
+        "metric_version": METRIC_VERSION,
         "requested_path": str(Path(requested_path)),
         "resolved_base_path": str(resolved_base),
         "source_files": source_files,
@@ -286,6 +304,7 @@ def _saved_library_provenance(
             provenance["library_summary"] = {
                 "path": str(library_json),
                 "factor_count": library.size,
+                "metric_version": getattr(library, "metric_version", "legacy_abs_ic"),
                 "diagnostics": library.get_diagnostics(),
             }
 
@@ -620,7 +639,7 @@ def _capacity_pressure_summary(
     cap_cfg = RuntimeCapacityConfig(capacity_levels=list(capacity_levels))
     estimate = CapacityEstimator(
         np.asarray(returns, dtype=np.float64).T,
-        np.asarray(volume, dtype=np.float64).T,
+        np.asarray(volume, dtype=np.float64),
         cap_cfg,
     ).estimate(
         factor_name,
@@ -853,6 +872,7 @@ def _runtime_loop_provenance(
         "kind": "runtime_loop",
         "source": baseline,
         "loop_type": loop_type,
+        "baseline_kind": "runtime_loop",
         "requested_runtime_manifest": _json_safe(runtime_manifest),
         "runtime_output_dir": str(runtime_output_dir),
         "source_files": source_files,
@@ -973,9 +993,16 @@ def load_benchmark_dataset(
         if mock:
             from factorminer.data.mock_data import MockConfig, generate_mock_data
 
+            mock_shape = getattr(cfg.benchmark, "mock_panel_shape", None)
+            if mock_shape is None:
+                num_periods = 12_200
+                num_assets = 64 if universe.lower() == "binance" else 80
+            else:
+                num_periods = int(mock_shape[0])
+                num_assets = int(mock_shape[1])
             mock_cfg = MockConfig(
-                num_assets=64 if universe.lower() == "binance" else 80,
-                num_periods=12_200,
+                num_assets=num_assets,
+                num_periods=num_periods,
                 frequency="10min",
                 start_date="2024-01-02 09:30:00",
                 universe=universe,
@@ -1082,14 +1109,14 @@ def build_benchmark_library(
 
     ordered = [artifact for artifact in artifacts if artifact.succeeded]
     ordered.sort(
-        key=lambda artifact: artifact.split_stats[split_name]["ic_abs_mean"],
+        key=lambda artifact: artifact.split_stats[split_name]["ic_paper_mean"],
         reverse=True,
     )
     stats["succeeded"] = len(ordered)
 
     for artifact in ordered:
         split_stats = artifact.split_stats[split_name]
-        candidate_ic = float(split_stats["ic_abs_mean"])
+        candidate_ic = float(split_stats["ic_paper_mean"])
         candidate_signals = artifact.split_signals[split_name]
         if candidate_ic < ic_threshold:
             stats["threshold_rejections"] += 1
@@ -1105,8 +1132,11 @@ def build_benchmark_library(
             name=artifact.name,
             formula=artifact.formula,
             category=artifact.category,
-            ic_mean=candidate_ic,
-            icir=abs(float(split_stats["icir"])),
+            ic_mean=float(split_stats["ic_mean"]),
+            ic_paper_mean=candidate_ic,
+            ic_abs_mean=float(split_stats["ic_abs_mean"]),
+            icir=float(split_stats["icir"]),
+            ic_paper_icir=float(split_stats["ic_paper_icir"]),
             ic_win_rate=float(split_stats["ic_win_rate"]),
             max_correlation=max_corr,
             batch_number=0,
@@ -1150,11 +1180,11 @@ def select_frozen_top_k(
         artifact
         for artifact in succeeded
         if artifact.formula in admitted_formulas
-        and artifact.split_stats[split_name]["ic_abs_mean"] >= min_ic
-        and abs(artifact.split_stats[split_name]["icir"]) >= min_icir
+        and artifact.split_stats[split_name]["ic_paper_mean"] >= min_ic
+        and artifact.split_stats[split_name]["ic_paper_icir"] >= min_icir
     ]
     admitted.sort(
-        key=lambda artifact: artifact.split_stats[split_name]["ic_abs_mean"],
+        key=lambda artifact: artifact.split_stats[split_name]["ic_paper_mean"],
         reverse=True,
     )
     selected: list[FactorEvaluationArtifact] = admitted[:top_k]
@@ -1165,7 +1195,7 @@ def select_frozen_top_k(
             artifact for artifact in succeeded if artifact.formula not in selected_formulas
         ]
         remainder.sort(
-            key=lambda artifact: artifact.split_stats[split_name]["ic_abs_mean"],
+            key=lambda artifact: artifact.split_stats[split_name]["ic_paper_mean"],
             reverse=True,
         )
         selected.extend(remainder[: top_k - len(selected)])
@@ -1185,8 +1215,15 @@ def _abs_icir_from_series(ic_series: np.ndarray) -> float:
 
 def _normalize_backtest_stats(stats: dict) -> dict[str, float]:
     ic_series = np.asarray(stats.get("ic_series", []), dtype=np.float64)
+    valid_ic = ic_series[np.isfinite(ic_series)]
+    signed_ic = float(stats.get("ic_mean", 0.0))
+    paper_ic = abs(signed_ic)
     return {
-        "ic": abs(float(stats.get("ic_mean", 0.0))),
+        "metric_version": METRIC_VERSION,
+        "ic": paper_ic,
+        "ic_mean": signed_ic,
+        "ic_paper_mean": paper_ic,
+        "ic_abs_mean": float(np.mean(np.abs(valid_ic))) if valid_ic.size else 0.0,
         "icir": _abs_icir_from_series(ic_series),
         "ic_win_rate": float(stats.get("ic_win_rate", 0.0)),
         "long_short": float(stats.get("ls_return", 0.0)),
@@ -1267,11 +1304,12 @@ def evaluate_frozen_set(
 
     result["library"] = {
         "ic": float(
-            np.mean([artifact.split_stats[split_name]["ic_abs_mean"] for artifact in succeeded])
+            np.mean([artifact.split_stats[split_name]["ic_paper_mean"] for artifact in succeeded])
         ),
         "icir": float(
-            np.mean([abs(artifact.split_stats[split_name]["icir"]) for artifact in succeeded])
+            np.mean([artifact.split_stats[split_name]["ic_paper_icir"] for artifact in succeeded])
         ),
+        "metric_version": METRIC_VERSION,
         "avg_abs_rho": _avg_abs_rho(succeeded, split_name),
     }
 
@@ -1550,6 +1588,7 @@ def run_table1_benchmark(
         baseline_result = {
             "baseline": baseline,
             "mode": cfg.benchmark.mode,
+            "metric_version": METRIC_VERSION,
             "freeze_universe": cfg.benchmark.freeze_universe,
             "candidate_count": candidate_count,
             "runtime_contract": runtime_contract.to_dict(),
@@ -1565,8 +1604,10 @@ def run_table1_benchmark(
                     "name": artifact.name,
                     "formula": artifact.formula,
                     "category": artifact.category,
-                    "train_ic": artifact.split_stats["train"]["ic_abs_mean"],
-                    "train_icir": abs(artifact.split_stats["train"]["icir"]),
+                    "train_ic": artifact.split_stats["train"]["ic_paper_mean"],
+                    "train_ic_mean": artifact.split_stats["train"]["ic_mean"],
+                    "train_ic_abs_mean": artifact.split_stats["train"]["ic_abs_mean"],
+                    "train_icir": artifact.split_stats["train"]["ic_paper_icir"],
                 }
                 for artifact in frozen
             ],
@@ -1601,6 +1642,7 @@ def run_table1_benchmark(
             benchmark_name="table1",
             mode=cfg.benchmark.mode,
             seed=cfg.benchmark.seed,
+            metric_version=METRIC_VERSION,
             baseline=baseline,
             freeze_universe=cfg.benchmark.freeze_universe,
             report_universes=list(cfg.benchmark.report_universes),

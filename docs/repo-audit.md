@@ -6,10 +6,10 @@ This document is a technical audit of the current repository state after the arc
 
 Audit-time snapshot:
 
-- `119` Python files under `factorminer/`
-- `46,736` lines of Python
-- `27` test modules
-- `441` passing tests
+- `132` Python files under `factorminer/`
+- `51,273` lines of Python
+- `33` test modules
+- `477` collected tests
 - `70` registered operators
 - `110` built-in paper factors
 
@@ -18,14 +18,15 @@ Package inventory:
 | Package | Python files | Role |
 | --- | ---: | --- |
 | `agent` | 8 | providers, prompting, debate |
-| `architecture` | 13 | canonical contracts, policies, stages, services |
+| `architecture` | 14 | canonical contracts, policies, stages, services |
 | `benchmark` | 5 | runtime benchmark suite and legacy benchmark helpers |
-| `core` | 12 | loops, factor library, parser, expression tree, I/O |
-| `data` | 5 | loading, preprocessing, tensorization, mock generation |
-| `evaluation` | 16 | metrics, recomputation, validation, portfolio analysis |
+| `configs` | 1 | packaged YAML profile resources |
+| `core` | 13 | loops, factor library, parser, expression tree, I/O |
+| `data` | 6 | loading, preprocessing, tensorization, mock generation |
+| `evaluation` | 17 | metrics, recomputation, validation, portfolio analysis |
 | `memory` | 10 | memory store, retrieval, KG, embeddings |
-| `operators` | 14 | operator implementations and backends |
-| `tests` | 27 | regression coverage |
+| `operators` | 15 | operator implementations, backends, and sandboxing |
+| `tests` | 33 | regression coverage |
 | `utils` | 6 | config, reporting, plotting |
 
 ## What Is Structurally Strong
@@ -65,6 +66,8 @@ This is the correct direction. The old benchmark layer still exists, but it is n
 ### The test surface is strong
 
 The repo has broad regression coverage. This matters because the codebase is no longer a small research prototype. It now behaves like a maintainable framework with multiple contracts and execution lanes.
+
+The CI surface now checks Ruff, tests, package artifact contents, import boundaries, and a CPU-safe CLI smoke that fails when `factor_library.json` is empty.
 
 ## Canonical Execution Paths
 
@@ -183,6 +186,8 @@ Current state:
 - KG retrieval exists
 - regime-aware retrieval exists
 - family-aware retrieval exists
+- `SuccessPattern.confidence` is backward-compatible for older memory JSON
+- online regime forgetting now applies deterministic confidence decay and uses `RegimeState.label()` semantics
 
 Most valuable next steps:
 
@@ -204,13 +209,35 @@ This is both a strength and a future refactor target. The benchmark/runtime laye
 
 ### 6. `operators/`
 
-Status: materially better after the backend work.
+Status: materially better after the backend and sandbox work.
 
 The repo now has a real `c` backend contract via Bottleneck-backed compiled CPU operations. That closes one of the bigger credibility gaps between paper claims and implementation reality.
 
 Remaining concern:
 
 - backend availability and numerical equivalence should continue to be treated as test-critical surfaces
+- custom operator code paths now share one NumPy-only sandbox, but this should continue to be treated as a security-sensitive surface
+
+### 7. Packaging and first-run UX
+
+Status: materially improved.
+
+Fixed in this stabilization pass:
+
+- packaged distributions include `factorminer/configs/default.yaml`
+- packaged distributions exclude `factorminer.tests*`
+- default backend is CPU-safe `numpy`
+- `--gpu/--cpu` are explicit overrides instead of forcing GPU by default
+- `factorminer doctor` checks install/config/dependency/key/path readiness
+- `factorminer init-config` writes a mock-friendly starter YAML
+- `factorminer quickstart` runs doctor, mines a tiny mock library, and writes a static report
+- `factorminer session inspect` summarizes run artifacts and warns on library-size mismatches
+- paper-mode quality gates now use `ic_paper_mean = abs(mean(IC_t))`; legacy
+  `ic_abs_mean = mean(abs(IC_t))` remains diagnostic only
+
+Deferred:
+
+- full-repo mypy remains non-blocking; scoped type-health checks are documented instead
 
 ## Documentation Findings
 
@@ -227,6 +254,9 @@ This audit pass updates:
 - `README.md`
 - `docs/architecture.md`
 - `docs/repo-audit.md`
+- `docs/metrics.md`
+- `docs/faq.md`
+- `docs/reproducibility.md`
 
 ## Repository Health Risks
 
@@ -235,6 +265,7 @@ This audit pass updates:
 - `HelixLoop` still concentrates many optional concerns in one file
 - legacy benchmark/reporting surfaces still coexist with the canonical path
 - some config projection logic still exists in multiple places
+- full-repo mypy debt is visible but not yet suitable as a blocking CI gate
 
 ### Medium-risk product issues
 
@@ -250,17 +281,22 @@ This audit pass updates:
 
 If continuing from the current state, the best next order is:
 
-1. Continue shrinking `core/helix_loop.py` into policies and services.
-2. Resolve the legacy benchmark split by moving more reporting concerns to the runtime suite.
-3. Add learned or cluster-based factor-family discovery.
-4. Make policy-level experiment manifests richer and easier to compare across runs.
-5. Address the expression-tree warning surface explicitly.
+1. Land the trust/onboarding release and GitHub issue replies.
+2. Continue shrinking `core/helix_loop.py` into policies and services.
+3. Resolve the legacy benchmark split by moving more reporting concerns to the runtime suite.
+4. Add learned or cluster-based factor-family discovery.
+5. Make policy-level experiment manifests richer and easier to compare across runs.
+6. Address the expression-tree warning surface explicitly.
+7. Expand scoped mypy cleanup before considering a blocking type gate.
 
 ## Recommended GitHub Docs Surface
 
 The best public-facing docs structure for the repo now is:
 
 - `README.md`: project entry point, architecture summary, quick start, benchmark surface
+- `docs/metrics.md`: IC semantics and compatibility details
+- `docs/faq.md`: answers to setup, data, model, and API-key confusion
+- `docs/reproducibility.md`: mock versus private-data reproduction paths
 - `docs/architecture.md`: technical architecture and runtime contract
 - `docs/repo-audit.md`: implementation inventory, strengths, debt, roadmap
 
