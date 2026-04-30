@@ -1,0 +1,57 @@
+# Paper-style Binance reproduction config.
+#
+# Binance does not expose a native 10min kline interval on the public spot API.
+# Build this input from 1m or 5m data before running:
+#
+#   uv run factorminer resample-data raw_binance_5m.csv data/binance_crypto_10m.csv --rule 10min
+#
+# The bundled data/binance_crypto_5m.csv is a small public sample for CLI/data
+# validation only. It is not the full paper benchmark dataset.
+
+output_dir: "./output/paper_repro_binance"
+data_path: "./data/binance_crypto_10m.csv"
+
+evaluation:
+  backend: "numpy"
+  signal_failure_policy: "reject"
+
+benchmark:
+  mode: "paper"
+  freeze_universe: "Binance"
+  report_universes:
+    - "Binance"
+  baselines:
+    - "factor_miner"
+
+data:
+  market: "crypto"
+  universe: "Binance"
+  frequency: "10min"
+  train_period: ["2024-01-01", "2024-12-31"]
+  test_period: ["2025-01-01", "2025-12-31"]
+  targets:
+    - name: "paper"
+      entry_delay_bars: 1
+      holding_bars: 1
+      price_pair: "open_to_close"
+      return_transform: "simple"
+  default_target: "paper"
+
+research:
+  enabled: false
+
+phase2:
+  causal:
+    enabled: false
+  regime:
+    enabled: false
+  capacity:
+    enabled: false
+  significance:
+    enabled: false
+  debate:
+    enabled: false
+  auto_inventor:
+    enabled: false
+  helix:
+    enabled: false

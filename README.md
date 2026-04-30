@@ -40,6 +40,7 @@ Primary execution surfaces:
 - [Metric Semantics](docs/metrics.md)
 - [FAQ](docs/faq.md)
 - [Reproducibility Guide](docs/reproducibility.md)
+- [Binance Reproduction Notes](docs/binance-reproduction.md)
 - [Repo Audit](docs/repo-audit.md)
 - [Contributing](CONTRIBUTING.md)
 - [Roadmap](ROADMAP.md)
@@ -188,6 +189,8 @@ Primary commands:
 - `doctor`
 - `init-config`
 - `quickstart`
+- `validate-data`
+- `resample-data`
 - `mine`
 - `helix`
 - `evaluate`

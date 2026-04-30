@@ -222,6 +222,71 @@ def load_multiple(
     return df
 
 
+def resample_market_data(
+    df: pd.DataFrame,
+    rule: str = "10min",
+    *,
+    closed: str = "left",
+    label: str = "left",
+    origin: str = "start_day",
+) -> pd.DataFrame:
+    """Resample canonical OHLCV market data per asset.
+
+    Aggregation follows standard candle semantics:
+    open = first, high = max, low = min, close = last, volume/amount = sum.
+    ``vwap`` and ``returns`` are recomputed after aggregation.
+    """
+    if df.empty:
+        return df.copy()
+
+    work = _validate_columns(df.copy(), Path("<dataframe>"))
+    work = _coerce_types(work)
+
+    agg_spec: dict[str, str] = {
+        "open": "first",
+        "high": "max",
+        "low": "min",
+        "close": "last",
+        "volume": "sum",
+        "amount": "sum",
+    }
+    if "universe" in work.columns:
+        agg_spec["universe"] = "first"
+
+    frames: list[pd.DataFrame] = []
+    for asset_id, group in work.groupby("asset_id", sort=True):
+        group = group.sort_values("datetime").set_index("datetime")
+        resampled = group.resample(
+            rule,
+            closed=closed,
+            label=label,
+            origin=origin,
+        ).agg(agg_spec)
+        resampled = resampled.dropna(subset=["open", "high", "low", "close"], how="any")
+        if resampled.empty:
+            continue
+        resampled["asset_id"] = asset_id
+        frames.append(resampled.reset_index())
+
+    if not frames:
+        columns = ["datetime", "asset_id", *OHLCV_COLUMNS, "vwap", "returns"]
+        return pd.DataFrame(columns=columns)
+
+    out = pd.concat(frames, ignore_index=True)
+    out = out.sort_values(["datetime", "asset_id"]).reset_index(drop=True)
+    out["vwap"] = np.divide(
+        out["amount"],
+        out["volume"],
+        out=np.asarray(out["close"], dtype=np.float64).copy(),
+        where=np.asarray(out["volume"], dtype=np.float64) > 1e-12,
+    )
+    out["returns"] = out.groupby("asset_id", sort=False)["close"].pct_change()
+
+    ordered = ["datetime", "asset_id", *OHLCV_COLUMNS, "vwap", "returns"]
+    extras = [col for col in out.columns if col not in ordered]
+    return out[ordered + extras]
+
+
 def to_numpy(
     df: pd.DataFrame,
     columns: Sequence[str] | None = None,

@@ -17,6 +17,14 @@ Validate the bundled sample:
 uv run factorminer validate-data examples/quickstart/sample_market_data.csv
 ```
 
+Inspect the bundled Binance-shaped sample and convert it from 5-minute bars to
+10-minute bars:
+
+```bash
+uv run factorminer validate-data data/binance_crypto_5m.csv
+uv run factorminer resample-data data/binance_crypto_5m.csv /tmp/binance_crypto_10m.csv --rule 10min
+```
+
 Mine against mock data:
 
 ```bash
@@ -35,7 +43,12 @@ uv run factorminer report /tmp/factorminer-mock/factor_library.json \
 ## Requires User-Provided Market Data
 
 Paper-style A-share and Binance evaluations require OHLCV plus amount data over
-the configured train and test windows. Start by validating the file:
+the configured train and test windows. The bundled Binance file is only a small
+5-minute sample, not the full paper benchmark data. See
+[Binance Reproduction Notes](binance-reproduction.md) for the 10-minute
+resampling workflow and the paper-style Binance config.
+
+Start by validating the file:
 
 ```bash
 uv run factorminer validate-data path/to/market_data.csv

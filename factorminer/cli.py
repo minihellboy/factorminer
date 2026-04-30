@@ -1070,6 +1070,52 @@ def validate_data(
 
 
 # ---------------------------------------------------------------------------
+# resample-data
+# ---------------------------------------------------------------------------
+
+@main.command("resample-data")
+@click.argument("input_path", type=click.Path(exists=True, dir_okay=False))
+@click.argument("output_path", type=click.Path(dir_okay=False))
+@click.option("--rule", default="10min", show_default=True, help="Pandas resample rule.")
+@click.option(
+    "--hdf-key",
+    default="data",
+    show_default=True,
+    help="HDF5 key to read/write for .h5/.hdf5 files.",
+)
+def resample_data(input_path: str, output_path: str, rule: str, hdf_key: str) -> None:
+    """Resample canonical OHLCV market data, e.g. Binance 5m bars to 10min bars."""
+    from factorminer.data.loader import load_market_data, resample_market_data
+
+    source = load_market_data(input_path, hdf_key=hdf_key)
+    resampled = resample_market_data(source, rule=rule)
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    suffix = output.suffix.lower()
+    if suffix == ".csv":
+        resampled.to_csv(output, index=False)
+    elif suffix in {".parquet", ".pq"}:
+        resampled.to_parquet(output, index=False)
+    elif suffix in {".h5", ".hdf5"}:
+        resampled.to_hdf(output, key=hdf_key, index=False)
+    else:
+        raise click.ClickException(
+            "Could not infer output format. Use .csv, .parquet, .pq, .h5, or .hdf5."
+        )
+
+    click.echo("FactorMiner -- Data Resample")
+    click.echo("=" * 60)
+    click.echo(f"Input:  {input_path}")
+    click.echo(f"Output: {output}")
+    click.echo(f"Rule:   {rule}")
+    click.echo(
+        f"Rows:   {len(source)} -> {len(resampled)} | "
+        f"Assets: {source['asset_id'].nunique()} -> {resampled['asset_id'].nunique()}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # report
 # ---------------------------------------------------------------------------
 
