@@ -181,7 +181,10 @@ def ts_argmax_np(x: np.ndarray, window: int = 10) -> np.ndarray:
     w = _rolling_np(x, window)
     if w is None:
         return np.full_like(x, np.nan)
-    result = np.nanargmax(w, axis=2).astype(np.float64)
+    all_nan = np.all(np.isnan(w), axis=2)
+    filled = np.where(np.isnan(w), -np.inf, w)
+    result = np.argmax(filled, axis=2).astype(np.float64)
+    result[all_nan] = np.nan
     return _pad_front(result, window, T)
 
 
@@ -191,7 +194,10 @@ def ts_argmin_np(x: np.ndarray, window: int = 10) -> np.ndarray:
     w = _rolling_np(x, window)
     if w is None:
         return np.full_like(x, np.nan)
-    result = np.nanargmin(w, axis=2).astype(np.float64)
+    all_nan = np.all(np.isnan(w), axis=2)
+    filled = np.where(np.isnan(w), np.inf, w)
+    result = np.argmin(filled, axis=2).astype(np.float64)
+    result[all_nan] = np.nan
     return _pad_front(result, window, T)
 
 
@@ -367,8 +373,10 @@ def ts_argmax_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     w = _unfold_torch(x, window)
+    all_nan = torch.isnan(w).all(dim=2)
     filled = w.nan_to_num(float("-inf"))
     result = filled.argmax(dim=2).float()
+    result[all_nan] = float("nan")
     return _pad_front_torch(result, window, T)
 
 
@@ -376,8 +384,10 @@ def ts_argmin_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
     w = _unfold_torch(x, window)
+    all_nan = torch.isnan(w).all(dim=2)
     filled = w.nan_to_num(float("inf"))
     result = filled.argmin(dim=2).float()
+    result[all_nan] = float("nan")
     return _pad_front_torch(result, window, T)
 
 
@@ -437,8 +447,10 @@ STATISTICAL_OPS = {
     "Skew": (skew_np, skew_torch),
     "Kurt": (kurt_np, kurt_torch),
     "Median": (median_np, median_torch),
+    "Med": (median_np, median_torch),
     "Sum": (sum_np, sum_torch),
     "Prod": (prod_np, prod_torch),
+    "Product": (prod_np, prod_torch),
     "TsMax": (ts_max_np, ts_max_torch),
     "TsMin": (ts_min_np, ts_min_torch),
     "TsArgMax": (ts_argmax_np, ts_argmax_torch),

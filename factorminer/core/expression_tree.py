@@ -290,11 +290,19 @@ def _ts_min(sx: np.ndarray) -> np.ndarray:
 
 
 def _ts_argmax(sx: np.ndarray) -> np.ndarray:
-    return np.nanargmax(sx, axis=1).astype(np.float64)
+    out = np.full(sx.shape[0], np.nan, dtype=np.float64)
+    valid = ~np.all(np.isnan(sx), axis=1)
+    if valid.any():
+        out[valid] = np.nanargmax(sx[valid], axis=1).astype(np.float64)
+    return out
 
 
 def _ts_argmin(sx: np.ndarray) -> np.ndarray:
-    return np.nanargmin(sx, axis=1).astype(np.float64)
+    out = np.full(sx.shape[0], np.nan, dtype=np.float64)
+    valid = ~np.all(np.isnan(sx), axis=1)
+    if valid.any():
+        out[valid] = np.nanargmin(sx[valid], axis=1).astype(np.float64)
+    return out
 
 
 def _ts_median(sx: np.ndarray) -> np.ndarray:
@@ -473,6 +481,25 @@ def _ts_linreg_resid(x: np.ndarray, window: int) -> np.ndarray:
     return out
 
 
+def _ts_linreg_rsquare(x: np.ndarray, window: int) -> np.ndarray:
+    t_vals = np.arange(window, dtype=np.float64)
+    t_mean = t_vals.mean()
+    t_var = np.sum((t_vals - t_mean) ** 2)
+    M, T = x.shape
+    out = np.full_like(x, np.nan, dtype=np.float64)
+    for t in range(window - 1, T):
+        sx = x[:, t - window + 1 : t + 1]
+        x_mean = np.nanmean(sx, axis=1, keepdims=True)
+        cov = np.nansum((sx - x_mean) * (t_vals[None, :] - t_mean), axis=1)
+        slope = cov / max(t_var, _EPS)
+        intercept = x_mean.squeeze(1) - slope * t_mean
+        fitted = slope[:, None] * t_vals[None, :] + intercept[:, None]
+        ss_res = np.nansum((sx - fitted) ** 2, axis=1)
+        ss_tot = np.nansum((sx - x_mean) ** 2, axis=1)
+        out[:, t] = np.where(ss_tot > _EPS, 1.0 - ss_res / ss_tot, np.nan)
+    return out
+
+
 # Main dispatch table -------------------------------------------------------
 
 def _dispatch_operator(
@@ -508,9 +535,20 @@ def _dispatch_operator(
     if name == "Pow":
         base, exp = children
         return np.sign(base) * np.abs(base) ** exp
-    if name == "Max":
+    if name == "SignedPower":
+        exponent = params.get("exponent", 2.0)
+        return np.sign(children[0]) * np.abs(children[0]) ** exponent
+    if name == "Power":
+        exponent = params.get("exponent", 2.0)
+        with np.errstate(invalid="ignore", divide="ignore", over="ignore"):
+            return np.power(children[0], exponent)
+    if name == "Exp":
+        return np.exp(np.clip(children[0], -50.0, 50.0))
+    if name == "Tanh":
+        return np.tanh(children[0])
+    if name in {"Max", "Max2"}:
         return np.maximum(children[0], children[1])
-    if name == "Min":
+    if name in {"Min", "Min2"}:
         return np.minimum(children[0], children[1])
     if name == "Clip":
         lo = params.get("lower", -3.0)
@@ -530,11 +568,11 @@ def _dispatch_operator(
         return _rolling_apply(children[0], w, _ts_skew)
     if name == "Kurt":
         return _rolling_apply(children[0], w, _ts_kurt)
-    if name == "Median":
+    if name in {"Median", "Med"}:
         return _rolling_apply(children[0], w, _ts_median)
     if name == "Sum":
         return _rolling_apply(children[0], w, _ts_sum)
-    if name == "Prod":
+    if name in {"Prod", "Product"}:
         return _rolling_apply(children[0], w, _ts_prod)
     if name == "TsMax":
         return _rolling_apply(children[0], w, _ts_max)
@@ -597,7 +635,7 @@ def _dispatch_operator(
         return _rolling_apply(children[0], w, _ts_resid, binary_y=children[1])
     if name == "WMA":
         return _wma(children[0], w)
-    if name == "Decay":
+    if name in {"Decay", "TsDecay"}:
         return _decay(children[0], w)
     if name == "CumSum":
         return np.nancumsum(children[0], axis=1)
@@ -635,7 +673,7 @@ def _dispatch_operator(
         return _cs_zscore(children[0])
     if name == "CsDemean":
         return _cs_demean(children[0])
-    if name == "CsScale":
+    if name in {"CsScale", "Scale"}:
         return _cs_scale(children[0])
     if name == "CsNeutralize":
         return _cs_demean(children[0])  # simplified: industry-neutralize ≈ demean
@@ -647,12 +685,14 @@ def _dispatch_operator(
     # -- Regression ---------------------------------------------------------
     if name == "TsLinReg":
         return _ts_linreg_fitted(children[0], w)
-    if name == "TsLinRegSlope":
+    if name in {"TsLinRegSlope", "Slope"}:
         return _ts_linreg_slope(children[0], w)
     if name == "TsLinRegIntercept":
         return _ts_linreg_intercept(children[0], w)
-    if name == "TsLinRegResid":
+    if name in {"TsLinRegResid", "Resi"}:
         return _ts_linreg_resid(children[0], w)
+    if name == "Rsquare":
+        return _ts_linreg_rsquare(children[0], w)
 
     # -- Logical / conditional ----------------------------------------------
     if name == "IfElse":
@@ -660,10 +700,16 @@ def _dispatch_operator(
         return np.where(cond > 0, x_true, x_false)
     if name == "Greater":
         return (children[0] > children[1]).astype(np.float64)
+    if name == "GreaterEqual":
+        return (children[0] >= children[1]).astype(np.float64)
     if name == "Less":
         return (children[0] < children[1]).astype(np.float64)
-    if name == "Equal":
+    if name == "LessEqual":
+        return (children[0] <= children[1]).astype(np.float64)
+    if name in {"Equal", "Eq"}:
         return (np.abs(children[0] - children[1]) < _EPS).astype(np.float64)
+    if name == "Ne":
+        return (np.abs(children[0] - children[1]) >= _EPS).astype(np.float64)
     if name == "And":
         return ((children[0] > 0) & (children[1] > 0)).astype(np.float64)
     if name == "Or":

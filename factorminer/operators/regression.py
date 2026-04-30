@@ -87,6 +87,12 @@ def ts_linreg_resid_np(x: np.ndarray, window: int = 20) -> np.ndarray:
     return residual
 
 
+def rsquare_np(x: np.ndarray, window: int = 20) -> np.ndarray:
+    """Rolling linear-regression R-squared against the time index."""
+    _, _, _, _, r2 = _linreg_components_np(x, window)
+    return r2
+
+
 # ===========================================================================
 # PyTorch implementations
 # ===========================================================================
@@ -155,6 +161,11 @@ def ts_linreg_resid_torch(x: torch.Tensor, window: int = 20) -> torch.Tensor:
     return residual
 
 
+def rsquare_torch(x: torch.Tensor, window: int = 20) -> torch.Tensor:
+    _, _, _, _, r2 = _linreg_components_torch(x, window)
+    return r2
+
+
 # ===========================================================================
 # Registration table
 # ===========================================================================
@@ -164,4 +175,7 @@ REGRESSION_OPS = {
     "TsLinRegSlope": (ts_linreg_slope_np, ts_linreg_slope_torch),
     "TsLinRegIntercept": (ts_linreg_intercept_np, ts_linreg_intercept_torch),
     "TsLinRegResid": (ts_linreg_resid_np, ts_linreg_resid_torch),
+    "Slope": (ts_linreg_slope_np, ts_linreg_slope_torch),
+    "Rsquare": (rsquare_np, rsquare_torch),
+    "Resi": (ts_linreg_resid_np, ts_linreg_resid_torch),
 }

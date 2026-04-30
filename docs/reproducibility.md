@@ -3,6 +3,9 @@
 This repository separates smoke reproducibility from paper-scale data
 reproduction.
 
+For a claim-by-claim status check, see [Paper Claims Matrix](paper-claims.md).
+For baseline provenance, see [Benchmark Baselines](baselines.md).
+
 ## Reproducible Without Private Data
 
 Quickstart:

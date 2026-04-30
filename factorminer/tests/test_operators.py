@@ -127,6 +127,25 @@ class TestArithmeticOps:
         result = execute_operator("Clip", x, params={"lower": -3.0, "upper": 3.0})
         np.testing.assert_array_almost_equal(result, np.clip(x, -3.0, 3.0))
 
+    def test_paper_arithmetic_operators(self):
+        x = _arr([-4, -1, 0, 1, 4])
+        y = _arr([0, 2, 3, -2, 1])
+        np.testing.assert_array_almost_equal(
+            execute_operator("SignedPower", x, params={"exponent": 0.5}),
+            np.sign(x) * np.sqrt(np.abs(x)),
+        )
+        np.testing.assert_array_almost_equal(
+            execute_operator("Power", np.abs(x), params={"exponent": 2}),
+            np.abs(x) ** 2,
+        )
+        np.testing.assert_array_almost_equal(
+            execute_operator("Exp", y),
+            np.exp(y),
+        )
+        np.testing.assert_array_almost_equal(execute_operator("Tanh", x), np.tanh(x))
+        np.testing.assert_array_almost_equal(execute_operator("Max2", x, y), np.fmax(x, y))
+        np.testing.assert_array_almost_equal(execute_operator("Min2", x, y), np.fmin(x, y))
+
 
 # ---------------------------------------------------------------------------
 # Statistical operators (rolling window)
@@ -191,6 +210,17 @@ class TestStatisticalOps:
         result = execute_operator("Median", x, params={"window": 3})
         np.testing.assert_almost_equal(result[0, 2], 3.0)  # median(1,5,3)
 
+    def test_paper_statistical_aliases(self):
+        x = _arr([1, 5, 3, 4, 2])
+        np.testing.assert_array_almost_equal(
+            execute_operator("Med", x, params={"window": 3}),
+            execute_operator("Median", x, params={"window": 3}),
+        )
+        np.testing.assert_array_almost_equal(
+            execute_operator("Product", x, params={"window": 3}),
+            execute_operator("Prod", x, params={"window": 3}),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Time-series operators
@@ -239,6 +269,13 @@ class TestTimeseriesOps:
         result = execute_operator("CumMin", x)
         np.testing.assert_array_almost_equal(result[0], [5, 3, 3, 1, 1, 1, 0])
 
+    def test_tsdecay_alias(self):
+        x = _arr([1, 2, 3, 4, 5, 6])
+        np.testing.assert_array_almost_equal(
+            execute_operator("TsDecay", x, params={"window": 3}),
+            execute_operator("Decay", x, params={"window": 3}),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Cross-sectional operators
@@ -282,6 +319,10 @@ class TestCrossSectionalOps:
         result = execute_operator("CsScale", x)
         l1_norm = np.nansum(np.abs(result[:, 0]))
         np.testing.assert_almost_equal(l1_norm, 1.0)
+
+    def test_scale_alias(self):
+        x = _arr([1], [2], [3])
+        np.testing.assert_array_almost_equal(execute_operator("Scale", x), execute_operator("CsScale", x))
 
 
 # ---------------------------------------------------------------------------
@@ -338,6 +379,22 @@ class TestRegressionOps:
         if valid.any():
             np.testing.assert_almost_equal(np.abs(result[valid]).max(), 0.0, decimal=3)
 
+    def test_paper_regression_aliases(self):
+        t_vals = np.arange(20, dtype=np.float64)
+        x = np.stack([2 * t_vals + 1, t_vals + 5], axis=0)
+        np.testing.assert_array_almost_equal(
+            execute_operator("Slope", x, params={"window": 5}),
+            execute_operator("TsLinRegSlope", x, params={"window": 5}),
+        )
+        np.testing.assert_array_almost_equal(
+            execute_operator("Resi", x, params={"window": 5}),
+            execute_operator("TsLinRegResid", x, params={"window": 5}),
+        )
+        r2 = execute_operator("Rsquare", x, params={"window": 5})
+        valid = ~np.isnan(r2)
+        assert valid.any()
+        np.testing.assert_almost_equal(r2[valid].min(), 1.0, decimal=5)
+
 
 # ---------------------------------------------------------------------------
 # Logical operators
@@ -371,6 +428,14 @@ class TestLogicalOps:
         result = execute_operator("Less", x, y)
         expected = _arr([1, 0, 0])
         np.testing.assert_array_almost_equal(result, expected)
+
+    def test_paper_comparison_aliases(self):
+        x = _arr([1, 5, 3])
+        y = _arr([2, 3, 3])
+        np.testing.assert_array_almost_equal(execute_operator("GreaterEqual", x, y), _arr([0, 1, 1]))
+        np.testing.assert_array_almost_equal(execute_operator("LessEqual", x, y), _arr([1, 0, 1]))
+        np.testing.assert_array_almost_equal(execute_operator("Eq", x, y), execute_operator("Equal", x, y))
+        np.testing.assert_array_almost_equal(execute_operator("Ne", x, y), _arr([1, 1, 0]))
 
     def test_and(self):
         x = _arr([1, 1, -1, -1])
@@ -494,6 +559,9 @@ class TestRegistry:
         impl = implemented_operators()
         assert len(impl) > 0
         assert "Add" in impl
+        assert "Rsquare" in impl
+        assert "SignedPower" in impl
+        assert "Med" in impl
 
     def test_get_operator_unknown_raises(self):
         with pytest.raises(KeyError):

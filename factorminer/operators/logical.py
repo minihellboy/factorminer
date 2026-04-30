@@ -178,6 +178,7 @@ LOGICAL_OPS = {
     "Less": (less_np, less_torch),
     "LessEqual": (less_equal_np, less_equal_torch),
     "Equal": (equal_np, equal_torch),
+    "Eq": (equal_np, equal_torch),
     "Ne": (ne_np, ne_torch),
     "And": (and_np, and_torch),
     "Or": (or_np, or_torch),

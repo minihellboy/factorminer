@@ -146,6 +146,7 @@ CROSSSECTIONAL_OPS = {
     "CsZScore": (cs_zscore_np, cs_zscore_torch),
     "CsDemean": (cs_demean_np, cs_demean_torch),
     "CsScale": (cs_scale_np, cs_scale_torch),
+    "Scale": (cs_scale_np, cs_scale_torch),
     "CsNeutralize": (cs_neutralize_np, cs_neutralize_torch),
     "CsQuantile": (cs_quantile_np, cs_quantile_torch),
 }

@@ -187,7 +187,7 @@ REGIME_SPECIALIST = SpecialistConfig(
     ),
     example_factors=[
         "Mul(CsRank(Rsquare($close, 24)), CsRank(Delta($close, 3)))",
-        "CsRank(Resi($close, $vwap, 20))",
+        "CsRank(Resi($close, 24))",
         "CsZScore(CsRank(TsLinRegSlope($returns, 15)))",
     ],
     avoid=[

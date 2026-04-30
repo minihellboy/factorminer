@@ -388,6 +388,7 @@ TIMESERIES_OPS = {
     "Resid": (resid_np, resid_torch),
     "WMA": (wma_np, wma_torch),
     "Decay": (decay_np, decay_torch),
+    "TsDecay": (decay_np, decay_torch),
     "CumSum": (cumsum_np, cumsum_torch),
     "CumProd": (cumprod_np, cumprod_torch),
     "CumMax": (cummax_np, cummax_torch),

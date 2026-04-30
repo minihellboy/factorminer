@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from factorminer.core.library_io import PAPER_FACTORS
 from factorminer.core.parser import parse, tokenize, try_parse
 
 # ---------------------------------------------------------------------------
@@ -90,6 +91,33 @@ class TestParseComplex:
         formula = "CsRank(Neg(Div(Sub($close, Mean($close, 20)), Std($close, 20))))"
         tree = parse(formula)
         assert tree.to_string() == formula
+
+
+class TestPaperStyleDsl:
+    """Paper appendix formulas should work without manual operator renaming."""
+
+    @pytest.mark.parametrize(
+        "formula",
+        [
+            "Neg(CsRank(TsArgMax(SignedPower(IfElse(Less($returns, 0), Std($returns, 20), $close), 2), 5)))",
+            "IfElse(Greater(Rsquare($close, 24), 0.7), Neg(CsRank(Slope($close, 24))), Neg(CsRank(Resi($close, 12))))",
+            "IfElse(Eq(Sign(Delta(Std($returns, 12), 1)), Sign(Delta($returns, 1))), Neg(Resi($close, 12)), Neg(Slope($close, 12)))",
+            "Neg(CsRank(Med(Div($returns, Add($amt, 1e-6)), 6)))",
+            "Neg(CsRank(Div(Sub(Min2($open, $close), $low), Add(Sub(Max2($high, $close), $low), 0.0001))))",
+            "Scale(TsDecay(Product(Tanh(Exp(Log($close))), 6), 12))",
+        ],
+    )
+    def test_paper_style_formula_parses_and_evaluates(self, formula, small_data):
+        tree = parse(formula)
+        assert parse(tree.to_string()).to_string() == tree.to_string()
+        result = tree.evaluate(small_data)
+        assert result.shape == small_data["$close"].shape
+
+    def test_built_in_paper_catalog_still_parses(self):
+        assert len(PAPER_FACTORS) == 110
+        for factor in PAPER_FACTORS:
+            tree = parse(factor["formula"])
+            assert parse(tree.to_string()).to_string() == tree.to_string()
 
 
 # ---------------------------------------------------------------------------

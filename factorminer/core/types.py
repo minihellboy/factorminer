@@ -166,8 +166,22 @@ def _build_operator_registry() -> dict[str, OperatorSpec]:
     _reg("Sqrt", 1, A, EW, desc="sqrt(|x|) * sign(x)")
     _reg("Square", 1, A, EW, desc="x^2")
     _reg("Pow", 2, A, EW, desc="x^y")
+    _reg("SignedPower", 1, A, EW,
+         param_names=("exponent",),
+         param_defaults={"exponent": 2.0},
+         param_ranges={"exponent": (0.0, 10.0)},
+         desc="paper alias: sign(x) * |x|^exponent")
+    _reg("Power", 1, A, EW,
+         param_names=("exponent",),
+         param_defaults={"exponent": 2.0},
+         param_ranges={"exponent": (0.0, 10.0)},
+         desc="paper operator: x^exponent")
+    _reg("Exp", 1, A, EW, desc="exp(x), clipped for numerical safety")
+    _reg("Tanh", 1, A, EW, desc="tanh(x)")
     _reg("Max", 2, A, EW, desc="element-wise max(x, y)")
     _reg("Min", 2, A, EW, desc="element-wise min(x, y)")
+    _reg("Max2", 2, A, EW, desc="paper alias: element-wise max(x, y)")
+    _reg("Min2", 2, A, EW, desc="paper alias: element-wise min(x, y)")
     _reg("Clip", 1, A, EW,
          param_names=("lower", "upper"),
          param_defaults={"lower": -3.0, "upper": 3.0},
@@ -182,8 +196,10 @@ def _build_operator_registry() -> dict[str, OperatorSpec]:
     _reg("Skew", 1, S, TS, *wp(20), desc="rolling skewness")
     _reg("Kurt", 1, S, TS, *wp(20), desc="rolling kurtosis")
     _reg("Median", 1, S, TS, *wp(10), desc="rolling median")
+    _reg("Med", 1, S, TS, *wp(10), desc="paper alias: rolling median")
     _reg("Sum", 1, S, TS, *wp(10), desc="rolling sum")
     _reg("Prod", 1, S, TS, *wp(10), desc="rolling product")
+    _reg("Product", 1, S, TS, *wp(10), desc="paper alias: rolling product")
     _reg("TsMax", 1, S, TS, *wp(10), desc="rolling max")
     _reg("TsMin", 1, S, TS, *wp(10), desc="rolling min")
     _reg("TsArgMax", 1, S, TS, *wp(10), desc="rolling argmax")
@@ -208,6 +224,7 @@ def _build_operator_registry() -> dict[str, OperatorSpec]:
     _reg("Resid", 2, T, TS, *wp(10), desc="rolling regression residual")
     _reg("WMA", 1, T, TS, *wp(10), desc="weighted moving average (linear)")
     _reg("Decay", 1, T, TS, *wp(10), desc="exponentially decaying sum")
+    _reg("TsDecay", 1, T, TS, *wp(10), desc="paper alias: time-series decay")
     _reg("CumSum", 1, T, RT, desc="cumulative sum along time")
     _reg("CumProd", 1, T, RT, desc="cumulative product along time")
     _reg("CumMax", 1, T, RT, desc="cumulative max along time")
@@ -225,6 +242,7 @@ def _build_operator_registry() -> dict[str, OperatorSpec]:
     _reg("CsZScore", 1, X, CS, desc="cross-sectional z-score")
     _reg("CsDemean", 1, X, CS, desc="x - cross-sectional mean")
     _reg("CsScale", 1, X, CS, desc="scale to unit L1 norm cross-sectionally")
+    _reg("Scale", 1, X, CS, desc="paper alias: cross-sectional scale")
     _reg("CsNeutralize", 1, X, CS, desc="industry-neutralize")
     _reg("CsQuantile", 1, X, CS,
          param_names=("n_bins",),
@@ -237,6 +255,9 @@ def _build_operator_registry() -> dict[str, OperatorSpec]:
     _reg("TsLinRegSlope", 1, R, TS, *wp(20), desc="rolling linear-regression slope")
     _reg("TsLinRegIntercept", 1, R, TS, *wp(20), desc="rolling linear-regression intercept")
     _reg("TsLinRegResid", 1, R, TS, *wp(20), desc="rolling linear-regression residual")
+    _reg("Slope", 1, R, TS, *wp(20), desc="paper alias: rolling linear-regression slope")
+    _reg("Rsquare", 1, R, TS, *wp(20), desc="paper operator: rolling linear-regression R-squared")
+    _reg("Resi", 1, R, TS, *wp(20), desc="paper alias: rolling linear-regression residual")
 
     # ---- Logical / conditional --------------------------------------------
     _reg("IfElse", 3, L, EW, desc="if cond > 0 then x else y")
@@ -245,6 +266,7 @@ def _build_operator_registry() -> dict[str, OperatorSpec]:
     _reg("Less", 2, L, EW, desc="1.0 where x < y else 0.0")
     _reg("LessEqual", 2, L, EW, desc="1.0 where x <= y else 0.0")
     _reg("Equal", 2, L, EW, desc="1.0 where x == y else 0.0")
+    _reg("Eq", 2, L, EW, desc="paper alias: 1.0 where x == y else 0.0")
     _reg("Ne", 2, L, EW, desc="1.0 where x != y else 0.0")
     _reg("And", 2, L, EW, desc="logical and")
     _reg("Or", 2, L, EW, desc="logical or")

@@ -18,7 +18,7 @@ from __future__ import annotations
 import hashlib
 
 import sympy
-from sympy import Abs, Float, Function, Symbol, log, sqrt
+from sympy import Abs, Float, Function, Symbol, exp, log, sqrt, tanh
 
 from factorminer.core.expression_tree import (
     ConstantNode,
@@ -31,7 +31,7 @@ from factorminer.core.expression_tree import (
 # Arithmetic operator names that map directly to SymPy math.
 _ALGEBRAIC_OPS = frozenset({
     "Add", "Sub", "Mul", "Div", "Neg", "Abs",
-    "Square", "Sqrt", "Log", "Pow", "SignedPower",
+    "Square", "Sqrt", "Log", "Pow", "Power", "Exp", "Tanh",
 })
 
 
@@ -192,8 +192,16 @@ class FormulaCanonicalizer:
             return sqrt(Abs(children[0]))
         if name == "Log":
             return log(1 + Abs(children[0]))
-        if name in ("Pow", "SignedPower"):
+        if name == "Pow":
             return children[0] ** children[1]
+        if name == "Power":
+            return children[0] ** Float(params.get("exponent", 2.0))
+        if name == "SignedPower":
+            return Function("SignedPower")(children[0], Float(params.get("exponent", 2.0)))
+        if name == "Exp":
+            return exp(children[0])
+        if name == "Tanh":
+            return tanh(children[0])
 
         # --- Non-algebraic: wrap as opaque Function ---------------------------
         func = Function(name)

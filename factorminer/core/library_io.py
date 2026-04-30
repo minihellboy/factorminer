@@ -207,7 +207,7 @@ def export_formulas(library: FactorLibrary, path: str | Path) -> None:
 # Paper factor catalog (110 factors from Appendix P)
 # ======================================================================
 
-# Representative subset of the 110 factors discovered by FactorMiner.
+# Built-in 110-factor paper catalog, normalized to the repo's canonical DSL.
 # Each entry: (name, formula, category)
 PAPER_FACTORS: list[dict[str, str]] = [
     # Factor 001

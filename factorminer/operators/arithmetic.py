@@ -107,13 +107,13 @@ def tanh_np(x: np.ndarray) -> np.ndarray:
     return np.tanh(x)
 
 
-def signed_power_np(x: np.ndarray, e: float = 2.0) -> np.ndarray:
-    return np.sign(x) * np.power(np.abs(x), e)
+def signed_power_np(x: np.ndarray, exponent: float = 2.0) -> np.ndarray:
+    return np.sign(x) * np.power(np.abs(x), exponent)
 
 
-def power_np(x: np.ndarray, e: float = 2.0) -> np.ndarray:
+def power_np(x: np.ndarray, exponent: float = 2.0) -> np.ndarray:
     with np.errstate(invalid="ignore"):
-        return np.power(x, e)
+        return np.power(x, exponent)
 
 
 # ---- PyTorch (GPU) implementations ----------------------------------------
@@ -193,12 +193,12 @@ def tanh_torch(x: torch.Tensor) -> torch.Tensor:
     return x.tanh()
 
 
-def signed_power_torch(x: torch.Tensor, e: float = 2.0) -> torch.Tensor:
-    return x.sign() * x.abs().pow(e)
+def signed_power_torch(x: torch.Tensor, exponent: float = 2.0) -> torch.Tensor:
+    return x.sign() * x.abs().pow(exponent)
 
 
-def power_torch(x: torch.Tensor, e: float = 2.0) -> torch.Tensor:
-    return x.pow(e)
+def power_torch(x: torch.Tensor, exponent: float = 2.0) -> torch.Tensor:
+    return x.pow(exponent)
 
 
 # ---- Registration table ----------------------------------------------------
@@ -217,7 +217,13 @@ ARITHMETIC_OPS = {
     "Square": (square_np, square_torch),
     "Inv": (inv_np, inv_torch),
     "Pow": (pow_np, pow_torch),
+    "SignedPower": (signed_power_np, signed_power_torch),
+    "Power": (power_np, power_torch),
+    "Exp": (exp_np, exp_torch),
+    "Tanh": (tanh_np, tanh_torch),
     "Max": (max_np, max_torch),
     "Min": (min_np, min_torch),
+    "Max2": (max_np, max_torch),
+    "Min2": (min_np, min_torch),
     "Clip": (clip_np, clip_torch),
 }

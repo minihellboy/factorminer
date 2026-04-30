@@ -51,6 +51,8 @@ Primary execution surfaces:
 
 - [Architecture Deep Dive](docs/architecture.md)
 - [Metric Semantics](docs/metrics.md)
+- [Paper Claims Matrix](docs/paper-claims.md)
+- [Benchmark Baselines](docs/baselines.md)
 - [FAQ](docs/faq.md)
 - [Reproducibility Guide](docs/reproducibility.md)
 - [Binance Reproduction Notes](docs/binance-reproduction.md)
@@ -96,6 +98,9 @@ $open, $high, $low, $close, $volume, $amt, $vwap, $returns
 ```
 
 The DSL is parsed into expression trees, executed through the operator registry, and recomputed on demand during analysis and benchmarks.
+Paper appendix operator names such as `SignedPower`, `Med`, `Rsquare`,
+`Slope`, `Resi`, `Eq`, `Min2`, `Max2`, `TsDecay`, and `Scale` are accepted by
+the parser.
 
 ### 2. Memory-guided mining
 
@@ -311,6 +316,8 @@ Available benchmark commands:
 - `benchmark suite`
 
 The benchmark suite uses the runtime recomputation layer and carries protocol, dataset, and runtime-manifest metadata into emitted artifacts.
+See [Benchmark Baselines](docs/baselines.md) for which baselines are real,
+partial, or proxy-backed today.
 
 ## Configuration Model
 
