@@ -1,0 +1,70 @@
+# Binance sample-data config.
+#
+# This config matches data/binance_crypto_5m.csv. It is intended for local
+# validation and smoke testing, not paper Table 1 reproduction.
+
+output_dir: "./output/binance_sample"
+data_path: "./data/binance_crypto_5m.csv"
+
+mining:
+  target_library_size: 8
+  batch_size: 8
+  max_iterations: 3
+  ic_threshold: 0.0001
+  icir_threshold: 0.0001
+  correlation_threshold: 1.0
+  replacement_ic_min: 0.001
+  replacement_ic_ratio: 1.0
+
+evaluation:
+  num_workers: 4
+  fast_screen_assets: 20
+  backend: "numpy"
+  signal_failure_policy: "synthetic"
+
+llm:
+  provider: "mock"
+  model: "mock"
+  batch_candidates: 8
+
+benchmark:
+  mode: "paper"
+  freeze_top_k: 8
+  freeze_universe: "Binance"
+  report_universes:
+    - "Binance"
+  baselines:
+    - "factor_miner"
+
+data:
+  market: "crypto"
+  universe: "Binance"
+  frequency: "5min"
+  train_period: ["2026-02-14 21:30:00", "2026-02-16 23:55:00"]
+  test_period: ["2026-02-17 00:00:00", "2026-02-18 08:45:00"]
+  targets:
+    - name: "paper"
+      entry_delay_bars: 1
+      holding_bars: 1
+      price_pair: "open_to_close"
+      return_transform: "simple"
+  default_target: "paper"
+
+research:
+  enabled: false
+
+phase2:
+  causal:
+    enabled: false
+  regime:
+    enabled: false
+  capacity:
+    enabled: false
+  significance:
+    enabled: false
+  debate:
+    enabled: false
+  auto_inventor:
+    enabled: false
+  helix:
+    enabled: false

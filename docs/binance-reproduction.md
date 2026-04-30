@@ -9,7 +9,10 @@ mining or benchmarking.
 ## Bundled Sample Data
 
 `data/binance_crypto_5m.csv` is a small public sample for data validation and
-CLI smoke testing. It is not the full paper benchmark dataset.
+CLI smoke testing. It is not the full paper benchmark dataset. See
+[`data/README.md`](../data/README.md) and
+[`data/binance_crypto_5m.manifest.json`](../data/binance_crypto_5m.manifest.json)
+for the machine-readable sample manifest.
 
 Current sample summary:
 
@@ -20,6 +23,9 @@ Current sample summary:
 - date range: `2026-02-14 21:30:00` to `2026-02-18 08:45:00`
 - symbols: `ADA`, `APT`, `ARB`, `ATOM`, `AVAX`, `BNB`, `BTC`, `DOGE`, `DOT`,
   `ETC`, `ETH`, `FIL`, `LINK`, `LTC`, `NEAR`, `OP`, `SHIB`, `SOL`, `UNI`, `XRP`
+
+Use `factorminer/configs/binance_sample.yaml` for commands that should match
+this short 2026 sample and avoid empty train/test split warnings.
 
 ## Resample 5m To 10min
 

@@ -1,0 +1,56 @@
+{
+  "file": "data/binance_crypto_5m.csv",
+  "sha256": "f6664790ead548fc2d440a5cf8d065492d8e5635f2d0d7fd114b6d09b2be2d33",
+  "purpose": "schema validation, CLI smoke testing, examples, and local workflow checks",
+  "is_full_paper_benchmark_data": false,
+  "frequency": "5min",
+  "rows": 20000,
+  "asset_count": 20,
+  "rows_per_asset": {
+    "min": 1000,
+    "max": 1000
+  },
+  "datetime_start": "2026-02-14 21:30:00",
+  "datetime_end": "2026-02-18 08:45:00",
+  "columns": [
+    "datetime",
+    "asset_id",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "amount"
+  ],
+  "asset_ids": [
+    "ADA",
+    "APT",
+    "ARB",
+    "ATOM",
+    "AVAX",
+    "BNB",
+    "BTC",
+    "DOGE",
+    "DOT",
+    "ETC",
+    "ETH",
+    "FIL",
+    "LINK",
+    "LTC",
+    "NEAR",
+    "OP",
+    "SHIB",
+    "SOL",
+    "UNI",
+    "XRP"
+  ],
+  "paper_context": {
+    "paper_binance_frequency": "10min",
+    "paper_binance_asset_count": 64,
+    "paper_train_period": "2024-01-01 through 2024-12-31",
+    "paper_test_period": "2025-01-01 through 2025-12-31",
+    "note": "The bundled sample is smaller, uses 5-minute bars, and covers a short 2026 window."
+  },
+  "matching_config": "factorminer/configs/binance_sample.yaml",
+  "paper_style_config": "factorminer/configs/paper_repro_binance.yaml"
+}

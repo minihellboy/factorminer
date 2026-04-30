@@ -58,11 +58,15 @@ jobs:
           with zipfile.ZipFile(wheel) as zf:
               wheel_names = set(zf.namelist())
           assert "factorminer/configs/default.yaml" in wheel_names
+          assert "factorminer/configs/binance_sample.yaml" in wheel_names
+          assert "factorminer/configs/paper_repro_binance.yaml" in wheel_names
           assert not any(name.startswith("factorminer/tests/") for name in wheel_names)
 
           with tarfile.open(sdist) as tf:
               sdist_names = set(tf.getnames())
           assert any(name.endswith("/factorminer/configs/default.yaml") for name in sdist_names)
+          assert any(name.endswith("/factorminer/configs/binance_sample.yaml") for name in sdist_names)
+          assert any(name.endswith("/factorminer/configs/paper_repro_binance.yaml") for name in sdist_names)
           assert not any("/factorminer/tests/" in name for name in sdist_names)
           PY
 

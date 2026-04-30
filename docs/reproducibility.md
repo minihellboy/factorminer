@@ -17,11 +17,20 @@ Validate the bundled sample:
 uv run factorminer validate-data examples/quickstart/sample_market_data.csv
 ```
 
-Inspect the bundled Binance-shaped sample and convert it from 5-minute bars to
-10-minute bars:
+Inspect the bundled Binance-shaped sample:
 
 ```bash
-uv run factorminer validate-data data/binance_crypto_5m.csv
+uv run factorminer --config factorminer/configs/binance_sample.yaml \
+  validate-data data/binance_crypto_5m.csv
+```
+
+The sample has a matching manifest at
+[`data/binance_crypto_5m.manifest.json`](../data/binance_crypto_5m.manifest.json)
+and notes at [`data/README.md`](../data/README.md).
+
+Convert the sample from 5-minute bars to 10-minute bars:
+
+```bash
 uv run factorminer resample-data data/binance_crypto_5m.csv /tmp/binance_crypto_10m.csv --rule 10min
 ```
 

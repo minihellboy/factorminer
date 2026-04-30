@@ -4,14 +4,25 @@ This document is a technical audit of the current repository state after the arc
 
 ## Snapshot
 
-Audit-time snapshot:
+This audit intentionally avoids hardcoded fast-moving repository counts. For a
+fresh local snapshot, run:
 
-- `132` Python files under `factorminer/`
-- `51,273` lines of Python
-- `33` test modules
-- `477` collected tests
-- `70` registered operators
+```bash
+uv run pytest --collect-only -q factorminer/tests
+uv run python - <<'PY'
+from pathlib import Path
+files = sorted(Path("factorminer").rglob("*.py"))
+lines = sum(p.read_text(errors="ignore").count("\n") + 1 for p in files)
+print(f"Python files: {len(files)}")
+print(f"Python lines: {lines}")
+PY
+```
+
+Stable paper-facing inventory:
+
 - `110` built-in paper factors
+- canonical paper-style and research mining lanes
+- runtime recomputation for analysis and benchmark reporting
 
 Package inventory:
 

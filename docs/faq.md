@@ -50,3 +50,17 @@ unstable factors. See [Metric Semantics](metrics.md).
 You can reproduce CLI behavior, quickstart reports, mock-data mining, and small
 benchmark smoke tests. Paper-scale A-share or Binance tables require
 user-provided data covering the configured train/test periods and universes.
+
+## Is `data/binance_crypto_5m.csv` the paper crypto dataset?
+
+No. It is a small 20-symbol, 5-minute sample for validation and CLI workflows.
+The paper-style Binance benchmark uses 10-minute bars, 64 major Binance assets,
+and 2024 train / 2025 held-out test periods. See
+[`data/README.md`](../data/README.md) and
+[`docs/binance-reproduction.md`](binance-reproduction.md).
+
+## Why does the bundled Binance sample use 2026 dates?
+
+The bundled file is not intended for paper Table 1 reproduction. Use
+`factorminer/configs/binance_sample.yaml` when working with the sample because
+its train/test split matches the short 2026 sample window.

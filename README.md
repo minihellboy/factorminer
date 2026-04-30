@@ -19,13 +19,26 @@ The implementation is based on *FactorMiner: A Self-Evolving Agent with Skills a
 
 ## Repository Status
 
-Current implementation snapshot:
+Current implementation focus:
 
-- `132` Python files under `factorminer/`
-- `51,273` lines of Python
-- `70` registered DSL operators
+- canonical paper-style and research mining lanes
+- typed DSL operators for OHLCV-style factor formulas
 - `110` paper factors shipped in the built-in catalog
-- `477` collected tests in `factorminer/tests`
+- runtime recomputation for analysis and benchmark reporting
+- CI-backed lint, test, package, CLI smoke, and benchmark-smoke checks
+
+For live local counts, run:
+
+```bash
+uv run pytest --collect-only -q factorminer/tests
+uv run python - <<'PY'
+from pathlib import Path
+files = sorted(Path("factorminer").rglob("*.py"))
+lines = sum(p.read_text(errors="ignore").count("\n") + 1 for p in files)
+print(f"Python files: {len(files)}")
+print(f"Python lines: {lines}")
+PY
+```
 
 Primary execution surfaces:
 
@@ -41,6 +54,7 @@ Primary execution surfaces:
 - [FAQ](docs/faq.md)
 - [Reproducibility Guide](docs/reproducibility.md)
 - [Binance Reproduction Notes](docs/binance-reproduction.md)
+- [Bundled Data Notes](data/README.md)
 - [Repo Audit](docs/repo-audit.md)
 - [Contributing](CONTRIBUTING.md)
 - [Roadmap](ROADMAP.md)
@@ -324,7 +338,9 @@ Important configuration themes:
 
 Profile configs shipped in the repo:
 
+- [`factorminer/configs/binance_sample.yaml`](factorminer/configs/binance_sample.yaml)
 - [`factorminer/configs/paper_repro.yaml`](factorminer/configs/paper_repro.yaml)
+- [`factorminer/configs/paper_repro_binance.yaml`](factorminer/configs/paper_repro_binance.yaml)
 - [`factorminer/configs/benchmark_full.yaml`](factorminer/configs/benchmark_full.yaml)
 - [`factorminer/configs/helix_research.yaml`](factorminer/configs/helix_research.yaml)
 - [`factorminer/configs/demo_local.yaml`](factorminer/configs/demo_local.yaml)
