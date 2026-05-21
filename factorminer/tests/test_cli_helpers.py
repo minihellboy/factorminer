@@ -45,6 +45,17 @@ def test_init_config_writes_and_refuses_overwrite(tmp_path):
     assert third.exit_code == 0, third.output
 
 
+def test_mcp_connectors_json_lists_known_endpoints():
+    runner = CliRunner()
+
+    result = runner.invoke(main, ["mcp-connectors", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    names = {connector["name"] for connector in payload["connectors"]}
+    assert {"factset", "daloopa", "lseg"}.issubset(names)
+
+
 def test_session_inspect_handles_partial_and_inconsistent_artifacts(tmp_path):
     output_dir = tmp_path / "session"
     output_dir.mkdir()

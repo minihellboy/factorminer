@@ -1,0 +1,13 @@
+{
+  "name": "factorminer",
+  "owner": {
+    "name": "FactorMiner Team"
+  },
+  "plugins": [
+    {
+      "name": "factor-researcher",
+      "source": "./plugins/agent-plugins/factor-researcher",
+      "description": "Systematic quantitative alpha-factor research: validate market data, mine a factor library, evaluate IC/ICIR, backtest a composite, benchmark, and report — powered by the FactorMiner engine"
+    }
+  ]
+}

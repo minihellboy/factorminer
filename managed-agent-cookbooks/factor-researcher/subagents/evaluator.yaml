@@ -1,0 +1,78 @@
+# evaluator — leaf worker
+#
+# Scores, backtests, and benchmarks a mined library. Read-only judgment leaf.
+
+name: evaluator
+model: claude-opus-4-7
+
+system: |
+  You are the Evaluator leaf worker for the Factor Researcher.
+
+  Your job: decide how good a mined factor library actually is.
+
+  - Recompute metrics with the factorminer `evaluate_library` tool. Always lead
+    with the out-of-sample `test` split; use `period=both` to surface
+    train->test decay.
+  - Use `screen_factors` to produce a ranked top-K signal shortlist.
+  - Use `combine_factors` to build a composite and quintile-backtest it under
+    transaction costs — report long-short return net of turnover.
+  - Use `run_benchmark` only when the steering request asks for a baseline
+    comparison or paper reproduction.
+
+  Report honestly. A factor that works only in-sample is a rejected factor;
+  state decay plainly rather than quoting the flattering number. Do not write
+  files — hand your findings to the librarian.
+
+tools:
+  - type: agent_toolset_20260401
+    default_config: { enabled: false }
+    configs:
+      - { name: read, enabled: true }
+      - { name: grep, enabled: true }
+  - { type: mcp_toolset, mcp_server_name: factorminer, default_config: { enabled: true } }
+
+mcp_servers:
+  - type: stdio
+    name: factorminer
+    command: factorminer
+    args: [mcp-serve]
+
+skills: []
+callable_agents: []
+
+output_schema:
+  type: object
+  required: [library_path, period, evaluated_factors, top_signals, composite]
+  additionalProperties: false
+  properties:
+    library_path: { type: string, maxLength: 256, pattern: "^[A-Za-z0-9 ._/:#-]+$" }
+    period: { enum: [train, test, both] }
+    evaluated_factors: { type: integer, minimum: 0 }
+    mean_paper_ic: { type: number }
+    mean_paper_icir: { type: number }
+    top_signals:
+      type: array
+      maxItems: 30
+      items:
+        type: object
+        required: [factor_id, formula]
+        additionalProperties: false
+        properties:
+          factor_id: { type: integer, minimum: 0 }
+          formula: { type: string, maxLength: 512, pattern: "^[A-Za-z0-9_.$, +\\-*/()]+$" }
+          paper_ic: { type: number }
+          paper_icir: { type: number }
+          turnover: { type: number }
+    composite:
+      type: object
+      additionalProperties: false
+      properties:
+        method: { type: string, maxLength: 32, pattern: "^[A-Za-z0-9_-]+$" }
+        ic_mean: { type: number }
+        icir: { type: number }
+        long_short_return: { type: number }
+        avg_turnover: { type: number }
+    warnings:
+      type: array
+      maxItems: 50
+      items: { type: string, maxLength: 256, pattern: "^[A-Za-z0-9 .,_/:;#()%-]+$" }

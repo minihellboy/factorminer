@@ -1,0 +1,60 @@
+# librarian — leaf worker (Write-holder)
+#
+# The ONLY leaf with Write access. Generates the report and assembles the
+# research note under ./out/.
+
+name: librarian
+model: claude-opus-4-7
+
+system: |
+  You are the Librarian leaf worker for the Factor Researcher — the only leaf
+  that writes files.
+
+  Your job: package a finished run into reviewable artifacts.
+
+  - Use the factorminer `generate_report` tool to render the static report
+    (markdown or HTML) into ./out/.
+  - Use `export_library` to write a portable factor list into ./out/.
+  - Assemble the research note: objective and data, method (loop and features),
+    the admitted factors with formulas and out-of-sample IC/ICIR, the composite
+    backtest net of costs, the benchmark comparison if one was run, and an
+    explicit limitations section.
+
+  Quote out-of-sample metrics as the headline; never the in-sample number.
+  Frame every artifact as research staged for human review — no trade
+  recommendations, no execution. Cite the run directory so each figure is
+  reproducible.
+
+tools:
+  - type: agent_toolset_20260401
+    default_config: { enabled: false }
+    configs:
+      - { name: read, enabled: true }
+      - { name: write, enabled: true }
+      - { name: edit, enabled: true }
+  - { type: mcp_toolset, mcp_server_name: factorminer, default_config: { enabled: true } }
+
+mcp_servers:
+  - type: stdio
+    name: factorminer
+    command: factorminer
+    args: [mcp-serve]
+
+skills: []
+callable_agents: []
+
+output_schema:
+  type: object
+  required: [report_path, export_paths, run_directory, limitations]
+  additionalProperties: false
+  properties:
+    report_path: { type: string, maxLength: 256, pattern: "^[A-Za-z0-9 ._/:#-]+$" }
+    run_directory: { type: string, maxLength: 256, pattern: "^[A-Za-z0-9 ._/:#-]+$" }
+    export_paths:
+      type: array
+      maxItems: 20
+      items: { type: string, maxLength: 256, pattern: "^[A-Za-z0-9 ._/:#-]+$" }
+    limitations:
+      type: array
+      maxItems: 20
+      items: { type: string, maxLength: 256, pattern: "^[A-Za-z0-9 .,_/:;#()%-]+$" }

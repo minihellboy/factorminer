@@ -1,0 +1,8 @@
+{
+  "name": "factor-researcher",
+  "version": "0.1.0",
+  "description": "Mine, evaluate, backtest, benchmark, and report on quantitative alpha factors with the FactorMiner research engine",
+  "author": {
+    "name": "FactorMiner Team"
+  }
+}
