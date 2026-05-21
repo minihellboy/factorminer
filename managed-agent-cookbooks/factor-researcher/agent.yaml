@@ -1,0 +1,43 @@
+# Factor Researcher — managed-agent cookbook
+#
+# Same agent as the factor-researcher Cowork plugin. This manifest deploys it
+# through POST /v1/agents. The canonical system prompt and skills are pulled
+# from the plugin, so there is one source of truth.
+
+name: factor-researcher
+model: claude-opus-4-7
+
+system:
+  file: ../../plugins/agent-plugins/factor-researcher/agents/factor-researcher.md
+  append: >-
+    You are running headless. Write every artifact under ./out/. You orchestrate;
+    you do not run the engine yourself. Delegate each workflow phase to a leaf
+    worker: data-steward validates or fetches the dataset, miner runs the
+    discovery loop, evaluator scores and backtests the library, librarian writes
+    the research note. Stop and emit the result after the librarian finishes.
+
+tools:
+  - type: agent_toolset_20260401
+    default_config: { enabled: false }
+    configs:
+      - { name: read, enabled: true }
+      - { name: grep, enabled: true }
+      - { name: glob, enabled: true }
+  - { type: mcp_toolset, mcp_server_name: factorminer, default_config: { enabled: true } }
+
+mcp_servers:
+  - type: stdio
+    name: factorminer
+    command: factorminer
+    args: [mcp-serve]
+  - { type: url, name: factset, url: "${FACTSET_MCP_URL}" }
+  - { type: url, name: daloopa, url: "${DALOOPA_MCP_URL}" }
+
+skills:
+  - { from_plugin: ../../plugins/agent-plugins/factor-researcher }
+
+callable_agents:
+  - { manifest: ./subagents/data-steward.yaml }
+  - { manifest: ./subagents/miner.yaml }
+  - { manifest: ./subagents/evaluator.yaml }
+  - { manifest: ./subagents/librarian.yaml }   # only leaf with Write

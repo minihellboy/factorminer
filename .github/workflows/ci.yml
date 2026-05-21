@@ -29,7 +29,7 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Sync dependencies
-        run: uv sync --group dev --extra llm
+        run: uv sync --group dev --extra llm --extra mcp
 
       - name: Run Ruff lint report
         run: uv run ruff check . --output-format=github
@@ -37,7 +37,11 @@ jobs:
       - name: Check import boundaries
         run: |
           uv run python -c "import factorminer.evaluation.runtime as runtime; print(runtime.SignalComputationError.__name__)"
+          uv run python -c "from factorminer.mcp import build_server; print(type(build_server()).__name__)"
           uv run factorminer --help
+
+      - name: Check plugin and managed-agent manifests
+        run: uv run python scripts/check.py
 
       - name: Run test suite
         run: uv run pytest -q factorminer/tests

@@ -1,0 +1,7 @@
+[
+  { "event": "Mine factors: dataset data/binance_crypto_5m.csv, horizon 1d, budget 40 iterations, target 30", "description": "Standard Ralph-loop mining run on a local dataset" },
+  { "event": "Mine factors: dataset data/csi500.parquet, horizon 5d, Helix with causal+regime, budget 60 iterations", "description": "Helix loop with Phase 2 research features" },
+  { "event": "Fetch then mine: MCP source configs/factset_source.yaml, horizon 1d, budget 30 iterations", "description": "Pull data from an FSI connector before mining" },
+  { "event": "Re-evaluate only: library output/run1/factor_library.json against data/csi500.parquet on the test split", "description": "Evaluation refresh without re-mining" },
+  { "event": "Benchmark library output/run1/factor_library.json: table1 and cost-pressure", "description": "Benchmark an existing library against baselines" }
+]

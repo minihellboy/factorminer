@@ -1,0 +1,62 @@
+# miner — leaf worker
+#
+# Runs the FactorMiner discovery loop via the factorminer MCP server. Read-only:
+# the engine writes artifacts; this leaf never edits files itself.
+
+name: miner
+model: claude-opus-4-7
+
+system: |
+  You are the Miner leaf worker for the Factor Researcher.
+
+  Your job: run a factor-mining session on a dataset the data-steward has
+  already validated.
+
+  - Use the factorminer `mine_factors` tool for the paper-faithful Ralph loop.
+  - Use `helix_mine` when the steering request asks for Phase 2 features —
+    causal validation, regime conditioning, multi-specialist debate, or
+    canonicalization. Enable only the features the request names.
+  - Respect the iteration budget; mining cost scales with iterations x batch size.
+  - When the run finishes, call `inspect_session` and return a summary: library
+    size, iteration count, yield rate, and the factor_library.json path.
+
+  Never present `--mock` output as a real result. If mining yields almost
+  nothing, report that plainly — do not relax thresholds to manufacture a
+  library.
+
+tools:
+  - type: agent_toolset_20260401
+    default_config: { enabled: false }
+    configs:
+      - { name: read, enabled: true }
+  - { type: mcp_toolset, mcp_server_name: factorminer, default_config: { enabled: true } }
+
+mcp_servers:
+  - type: stdio
+    name: factorminer
+    command: factorminer
+    args: [mcp-serve]
+
+skills: []
+callable_agents: []
+
+output_schema:
+  type: object
+  required: [status, output_dir, library_path, library_size, iterations, yield_rate]
+  additionalProperties: false
+  properties:
+    status: { enum: [completed, partial, failed] }
+    output_dir: { type: string, maxLength: 256, pattern: "^[A-Za-z0-9 ._/:#-]+$" }
+    library_path: { type: string, maxLength: 256, pattern: "^[A-Za-z0-9 ._/:#-]+$" }
+    library_size: { type: integer, minimum: 0 }
+    iterations: { type: integer, minimum: 0 }
+    yield_rate: { type: number, minimum: 0, maximum: 1 }
+    loop: { enum: [ralph, helix] }
+    enabled_features:
+      type: array
+      maxItems: 12
+      items: { type: string, maxLength: 32, pattern: "^[A-Za-z0-9_-]+$" }
+    warnings:
+      type: array
+      maxItems: 50
+      items: { type: string, maxLength: 256, pattern: "^[A-Za-z0-9 .,_/:;#()%-]+$" }

@@ -2286,5 +2286,92 @@ def helix(
     click.echo("=" * 60)
 
 
+# ---------------------------------------------------------------------------
+# mcp-serve
+# ---------------------------------------------------------------------------
+
+@main.command("mcp-serve")
+def mcp_serve() -> None:
+    """Run the FactorMiner MCP server over stdio.
+
+    Exposes FactorMiner's mining, evaluation, backtesting, benchmark, and
+    reporting workflows as Model Context Protocol tools. Register it with a
+    Claude client (Claude Code, Cowork, or a Managed Agent) through an
+    .mcp.json entry. Nothing is written to stdout besides the MCP protocol
+    stream, so this command must not be combined with other output.
+    """
+    try:
+        from factorminer.mcp.server import mcp
+    except ModuleNotFoundError as exc:
+        raise click.ClickException(str(exc)) from exc
+    mcp.run()
+
+
+# ---------------------------------------------------------------------------
+# mcp-connectors
+# ---------------------------------------------------------------------------
+
+@main.command("mcp-connectors")
+@click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON.")
+def mcp_connectors(json_output: bool) -> None:
+    """List financial-services MCP connector endpoints bundled with the plugin."""
+    from factorminer.data.mcp_source import known_mcp_connectors
+
+    connectors = known_mcp_connectors()
+    if json_output:
+        click.echo(json.dumps({"connectors": connectors}, indent=2, sort_keys=True))
+        return
+
+    click.echo("FactorMiner -- FSI MCP Connectors")
+    click.echo("=" * 60)
+    for connector in connectors:
+        click.echo(f"  {connector['name']:<12s} {connector['url']}")
+        click.echo(f"  {'':<12s} {connector['best_for']}")
+    click.echo("=" * 60)
+    click.echo("Use these endpoints in plugin .mcp.json or an MCP-source YAML config.")
+
+
+# ---------------------------------------------------------------------------
+# fetch-data
+# ---------------------------------------------------------------------------
+
+@main.command("fetch-data")
+@click.option(
+    "--mcp-config",
+    "mcp_config",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to an MCP-source YAML config (connector URL, tool, field mapping).",
+)
+@click.option(
+    "--output",
+    "-o",
+    "output_path",
+    required=True,
+    type=click.Path(dir_okay=False),
+    help="Destination market-data file (.csv, .parquet, or .h5).",
+)
+def fetch_data_cmd(mcp_config: str, output_path: str) -> None:
+    """Fetch market data from an external MCP connector (FactSet, Daloopa, ...)."""
+    from factorminer.data.mcp_source import fetch_to_file, load_mcp_source_config
+
+    click.echo("FactorMiner -- MCP Data Fetch")
+    click.echo("=" * 60)
+    click.echo(f"  Config: {mcp_config}")
+    try:
+        config = load_mcp_source_config(mcp_config)
+        click.echo(f"  Connector: {config.transport} -> tool '{config.tool}'")
+        written = fetch_to_file(config, output_path)
+    except ModuleNotFoundError as exc:
+        raise click.ClickException(str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - surfaced to CLI
+        click.echo(f"Fetch error: {exc}")
+        raise click.Abort() from exc
+
+    click.echo(f"  Wrote: {written}")
+    click.echo("=" * 60)
+    click.echo(f"Next: uv run factorminer validate-data {written}")
+
+
 if __name__ == "__main__":
     main()
