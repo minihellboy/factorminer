@@ -164,7 +164,7 @@ class _BiasedFactorGenerator:
         return self.bias.filter_candidates(candidates)
 
     def __getattr__(self, item: str) -> Any:
-        # Forward anything else (e.g. `.llm`) to the wrapped generator.
+        # Forward anything else (e.g. `.llm_provider`) to the wrapped generator.
         return getattr(self._inner, item)
 
 

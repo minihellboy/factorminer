@@ -35,7 +35,6 @@ import copy
 import hashlib
 import json
 import logging
-import sys
 import time
 import warnings
 from datetime import datetime, timezone
@@ -45,24 +44,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from factorminer.benchmark.runtime import HelixBenchmark
+
 warnings.filterwarnings("ignore")
-
-# Insert the repo root so the legacy Phase 2 report runner can import
-# `helix_benchmark.py` directly without depending on the canonical runtime
-# benchmark package surface.
-_REPO_ROOT = Path(__file__).parent
-sys.path.insert(0, str(_REPO_ROOT))
-
-
-def _load_module_direct(module_name: str, file_path: Path):
-    """Load a Python module directly from a file path, bypassing package init."""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(module_name, str(file_path))
-    mod = importlib.util.module_from_spec(spec)
-    # Register in sys.modules so lazy imports inside the module work
-    sys.modules[module_name] = mod
-    spec.loader.exec_module(mod)
-    return mod
 
 
 # ---------------------------------------------------------------------------
@@ -497,13 +481,6 @@ def main() -> None:
     # ================================================================
     _section("STEP 1: Prepare Data")
 
-    # Load benchmark modules directly to avoid triggering the package __init__
-    _hb = _load_module_direct(
-        "factorminer.benchmark.helix_benchmark",
-        _REPO_ROOT / "factorminer" / "benchmark" / "helix_benchmark.py",
-    )
-    _json_safe = _hb._json_safe
-    HelixBenchmark = _hb.HelixBenchmark
     from factorminer.utils.config import load_config
 
     cfg = load_config()
@@ -553,8 +530,6 @@ def main() -> None:
     # STEP 2: Main Comparison Benchmark
     # ================================================================
     _section("STEP 2: Main Method Comparison")
-
-    # HelixBenchmark already loaded via _load_module_direct above
 
     methods = args.methods or [
         "random_exploration",

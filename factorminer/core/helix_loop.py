@@ -314,7 +314,7 @@ class HelixLoop(RalphLoop):
             if DebateGeneratorCls is not None:
                 try:
                     self._debate_generator = DebateGeneratorCls(
-                        llm_provider=llm_provider or self.generator.llm,
+                        llm_provider=llm_provider or self.generator.llm_provider,
                         debate_config=self._debate_config,
                     )
                     logger.info("Helix: multi-agent debate generator enabled")
@@ -429,7 +429,7 @@ class HelixLoop(RalphLoop):
             if InventorCls is not None:
                 try:
                     self._auto_inventor = InventorCls(
-                        llm_provider=llm_provider or self.generator.llm,
+                        llm_provider=llm_provider or self.generator.llm_provider,
                         data_tensor=self.data_tensor,
                         returns=self.returns,
                     )
