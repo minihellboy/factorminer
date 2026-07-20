@@ -381,7 +381,7 @@ Accepted identifier aliases include `code`, `ticker`, `symbol`, `ts_code`, and `
 factorminer/
 ├── agent/           LLM providers, prompts, debate
 ├── architecture/    Canonical contracts, policies, stages, services
-├── benchmark/       Runtime benchmark suite and legacy benchmark helpers
+├── benchmark/       Canonical runtime benchmark suite and compatibility exports
 ├── configs/         YAML profiles
 ├── core/            Loops, parser, expression trees, factor library, I/O
 ├── data/            Loaders, preprocessing, tensor building, mock data
@@ -396,7 +396,11 @@ factorminer/
 
 - `factorminer.architecture` is now the canonical place for protocol, dataset, memory, evaluation, stage, and prompt boundaries.
 - `factorminer.benchmark.runtime` is the canonical benchmark runner.
-- `factorminer.benchmark.helix_benchmark` and `run_phase2_benchmark.py` are still present, but they are legacy-facing compared with the runtime suite.
+- `factorminer.benchmark.helix_benchmark` is a deprecated 46-line import shim;
+  `run_phase2_benchmark.py` delegates its comparisons and ablations to the
+  canonical runtime.
+- Ralph and Helix share validated factor generation plus policy-based memory
+  persistence; `ExperienceMemoryManager` remains only for compatibility.
 - `output/` is ignored and should be treated as mutable runtime state, not source-controlled project state.
 
 ## Development

@@ -13,7 +13,33 @@ technical audit this file summarizes into action items.
 
 ## Current State
 
-Recently completed (this pass):
+Consolidation roadmap completed on `codex/financial-services-integration`:
+
+- the 107-file architecture/research/audit working tree was verified,
+  committed as `5fd351d`, and pushed; package builds include the expanded
+  `architecture`, `evaluation`, `data`, `mcp`, and config surfaces while
+  excluding tests
+- `RalphLoop` and `HelixLoop` now share
+  `agent.factor_generator.FactorGenerator`, validated output parsing,
+  repair/cascade/cache behavior, and policy-based memory persistence
+  (`2f509aa`); `ExperienceMemoryManager` is a frozen compatibility facade,
+  not a production loop dependency
+- Phase-2 comparison and ablation execution now runs through
+  `benchmark.runtime`; `helix_benchmark.py` fell from 2,203 lines to a
+  46-line import shim and the combined benchmark implementation shrank by
+  1,349 lines (`673a024`)
+- optional Phase-2 component construction moved into
+  `Phase2ComponentFactory`; `HelixLoop` fell from 1,490 to 1,270 lines
+  (`af5f22d`)
+- rolling and cross-sectional all-NaN reductions now return NaN explicitly
+  without warning suppression; focused expression/Ralph/island coverage is
+  free of project RuntimeWarnings (`751c027`)
+- final repository validation passes: 855 tests, Ruff, all 26 repository
+  checks, and `git diff --check`; the remaining 10 pytest warnings are outside
+  the completed expression-tree scope (three third-party SWIG deprecations,
+  six portfolio-fixture warnings, and the intentional legacy-shim warning)
+
+Completed in the preceding audit/research pass:
 
 - 12 confirmed math/logic bugs found and fixed with regression tests proving
   both the bug and the fix (capacity net-of-cost was a complete no-op;
@@ -41,119 +67,36 @@ Earlier (pre-existing baseline this roadmap already reflected):
   runtime benchmark suite, CPU-safe default config, `doctor`/`init-config`/
   `session inspect`
 
-## Immediate Priorities
+## Completed Immediate Priorities
 
-### 0. Get three passes of work out of the working tree
+| # | Item | Outcome | Evidence |
+| ---: | --- | --- | --- |
+| 0 | Commit and push the 107-file working tree | Complete on the tracked feature branch; distribution contents were inspected after `uv build` | `5fd351d`; 839-test baseline, Ruff, `scripts/check.py`, wheel and sdist checks |
+| 1 | Unify Ralph/Helix generation and memory | Complete; one generator/parser path and one policy persistence path serve both loops | `2f509aa`; 90 focused loop/cascade/cache tests |
+| 2 | Collapse the benchmark split | Complete; the old module is import-only and Phase-2 execution delegates to `runtime.py` | `673a024`; 46-line shim, 33 focused tests |
+| 3 | Continue shrinking `HelixLoop` | Completed for this pass; optional dependency/component construction is now a reusable service | `af5f22d`; 1,490 to 1,270 lines, 79 focused tests |
+| 4 | Quiet expression-tree NaN-window warnings | Complete; explicit validity/degree-of-freedom guards, no blanket filters | `751c027`; 154 focused tests with no project RuntimeWarnings |
 
-**This is the actual top blocker, not a backlog item.** `git log` still ends
-at `fea3553 add financial services integration`; every item above —
-architecture refactor follow-ups, all 17 landscape-extension items, all 12
-bug fixes — is sitting as ~106 uncommitted files. None of it has run through
-CI, none of it is reviewable on GitHub, and issue #5 (financial-services
-integration) can't be closed against a merged PR because nothing has been
-pushed since it was implemented.
+The completed sequence was then exercised as one integrated change set:
+`855 passed, 10 warnings` in the full test suite, with Ruff and all 26
+repository checks clean.
 
-Goal:
+## Immediate Follow-ups
 
-- split into reviewable commits/PRs along the natural seams that already
-  exist (the 9 landscape-extension epics; the bug-fix pass as its own PR
-  with each fix's regression test alongside it; docs sync separately)
-- run `scripts/check.py` and the packaging checks against the new
-  `architecture/`, `evaluation/`, `data/`, and `mcp/` files specifically —
-  these packages grew the most and packaging config (`pyproject.toml`
-  `include`/`exclude`) has not been re-verified against them
-- close issue #5 once merged, linking to `docs/financial-services-integration.md`
-
-Why:
-
-- none of the correctness work in this roadmap matters to anyone until it's
-  reachable outside this working tree
-
-### 1. Unify `RalphLoop` and `HelixLoop` onto shared generation/memory infrastructure
-
-**New finding from this pass, and now the single highest-value structural
-item** — higher priority than the pre-existing `HelixLoop`-shrinking goal
-below, because it's actively getting worse: every recent improvement
-(prompt caching, cascade routing, retry/repair, policy-based memory) landed
-*only* on the `HelixLoop` + `agent.factor_generator` + debate path.
-`RalphLoop` — the default, non-debate mining path — still uses:
-
-- its own `class FactorGenerator` (`core/ralph_loop.py:180`, ~54 lines): no
-  cascade support, no `cacheable_prefix`, no repair/retry, and a hand-rolled
-  regex parser instead of the shared, validated `agent/output_parser.py`
-- `ExperienceMemoryManager` (`memory/experience_memory.py`, 594 lines)
-  instead of the policy-based memory surface (`architecture/memory_policy.py`)
-  that `HelixLoop` uses
-
-Goal:
-
-- point `RalphLoop` at `agent.factor_generator.FactorGenerator` and a
-  `PaperMemoryPolicy`-equivalent default instead of its private shadow
-  classes, so cost savings and quality-repair benefits apply to every
-  mining run, not only debate-mode Helix runs
-- retire `ExperienceMemoryManager` once nothing depends on it, or
-  explicitly document it as a frozen legacy shim if full retirement isn't
-  safe in one pass
-
-Why:
-
-- shipping infrastructure improvements that only reach one of two loops is
-  a widening architectural fork, not a net improvement to the whole system
-
-### 2. Collapse the benchmark surface split
-
-`benchmark/helix_benchmark.py` (2,203 lines) and `benchmark/runtime.py`
-(2,289 lines) are now nearly equal in size — this is two full parallel
-implementations, not "one canonical path plus a thin legacy shim." This has
-been flagged as a priority for at least two prior passes without action;
-it is now large enough that consolidation is a multi-session project in its
-own right, not a quick win.
-
-Goal:
-
-- either finish collapsing `helix_benchmark.py`'s useful, non-duplicated
-  pieces into `runtime.py` and delete it, or make an explicit, documented
-  decision to freeze it as legacy-only with a clear deprecation note at the
-  top of the file (stop letting it silently keep pace in size)
-
-Why:
-
-- `factorminer.benchmark.runtime` is documented repo-wide as *the*
-  canonical benchmark surface; a same-size shadow implementation undermines
-  that claim every time someone has to figure out which one a given call
-  site should use
-
-### 3. Continue shrinking `HelixLoop`
-
-Goal:
-
-- move more optional feature logic into services, policies, and reusable
-  validation surfaces (`core/helix_loop.py` is still 1,489 lines / 45
-  class+def members — essentially unchanged in size despite three rounds of
-  feature work landing around it, which is a good sign the architecture
-  layer held for *new* work, but the pre-existing bulk was never reduced)
-
-Why:
-
-- still the largest single concentration of architectural debt in `core/`
-
-### 4. Quiet the expression-tree NaN-window warning surface
-
-Goal:
-
-- the `RuntimeWarning: Mean of empty slice` / `Degrees of freedom <= 0`
-  warnings from `core/expression_tree.py`'s rolling-statistic helpers
-  (`nanmean`/`nanvar` on all-NaN windows) fired in every full test run
-  across all three of this repo's work passes and have been on the roadmap
-  each time without being addressed — either guard the all-NaN case
-  explicitly (return NaN without invoking the warning-triggering reduction)
-  or suppress with a documented, narrowly-scoped `warnings.catch_warnings`
-  at the exact call sites, not a blanket filter
-
-Why:
-
-- cheap to fix, has been deferred three times, and noisy warnings make real
-  regressions harder to spot in CI output
+1. Merge the pushed feature branch, observe the repository CI result, then
+   close issue #5 with a link to
+   [Financial Services Integration](docs/financial-services-integration.md).
+   Merge/issue closure remains coordination work; the implementation and
+   branch push are complete.
+2. Continue extracting Helix validation, auto-invention, and checkpoint
+   persistence in similarly bounded services. At 1,270 lines the loop is
+   materially smaller, but it remains the largest debt concentration in
+   `core/`.
+3. Remove the `helix_benchmark.py` and `ExperienceMemoryManager`
+   compatibility shims after a documented deprecation window and a call-site
+   audit of downstream users.
+4. Address the separate `evaluation/portfolio.py` empty-quintile warning
+   surface now visible after expression-tree noise was removed.
 
 ## Research Priorities
 
@@ -198,11 +141,12 @@ new `@dataclass(frozen=True)` contracts (`CoMetricResult`, `SealedFeedback`,
 are a good anchor for the first *blocking* scoped mypy target, rather than
 starting from the oldest, loosest-typed modules.
 
-### 2. Eliminate the remaining persistence split
+### 2. Retire persistence compatibility after the deprecation window
 
-Covered concretely under Immediate Priorities #1 above (`ExperienceMemoryManager`
-vs. policy-based memory) — this item is no longer abstract; it has a name
-and a call-site list.
+Production loops now persist through `MemoryPolicy`; the old
+`ExperienceMemoryManager` has no production loop dependency and is explicitly
+frozen. Remove its public compatibility export after downstream call sites
+have had a deprecation window.
 
 ### 3. Better CI depth
 
@@ -210,20 +154,16 @@ and a call-site list.
 - optional benchmark smoke tests
 - issue-template and label hygiene
 - non-blocking full-repo mypy reporting
-- a CI job that actually runs (none of this has been exercised in CI since
-  nothing has been pushed — see Immediate Priorities #0)
+- confirm the pushed branch and eventual merge run successfully under hosted CI
 
 ## Suggested Next Build Order
 
-1. Push three passes of uncommitted work as reviewable PRs; verify
-   packaging config against the new packages; close issue #5
-2. Unify `RalphLoop` onto `agent.factor_generator.FactorGenerator` and
-   policy-based memory
-3. Quiet the expression-tree NaN-window warnings (small, deferred 3x)
-4. Collapse or formally freeze `benchmark/helix_benchmark.py`
-5. Continue extracting `HelixLoop` services
-6. Build learned family discovery
-7. Expand scoped mypy coverage, anchored on round-2's already-typed
+1. Merge the pushed consolidation branch and close issue #5 after hosted CI
+2. Continue extracting Helix validation/auto-invention/checkpoint services
+3. Remove compatibility shims after their deprecation window
+4. Quiet `evaluation/portfolio.py`'s empty-quintile warnings
+5. Build learned family discovery
+6. Expand scoped mypy coverage, anchored on round-2's already-typed
    dataclasses, before making any type gate blocking
 
 ## Not A Priority Right Now
@@ -241,12 +181,12 @@ These are intentionally lower priority than the structural items above:
 
 The repo should be considered healthy when:
 
-- tests pass in CI (currently: passes locally, has not run in CI since
-  nothing has been pushed)
-- benchmark runtime remains the single canonical surface (currently: not
-  true — see Immediate Priorities #2)
+- tests pass locally and in hosted CI (local verification is complete; hosted
+  status depends on the pushed branch/merge workflow)
+- benchmark runtime remains the single canonical execution surface (now true;
+  the old module is import-only)
 - architecture docs stay in sync with code
 - `output/` remains untracked
 - new feature work lands through architecture-layer boundaries instead of
-  loop bloat (round 2's own new work largely held this line; the
-  pre-existing `RalphLoop`/`HelixLoop` fork did not)
+  loop bloat (the generator/memory fork is closed and Phase-2 construction is
+  now service-owned)
