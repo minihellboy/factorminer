@@ -31,6 +31,7 @@ from factorminer.architecture import (
     KnowledgeGraphService,
     LibraryUpdateStage,
     OnlineForgettingService,
+    Phase2ComponentFactory,
     RetrieveStage,
 )
 from factorminer.architecture.model_stage import ModelCoOptimizeStage
@@ -46,119 +47,6 @@ from factorminer.memory.memory_store import ExperienceMemory
 from factorminer.memory.retrieval import retrieve_memory
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Optional imports -- resolved at call time with graceful fallback
-# ---------------------------------------------------------------------------
-
-
-def _try_import_debate():
-    try:
-        from factorminer.agent.debate import DebateConfig, DebateGenerator
-
-        return DebateGenerator, DebateConfig
-    except ImportError:
-        return None, None
-
-
-def _try_import_canonicalizer():
-    try:
-        from factorminer.core.canonicalizer import FormulaCanonicalizer
-
-        return FormulaCanonicalizer
-    except ImportError:
-        return None
-
-
-def _try_import_causal():
-    try:
-        from factorminer.evaluation.causal import CausalConfig, CausalValidator
-
-        return CausalValidator, CausalConfig
-    except ImportError:
-        return None, None
-
-
-def _try_import_regime():
-    try:
-        from factorminer.evaluation.regime import (
-            RegimeAwareEvaluator,
-            RegimeConfig,
-            RegimeDetector,
-        )
-
-        return RegimeDetector, RegimeAwareEvaluator, RegimeConfig
-    except ImportError:
-        return None, None, None
-
-
-def _try_import_capacity():
-    try:
-        from factorminer.evaluation.capacity import CapacityConfig, CapacityEstimator
-
-        return CapacityEstimator, CapacityConfig
-    except ImportError:
-        return None, None
-
-
-def _try_import_significance():
-    try:
-        from factorminer.evaluation.significance import (
-            BootstrapICTester,
-            DeflatedSharpeCalculator,
-            FDRController,
-            SignificanceConfig,
-        )
-
-        return BootstrapICTester, FDRController, DeflatedSharpeCalculator, SignificanceConfig
-    except ImportError:
-        return None, None, None, None
-
-
-def _try_import_kg():
-    try:
-        from factorminer.memory.knowledge_graph import FactorKnowledgeGraph, FactorNode
-
-        return FactorKnowledgeGraph, FactorNode
-    except ImportError:
-        return None, None
-
-
-def _try_import_kg_retrieval():
-    try:
-        from factorminer.memory.kg_retrieval import retrieve_memory_enhanced
-
-        return retrieve_memory_enhanced
-    except ImportError:
-        return None
-
-
-def _try_import_embedder():
-    try:
-        from factorminer.memory.embeddings import FormulaEmbedder
-
-        return FormulaEmbedder
-    except ImportError:
-        return None
-
-
-def _try_import_auto_inventor():
-    try:
-        from factorminer.operators.auto_inventor import OperatorInventor
-
-        return OperatorInventor
-    except ImportError:
-        return None
-
-
-def _try_import_custom_store():
-    try:
-        from factorminer.operators.custom import CustomOperatorStore
-
-        return CustomOperatorStore
-    except ImportError:
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -306,150 +194,38 @@ class HelixLoop(RalphLoop):
     # ------------------------------------------------------------------
 
     def _init_phase2_components(self, llm_provider: LLMProvider | None) -> None:
-        """Initialize all Phase 2 components based on configuration."""
-
-        # -- Debate generator --
-        if self._debate_config is not None:
-            DebateGeneratorCls, _ = _try_import_debate()
-            if DebateGeneratorCls is not None:
-                try:
-                    self._debate_generator = DebateGeneratorCls(
-                        llm_provider=llm_provider or self.generator.llm_provider,
-                        debate_config=self._debate_config,
-                    )
-                    logger.info("Helix: multi-agent debate generator enabled")
-                except Exception as exc:
-                    logger.warning("Helix: failed to init debate generator: %s", exc)
-            else:
-                logger.warning("Helix: debate_config provided but debate module unavailable")
-
-        # -- Canonicalizer --
-        if self._canonicalize:
-            FormulaCanonCls = _try_import_canonicalizer()
-            if FormulaCanonCls is not None:
-                try:
-                    self._canonicalizer = FormulaCanonCls()
-                    logger.info("Helix: SymPy canonicalization enabled")
-                except Exception as exc:
-                    logger.warning("Helix: failed to init canonicalizer: %s", exc)
-            else:
-                logger.warning("Helix: canonicalize=True but sympy/canonicalizer unavailable")
-
-        # -- Causal validator --
-        if self._causal_config is not None:
-            CausalValidatorCls, _ = _try_import_causal()
-            if CausalValidatorCls is not None:
-                logger.info("Helix: causal validation enabled")
-            else:
-                logger.warning("Helix: causal_config provided but causal module unavailable")
-
-        # -- Regime evaluator --
-        if self._regime_config is not None:
-            RegimeDetectorCls, RegimeEvalCls, _ = _try_import_regime()
-            if RegimeDetectorCls is not None and RegimeEvalCls is not None:
-                try:
-                    self._regime_detector = RegimeDetectorCls(self._regime_config)
-                    self._regime_classification = self._regime_detector.classify(self.returns)
-                    self._regime_evaluator = RegimeEvalCls(
-                        returns=self.returns,
-                        regime=self._regime_classification,
-                        config=self._regime_config,
-                    )
-                    logger.info("Helix: regime-aware evaluation enabled")
-                except Exception as exc:
-                    logger.warning("Helix: failed to init regime evaluator: %s", exc)
-            else:
-                logger.warning("Helix: regime_config provided but regime module unavailable")
-
-        # -- Capacity estimator --
-        if self._capacity_config is not None:
-            CapacityEstCls, _ = _try_import_capacity()
-            if CapacityEstCls is not None:
-                if self._volume is not None:
-                    try:
-                        self._capacity_estimator = CapacityEstCls(
-                            returns=self.returns,
-                            volume=self._volume,
-                            config=self._capacity_config,
-                        )
-                        logger.info("Helix: capacity-aware evaluation enabled")
-                    except Exception as exc:
-                        logger.warning("Helix: failed to init capacity estimator: %s", exc)
-                else:
-                    logger.warning("Helix: capacity_config provided but no volume data supplied")
-            else:
-                logger.warning("Helix: capacity_config provided but capacity module unavailable")
-
-        # -- Significance testing --
-        if self._significance_config is not None:
-            BootstrapCls, FDRCls, _, _ = _try_import_significance()
-            if BootstrapCls is not None and FDRCls is not None:
-                try:
-                    self._bootstrap_tester = BootstrapCls(self._significance_config)
-                    self._fdr_controller = FDRCls(self._significance_config)
-                    logger.info("Helix: significance testing enabled")
-                except Exception as exc:
-                    logger.warning("Helix: failed to init significance testing: %s", exc)
-            else:
-                logger.warning(
-                    "Helix: significance_config provided but significance module unavailable"
-                )
-
-        # -- Knowledge graph --
-        if self._enable_kg:
-            KGCls, _ = _try_import_kg()
-            if KGCls is not None:
-                try:
-                    self._kg = KGCls()
-                    logger.info("Helix: knowledge graph enabled")
-                except Exception as exc:
-                    logger.warning("Helix: failed to init knowledge graph: %s", exc)
-            else:
-                logger.warning(
-                    "Helix: enable_knowledge_graph=True but knowledge_graph module unavailable"
-                )
-
-        # -- Embedder --
-        if self._enable_embeddings:
-            EmbedderCls = _try_import_embedder()
-            if EmbedderCls is not None:
-                try:
-                    self._embedder = EmbedderCls()
-                    self._prime_embedder_from_library()
-                    logger.info("Helix: formula embeddings enabled")
-                except Exception as exc:
-                    logger.warning("Helix: failed to init embedder: %s", exc)
-            else:
-                logger.warning("Helix: enable_embeddings=True but embeddings module unavailable")
-
-        # -- Auto inventor --
-        if self._enable_auto_inventor:
-            InventorCls = _try_import_auto_inventor()
-            CustomStoreCls = _try_import_custom_store()
-            if InventorCls is not None:
-                try:
-                    self._auto_inventor = InventorCls(
-                        llm_provider=llm_provider or self.generator.llm_provider,
-                        data_tensor=self.data_tensor,
-                        returns=self.returns,
-                    )
-                    logger.info("Helix: auto operator invention enabled")
-                except Exception as exc:
-                    logger.warning("Helix: failed to init auto inventor: %s", exc)
-
-            if CustomStoreCls is not None:
-                output_dir = getattr(self.config, "output_dir", "./output")
-                try:
-                    self._custom_op_store = CustomStoreCls(
-                        store_dir=str(Path(output_dir) / "custom_operators")
-                    )
-                    logger.info("Helix: custom operator store enabled")
-                except Exception as exc:
-                    logger.warning("Helix: failed to init custom operator store: %s", exc)
-            else:
-                logger.warning(
-                    "Helix: enable_auto_inventor=True but custom operator store unavailable"
-                )
+        """Initialize a typed Phase-2 component bundle through the shared factory."""
+        self._component_factory = Phase2ComponentFactory()
+        components = self._component_factory.build(
+            llm_provider=llm_provider or self.generator.llm_provider,
+            data_tensor=self.data_tensor,
+            returns=self.returns,
+            output_dir=getattr(self.config, "output_dir", "./output"),
+            debate_config=self._debate_config,
+            canonicalize=self._canonicalize,
+            causal_config=self._causal_config,
+            regime_config=self._regime_config,
+            capacity_config=self._capacity_config,
+            significance_config=self._significance_config,
+            enable_knowledge_graph=self._enable_kg,
+            enable_embeddings=self._enable_embeddings,
+            enable_auto_inventor=self._enable_auto_inventor,
+            volume=self._volume,
+        )
+        self._debate_generator = components.debate_generator
+        self._canonicalizer = components.canonicalizer
+        self._causal_validator = components.causal_validator
+        self._regime_detector = components.regime_detector
+        self._regime_evaluator = components.regime_evaluator
+        self._regime_classification = components.regime_classification
+        self._capacity_estimator = components.capacity_estimator
+        self._bootstrap_tester = components.bootstrap_tester
+        self._fdr_controller = components.fdr_controller
+        self._kg = components.knowledge_graph
+        self._embedder = components.embedder
+        self._auto_inventor = components.auto_inventor
+        self._custom_op_store = components.custom_operator_store
+        self._prime_embedder_from_library()
 
     # ------------------------------------------------------------------
     # Override: _run_iteration with 5-stage Helix flow
@@ -584,7 +360,10 @@ class HelixLoop(RalphLoop):
 
         Falls back to standard retrieve_memory if no KG/embedder is available.
         """
-        retrieve_enhanced_fn = _try_import_kg_retrieval()
+        (retrieve_enhanced_fn,) = self._component_factory.resolve(
+            "factorminer.memory.kg_retrieval",
+            "retrieve_memory_enhanced",
+        )
 
         if retrieve_enhanced_fn is not None and (
             self._kg is not None or self._embedder is not None
@@ -856,7 +635,7 @@ class HelixLoop(RalphLoop):
         all_results: list[EvaluationResult],
     ) -> int:
         """Run causal validation (Granger + intervention) on admitted candidates."""
-        CausalValidatorCls, _ = _try_import_causal()
+        CausalValidatorCls = self._causal_validator
         if CausalValidatorCls is None:
             return 0
 
@@ -1363,7 +1142,10 @@ class HelixLoop(RalphLoop):
         if self._kg is not None:
             kg_path = checkpoint_dir / "knowledge_graph.json"
             if kg_path.exists():
-                KGCls, _ = _try_import_kg()
+                (KGCls,) = self._component_factory.resolve(
+                    "factorminer.memory.knowledge_graph",
+                    "FactorKnowledgeGraph",
+                )
                 if KGCls is not None:
                     try:
                         self._kg = KGCls.load(kg_path)

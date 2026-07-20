@@ -2,10 +2,197 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+from importlib import import_module
+from pathlib import Path
 from typing import Any
 
 from factorminer.architecture.families import extract_features, extract_operators, infer_family
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class Phase2Components:
+    """Optional runtime components consumed by ``HelixLoop``."""
+
+    debate_generator: Any = None
+    canonicalizer: Any = None
+    causal_validator: Any = None
+    regime_detector: Any = None
+    regime_evaluator: Any = None
+    regime_classification: Any = None
+    capacity_estimator: Any = None
+    bootstrap_tester: Any = None
+    fdr_controller: Any = None
+    knowledge_graph: Any = None
+    embedder: Any = None
+    auto_inventor: Any = None
+    custom_operator_store: Any = None
+
+
+class Phase2ComponentFactory:
+    """Resolve and construct optional Helix components outside the loop.
+
+    Imports remain lazy so base Ralph runs and installations without optional
+    dependencies do not pay for, or fail on, Phase-2 modules.
+    """
+
+    @staticmethod
+    def resolve(module_name: str, *attribute_names: str) -> tuple[Any | None, ...]:
+        try:
+            module = import_module(module_name)
+        except ImportError:
+            return tuple(None for _ in attribute_names)
+        return tuple(getattr(module, name, None) for name in attribute_names)
+
+    @staticmethod
+    def _construct(label: str, constructor, *args, **kwargs):
+        if constructor is None:
+            logger.warning("Helix: %s module unavailable", label)
+            return None
+        try:
+            return constructor(*args, **kwargs)
+        except Exception as exc:
+            logger.warning("Helix: failed to initialize %s: %s", label, exc)
+            return None
+
+    def build(
+        self,
+        *,
+        llm_provider: Any,
+        data_tensor: Any,
+        returns: Any,
+        output_dir: str,
+        debate_config: Any = None,
+        canonicalize: bool = False,
+        causal_config: Any = None,
+        regime_config: Any = None,
+        capacity_config: Any = None,
+        significance_config: Any = None,
+        enable_knowledge_graph: bool = False,
+        enable_embeddings: bool = False,
+        enable_auto_inventor: bool = False,
+        volume: Any = None,
+    ) -> Phase2Components:
+        """Build only the components enabled by the supplied configuration."""
+        components = Phase2Components()
+
+        if debate_config is not None:
+            (generator_cls,) = self.resolve("factorminer.agent.debate", "DebateGenerator")
+            components.debate_generator = self._construct(
+                "debate generator",
+                generator_cls,
+                llm_provider=llm_provider,
+                debate_config=debate_config,
+            )
+
+        if canonicalize:
+            (canonicalizer_cls,) = self.resolve(
+                "factorminer.core.canonicalizer", "FormulaCanonicalizer"
+            )
+            components.canonicalizer = self._construct(
+                "canonicalizer",
+                canonicalizer_cls,
+            )
+
+        if causal_config is not None:
+            (components.causal_validator,) = self.resolve(
+                "factorminer.evaluation.causal", "CausalValidator"
+            )
+            if components.causal_validator is None:
+                logger.warning("Helix: causal validator module unavailable")
+
+        if regime_config is not None:
+            detector_cls, evaluator_cls = self.resolve(
+                "factorminer.evaluation.regime",
+                "RegimeDetector",
+                "RegimeAwareEvaluator",
+            )
+            components.regime_detector = self._construct(
+                "regime detector",
+                detector_cls,
+                regime_config,
+            )
+            if components.regime_detector is not None:
+                try:
+                    components.regime_classification = components.regime_detector.classify(
+                        returns
+                    )
+                    components.regime_evaluator = evaluator_cls(
+                        returns=returns,
+                        regime=components.regime_classification,
+                        config=regime_config,
+                    )
+                except Exception as exc:
+                    logger.warning("Helix: failed to initialize regime evaluator: %s", exc)
+                    components.regime_evaluator = None
+
+        if capacity_config is not None:
+            if volume is None:
+                logger.warning("Helix: capacity config provided without volume data")
+            else:
+                (estimator_cls,) = self.resolve(
+                    "factorminer.evaluation.capacity", "CapacityEstimator"
+                )
+                components.capacity_estimator = self._construct(
+                    "capacity estimator",
+                    estimator_cls,
+                    returns=returns,
+                    volume=volume,
+                    config=capacity_config,
+                )
+
+        if significance_config is not None:
+            bootstrap_cls, fdr_cls = self.resolve(
+                "factorminer.evaluation.significance",
+                "BootstrapICTester",
+                "FDRController",
+            )
+            components.bootstrap_tester = self._construct(
+                "bootstrap tester",
+                bootstrap_cls,
+                significance_config,
+            )
+            components.fdr_controller = self._construct(
+                "FDR controller",
+                fdr_cls,
+                significance_config,
+            )
+
+        if enable_knowledge_graph:
+            (graph_cls,) = self.resolve(
+                "factorminer.memory.knowledge_graph", "FactorKnowledgeGraph"
+            )
+            components.knowledge_graph = self._construct(
+                "knowledge graph",
+                graph_cls,
+            )
+
+        if enable_embeddings:
+            (embedder_cls,) = self.resolve("factorminer.memory.embeddings", "FormulaEmbedder")
+            components.embedder = self._construct("formula embedder", embedder_cls)
+
+        if enable_auto_inventor:
+            inventor_cls, store_cls = (
+                self.resolve("factorminer.operators.auto_inventor", "OperatorInventor")[0],
+                self.resolve("factorminer.operators.custom", "CustomOperatorStore")[0],
+            )
+            components.auto_inventor = self._construct(
+                "operator inventor",
+                inventor_cls,
+                llm_provider=llm_provider,
+                data_tensor=data_tensor,
+                returns=returns,
+            )
+            components.custom_operator_store = self._construct(
+                "custom operator store",
+                store_cls,
+                store_dir=str(Path(output_dir) / "custom_operators"),
+            )
+
+        return components
 
 
 @dataclass

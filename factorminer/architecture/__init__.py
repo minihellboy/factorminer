@@ -42,6 +42,8 @@ __all__ = [
     "EnsembleUtilitySummary",
     "KnowledgeGraphService",
     "OnlineForgettingService",
+    "Phase2ComponentFactory",
+    "Phase2Components",
     "RegimeAwareMemoryPolicy",
     "RetrieveStage",
     "SpearmanDependenceMetric",
@@ -145,6 +147,14 @@ _ATTRIBUTE_MAP = {
     "OnlineForgettingService": (
         "factorminer.architecture.phase2_services",
         "OnlineForgettingService",
+    ),
+    "Phase2ComponentFactory": (
+        "factorminer.architecture.phase2_services",
+        "Phase2ComponentFactory",
+    ),
+    "Phase2Components": (
+        "factorminer.architecture.phase2_services",
+        "Phase2Components",
     ),
     "RegimeAwareMemoryPolicy": (
         "factorminer.architecture.memory_policy",
