@@ -44,7 +44,6 @@ from factorminer.benchmark.runtime import (
 from factorminer.core.config import MiningConfig
 from factorminer.core.factor_library import FactorLibrary
 from factorminer.core.helix_loop import HelixLoop
-from factorminer.evaluation.capacity import CapacityConfig as RuntimeCapacityConfig
 from factorminer.evaluation.causal import CausalConfig as RuntimeCausalConfig
 from factorminer.evaluation.regime import RegimeConfig as RuntimeRegimeConfig
 from factorminer.evaluation.runtime import (
@@ -273,11 +272,16 @@ def _build_mining_config(
 
 def _build_phase2_configs(flags: dict[str, bool]) -> dict[str, Any]:
     """Translate ablation flags into real HelixLoop runtime configs."""
+    capacity_config = None
+    if flags.get("capacity", True):
+        from factorminer.evaluation.capacity import CapacityConfig as RuntimeCapacityConfig
+
+        capacity_config = RuntimeCapacityConfig(enabled=True)
     return {
         "debate_config": RuntimeDebateConfig() if flags.get("debate", True) else None,
         "causal_config": RuntimeCausalConfig(enabled=True) if flags.get("causal", True) else None,
         "regime_config": RuntimeRegimeConfig(enabled=True) if flags.get("regime", True) else None,
-        "capacity_config": RuntimeCapacityConfig(enabled=True) if flags.get("capacity", True) else None,
+        "capacity_config": capacity_config,
         "significance_config": (
             RuntimeSignificanceConfig(enabled=True)
             if flags.get("significance", True)
