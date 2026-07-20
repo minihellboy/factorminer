@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -233,3 +235,19 @@ def test_portfolio_backtest_exposes_raw_series():
     assert stats["ls_net_series"].shape[0] == signal.shape[0]
     assert stats["turnover_series"].shape[0] == signal.shape[0]
     assert stats["quintile_period_returns"].shape == (signal.shape[0], 5)
+
+
+def test_portfolio_backtest_handles_empty_quintiles_without_runtime_warning():
+    backtester = PortfolioBacktester()
+    signal = np.ones((3, 4), dtype=np.float64)
+    returns = np.zeros((3, 4), dtype=np.float64)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        stats = backtester.quintile_backtest(signal, returns)
+
+    assert all(np.isnan(stats[f"q{q}_return"]) for q in range(1, 6))
+    assert np.isnan(stats["ls_return"])
+    assert np.isnan(stats["ls_gross_return"])
+    assert stats["monotonicity"] == 0.0
+    assert stats["avg_turnover"] == 0.0

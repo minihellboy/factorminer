@@ -1,276 +1,226 @@
-# Security Considerations
+# Security Model
 
-This document is the threat model and mitigation record for FactorMiner's
-externally-facing surfaces, written after the Round 2 landscape-extension pass
-(`docs/landscape-and-extensions.md` §10) added several genuinely new attack
-surfaces: outbound data connectors, an authenticated network transport, and
-LLM-authored content flowing into rendered reports and (optionally) back into
-future prompts. It complements, rather than replaces, the existing guardrail
-language in `docs/financial-services-integration.md` ("research artifacts
-staged for review... does not recommend trades, size positions, bind risk, or
-execute anything").
+FactorMiner processes untrusted market data and model-generated text, launches
+bounded subprocesses, can call external data services, and can expose an MCP
+tool surface. This document defines the current trust boundaries and enforced
+controls for those operations.
 
-Every control below was verified against the current code, not just asserted
-— see "Verification" under each surface for the concrete check performed.
+FactorMiner is a research engine. Its tools return research artifacts; they do
+not place trades, size positions, bind limits, route orders, or operate accounts.
 
-## 1. Outbound data connectors (EDGAR, futures, crowding/consensus panels)
+## Assets and trust boundaries
 
-**Surface:** `data/edgar_source.py` (SEC EDGAR XBRL), `data/futures_source.py`
-(continuous futures panels, offline/mock-only today), `evaluation/crowding.py`
-(`ConsensusFactorPanel` — Ken French / AQR public factor-return CSVs),
-`data/mcp_source.py` (pre-existing, Round 1).
+Protected assets include provider credentials, MCP bearer tokens, licensed
+market data, local files outside selected input/output paths, research artifacts,
+and the integrity of evaluation results.
 
-**Threat model:** these are the only code paths that parse content FactorMiner
-did not generate itself and does not control the source of. A malicious or
-compromised upstream response could attempt to (a) trigger a crash / resource
-exhaustion (oversized or malformed payload), (b) achieve code execution via
-unsafe deserialization, (c) poison downstream research artifacts with
-fabricated-but-plausible-looking financial data, or (d) exfiltrate data via a
-redirected/spoofed endpoint.
+Treat all of the following as untrusted data:
 
-**Mitigations (verified):**
-- HTTPS-only. `ConsensusFactorPanel.fetch` explicitly refuses non-HTTPS URLs
-  (`source=refused-non-https`, confirmed by test and by reading
-  `evaluation/crowding.py`). EDGAR access is hardcoded to `https://data.sec.gov`.
-- Explicit timeouts and response-size caps on every fetch (EDGAR: 30s / 8 MiB;
-  crowding panel: configurable, default 4 MiB). Grepped the full diff for
-  `urlopen(`/`requests.get(`/`requests.post(` calls without a `timeout=` —
-  zero matches.
-- `Content-Type` / shape validation before parsing; no `eval`/`exec`/
-  `pickle.loads` anywhere in the new connector code (grepped the full round-2
-  diff — zero matches for real `eval(`/`exec(` calls; the one `eval(` hit is
-  PyTorch's unrelated `model.eval()` inference-mode switch).
-- **Fail-closed, not fail-open, on malformed/adversarial data.** Verified by
-  test: empty bytes, a truncated ZIP, a header-only CSV, ragged rows, and
-  garbage text all parse to an empty series; `consensus_overlap_score` then
-  reports `available=False` / `label=unavailable` rather than fabricating a
-  falsely-reassuring "low crowding" score. This matters specifically because a
-  silently-wrong crowding score is worse than an explicit "couldn't compute
-  one" — a fail-open bug here would produce a confidently wrong research
-  artifact.
-- SEC's own fair-access policy is honored, not just avoided: a descriptive
-  `User-Agent` including a contact email (default `FactorMiner Research Bot
-  1.0 (contact@factorminer.local)`, override via `--user-agent` for
-  production use) and a rate limiter capped at ≤10 requests/second (default
-  8 rps) per `sec.gov/os/accessing-edgar-data`. **Verified live**: a real
-  `attach-edgar` invocation against the actual `data.sec.gov` API during this
-  review succeeded and returned genuine Apple Inc. XBRL facts, joined
-  correctly onto a synthetic OHLCV panel by point-in-time filed date.
-- Point-in-time discipline: EDGAR facts are forward-filled from their *filed*
-  date, never their covered period-end — verified by a dedicated test
-  asserting a fact filed 2024-02-15 is `NaN` before that date and populated
-  only from that date forward, i.e. the connector cannot leak future
-  information into a backtest.
-- Local caching is keyed by a sanitized CIK (10-digit, validated), not by any
-  free-form externally-influenced string — no path-traversal surface.
+- CSV, Parquet, HDF, Qlib, and connector payloads;
+- saved factor libraries and session artifacts;
+- formulas, rationales, research notes, and all LLM output;
+- MCP tool arguments and external agent handoffs;
+- remote HTTP responses and local OpenAI-compatible endpoints.
 
-**Residual risk:** none of these connectors are wired into `mine`/`helix` by
-default; a user must explicitly run `attach-edgar`/`build-futures` and point a
-config at the resulting file. There is no automatic, unattended outbound
-fetch triggered by normal mining.
+The primary boundaries are:
 
-## 2. MCP server: stdio (default) and opt-in HTTP transport
+```mermaid
+flowchart LR
+    U["Untrusted inputs"] --> V["Schema / parser validation"]
+    V --> E["FactorMiner engine"]
+    E --> A["Escaped, structured artifacts"]
+    H["Agent host"] --> M["MCP boundary"]
+    M --> E
+    E --> C["Explicit outbound connectors"]
+    S["Environment secrets"] --> M
+    S --> C
+```
 
-**Surface:** `factorminer/mcp/server.py`, `factorminer mcp-serve`.
+## Filesystem and subprocess execution
 
-**Threat model:** the MCP server is a tool-calling surface for an external
-LLM/agent orchestrator. The two risks are (a) a network-facing listener with
-weak or absent authentication, and (b) a tool whose description or output is
-ambiguous enough that a calling agent misuses it (Anthropic's own published
-finding: "bad tool descriptions dominate failures").
+MCP engine tools delegate to the `factorminer` CLI using explicit argument
+arrays. They do not use `shell=True`. The called workflow receives explicit
+input/output paths and returns captured structured output or an error containing
+the return code and diagnostics.
 
-**Mitigations (verified):**
-- **stdio remains the default transport** and requires no authentication by
-  design — it is a local subprocess pipe, not a network listener. This is
-  unchanged from Round 1.
-- **HTTP transport is opt-in only** (`--transport http`), binds to
-  `127.0.0.1` by default (grepped: the only occurrences of the literal string
-  `0.0.0.0` anywhere in the round-2 diff are a code comment and a docstring
-  explicitly stating it is *never* the default, plus a test asserting
-  `DEFAULT_HTTP_HOST != "0.0.0.0"`), and **refuses to start** unless a
-  non-empty bearer token is present in `$FACTORMINER_MCP_TOKEN` (or the env
-  var named by `--auth-token-env`). **Verified live**: running
-  `mcp-serve --transport http` with the token unset produces `Error: Refusing
-  to start HTTP MCP transport without auth...` and a clean, non-zero-noise
-  exit — not a silent unauthenticated listener.
-- Auth is implemented against the real `mcp` SDK's `TokenVerifier`/
-  `AccessToken` protocol (`StaticBearerTokenVerifier` in `mcp/server.py`),
-  not a hand-rolled check bypassable by a client that skips it.
-- Every `@mcp.tool()` docstring now documents exact argument/return shapes and
-  ends with an explicit line that the output is a research artifact only,
-  never an execution instruction — this is a structural guardrail (repeated
-  on every tool) rather than a single paragraph in a doc a caller might not
-  read.
-- `inspect_debate` (new) and every other tool remain read-only: they invoke
-  the FactorMiner CLI as a subprocess with an explicit argument list (never
-  `shell=True`, confirmed by grep) and return structured data — no tool
-  triggers an external side effect (a trade, an order, a filesystem write
-  outside the caller-specified output directory).
-- **Verified live** with a real MCP client (`mcp.client.stdio.stdio_client` +
-  `ClientSession`, not a mock): listed 17 tools, confirmed the research-only
-  guardrail text is present in a tool description, and executed a real
-  `list_fsi_connectors` tool call end-to-end successfully.
+`output/` is mutable local state and is ignored by Git. Agent manifests confine
+managed output to `./out/`; only the librarian leaf in the reference managed
+integration has write-capable tools. Plugin and managed-agent references are
+validated by `scripts/check.py`.
 
-**Residual risk:** the bearer-token scheme is a single static shared secret,
-appropriate for a single-operator or trusted-network deployment; it is not a
-substitute for a full OAuth/mTLS setup if FactorMiner's MCP server is ever
-exposed beyond a trusted network. This is noted in
-`docs/financial-services-integration.md`'s new LangGraph-consumption section.
+Input path validation is format-specific. Connector cache keys use normalized,
+validated identifiers rather than response-controlled path fragments. Data
+loaders do not execute file contents.
 
-## 3. Local-LLM cascade routing (`OpenAICompatibleProvider`)
+## Outbound data connectors
 
-**Surface:** `agent/llm_interface.py`.
+Current outbound surfaces are:
 
-**Threat model:** an OpenAI-compatible `base_url` option is, by construction,
-a place the process will send HTTP requests. If that URL were ever attacker-
-or remote-input-influenced, it becomes a Server-Side Request Forgery (SSRF)
-primitive (e.g. pointed at a cloud metadata endpoint or an internal service).
-A second risk is credential leakage: forwarding a real frontier-provider API
-key to an untrusted custom endpoint.
+| Surface | Data | Invocation |
+| --- | --- | --- |
+| `data/edgar_source.py` | SEC EDGAR XBRL facts | explicit `attach-edgar` |
+| `data/mcp_source.py` | configured external MCP table data | explicit `fetch-data` |
+| `evaluation/crowding.py` | public consensus-factor return panels | explicit crowding workflow |
+| `data/futures_source.py` | continuous-futures input transformation | explicit `build-futures` |
 
-**Mitigations (verified):**
-- `base_url` is accepted only from the local YAML config object FactorMiner's
-  own operator controls (`llm.cascade_draft_base_url` / equivalent), never
-  from a request, a mined formula, an LLM response, or any other
-  runtime-influenced value. Grepped and read the constructor: it raises
-  `ValueError` if `base_url` is falsy rather than defaulting to something
-  that could be silently wrong.
-- **`OpenAICompatibleProvider` intentionally does not fall back to
-  `OPENAI_API_KEY`** (verified by reading the code and by the existing test
-  `test_openai_compatible_does_not_read_openai_api_key`) — a real frontier
-  credential can never leak to a custom local/base_url endpoint even by
-  accident.
-- Frontier-provider client construction explicitly strips `base_url` before
-  building the frontier half of a cascade pair, so a cascade config typo
-  cannot redirect a real Anthropic/OpenAI-authenticated call to a third
-  party.
-- Explicit request timeouts on both the local/draft path (default 60s) and
-  the frontier path (default 120s).
-- Two inline `# SECURITY (SSRF):` comments at both call sites document the
-  invariant for the next person editing this code, not just this report.
+Network fetches use explicit timeouts. EDGAR access is pinned to
+`https://data.sec.gov`, applies response-size limits, sends a descriptive user
+agent, and rate-limits requests to the SEC fair-access ceiling. Point-in-time
+joins use filing dates, not covered-period end dates, so facts are unavailable
+before publication.
 
-**Residual risk:** cascade routing is disabled by default
-(`cascade_enabled: false`); an operator who enables it and points it at a
-genuinely untrusted local network service is trusting that service with
-whatever candidate-formula text it sends — same trust boundary as any local
-tool integration, documented rather than silently assumed.
+Consensus-factor fetches reject non-HTTPS URLs, enforce response-size caps, and
+validate content/shape before parsing. Malformed or unavailable data produces an
+explicit unavailable result rather than a low-risk default.
 
-## 4. LLM-generated content rendered into HTML reports
+`MCPDataSourceConfig` is operator-controlled YAML. It validates transport,
+required connection fields, canonical column coverage, positional schemas, and
+unknown keys before opening a connection. `${ENV}` expansion allows credentials
+to remain outside the file. Derived `amount = close * volume` is opt-in and is
+recorded as an approximation, not observed turnover.
 
-**Surface:** `evaluation/report_viewer.py`, `evaluation/mrm_pack.py`,
-`utils/tearsheet.py` — specifically the new economic-rationale field
-(mandatory-attestation-gated) and MRM narrative sections.
+Normal `mine` and `helix` commands do not trigger unattended external fetches.
+Acquisition and attachment are separate explicit workflows.
 
-**Threat model:** any free-text field an LLM can populate and that later gets
-interpolated into an HTML report is a stored-XSS vector if not escaped —
-either from the LLM itself producing adversarial markup (unlikely but not
-impossible depending on provider/prompt), or from a research note/formula
-name that flows through to a rationale field.
+## MCP server
 
-**Mitigations (verified):**
-- All free-text fields (economic rationale, MRM narrative, formula-sensitivity
-  plain-English notes) are passed through `html.escape` before interpolation
-  into any HTML template. **Verified directly**, not just by reading the
-  code: generated an HTML MRM report from a real mined library and grepped
-  the output for `<script` — zero raw tags. A dedicated unit test also
-  constructs a rationale containing a literal `<script>alert('xss')</script>`
-  payload and asserts it renders as the escaped entity sequence
-  (`&lt;script&gt;...`), not as live markup.
-- The `UNATTESTED -- LLM DRAFT, NOT REVIEWED` banner is unconditionally
-  present on any rationale whose `attested` field is not explicitly `True`
-  (which only a human-facing CLI action, `report --attest-rationale`, can
-  set) — **verified live**: 16 occurrences of the banner string in a real
-  generated HTML report, and generation code hard-forces `attested=False`
-  unless the source is explicitly `human`.
+### Stdio
 
-**Residual risk:** none identified for this surface specifically; the
-existing pattern is sound and was applied consistently to every new free-text
-field introduced in Round 2.
+Stdio is the default transport. It is a local subprocess pipe and does not add a
+network listener or application authentication layer:
 
-## 5. LLM-authored content flowing back into future prompts
+```bash
+uv run factorminer mcp-serve --transport stdio
+```
 
-**Surface:** `architecture/research_absorption.py` (research-note archetypes
-feeding `PromptContextBuilder`), `architecture/sealed_joint_search.py`
-(sealed evaluator feedback), `architecture/memory_policy.py` (edit-motif /
-economic-rationale text persisted and potentially re-surfaced).
+The security boundary is the process launcher and host user account.
 
-**Threat model:** this is prompt-injection-via-memory — if generated or
-ingested text is later concatenated into a *system*/*developer*-level prompt
-for a subsequent LLM call, and that text contains something shaped like an
-instruction ("ignore previous constraints and..."), a sufficiently
-instruction-following model could treat stored data as new instructions
-rather than as the data it actually is.
+### HTTP
 
-**Mitigations (verified):**
-- `research_absorption.py`'s B/C-layer classification treats ingested
-  fragments strictly as data to be summarized into a bounded, structured
-  `ResearchArchetype` (archetype name, one-sentence mechanism role, at most 3
-  short research-path hypothesis cues) — the raw fragment text is never
-  concatenated verbatim into a later generation prompt; only the
-  LLM-compressed, schema-constrained summary is.
-- `architecture/sealed_joint_search.py`'s prompt-facing feedback is
-  *structurally* restricted: `SealedFeedback.to_prompt_dict` /
-  `assert_feedback_is_sealed` explicitly allow-list only coarse fields
-  (`n_passed`, `personas`, `agreement_fraction`, `rank`) and reject any
-  attempt to pass raw evaluator internals through — **verified by a
-  dedicated test** asserting the prompt-facing payload does not contain
-  score/weight/component keys. The LLM-judge persona (when enabled) treats
-  formula text as data to score, not as instructions to follow, and a
-  malformed/adversarial judge reply fails closed to a neutral score rather
-  than being trusted.
-- Economic-rationale text is descriptive prose about a *specific already-
-  admitted formula*, generated after the fact, not incorporated into the
-  generation-time prompt for future candidates in a way that could compound.
+HTTP transport is opt-in. The default host is `127.0.0.1`, and startup fails
+unless the configured token environment variable contains a non-empty value:
 
-**Residual risk:** this is a defense-in-depth posture (schema constraints,
-allow-listed fields, fail-closed judges), not a formal proof that no LLM
-provider could ever be confused by adversarial input. No known concrete
-exploit exists against this codebase today; the mitigations above are the
-correct, standard pattern for this class of risk.
+```bash
+export FACTORMINER_MCP_TOKEN="$(openssl rand -hex 32)"
+uv run factorminer mcp-serve \
+  --transport http --host 127.0.0.1 --port 8765
+```
 
-## 6. Anti-gaming / reward-hacking (sealed multi-evaluator search)
+Clients must send `Authorization: Bearer <token>`. Authentication uses the MCP
+SDK `TokenVerifier`/`AccessToken` protocol via
+`StaticBearerTokenVerifier`. There is no unauthenticated HTTP mode.
 
-This is a distinct, non-network security concern worth stating explicitly:
-`architecture/sealed_joint_search.py` exists specifically because a *fixed*,
-fully-visible evaluation objective is a Goodhart's-Law target — a search
-process (including an LLM-guided one) can learn to satisfy the letter of a
-known scoring function without the substance it was meant to measure. Sealing
-evaluator internals from the generation-facing prompt context, running
-multiple differently-biased evaluators, and requiring cross-evaluator
-agreement before promotion is a structural anti-gaming control, analogous to
-adversarial-robustness practice in ML security. It is opt-in and
-research-mode only; it does not replace `EvaluationKernel`'s default,
-fully-tested admission path.
+The static bearer token is a single-operator/trusted-network control. It does
+not provide user identity, roles, tenant isolation, or per-tool authorization;
+do not expose the development listener as a public multi-tenant service.
 
-## 7. Persistence and secrets hygiene
+Every tool description states its argument/result shape and the research-only
+contract. Tool functions return structured JSON and never invoke a trading or
+broker endpoint. Deployment details are in the
+[integration guide](../integrations/factor-researcher/README.md).
 
-**Verified across all new persistence surfaces** (RFT export JSONL +
-manifest, crowding reports, MRM pack, session/lifecycle artifacts, EDGAR
-local cache): none write API keys, bearer tokens, or other secrets to disk.
-The RFT export manifest explicitly sets `trains_model: false` and contains
-only trajectory metrics/formulas/rewards. Config loading keeps `api_key`-
-shaped fields out of anything serialized back to an artifact file.
+## Local/frontier model cascade
 
-## 8. Model deserialization
+`OpenAICompatibleProvider` sends prompts to an operator-configured `base_url`.
+That URL is loaded from local configuration and cannot be supplied by a formula,
+LLM response, research note, or MCP request.
 
-No `torch.load` call exists anywhere in the codebase (grepped the full
-repository, not just the round-2 diff) — FactorMiner only ever trains small
-models from scratch in-process (`operators/neuro_symbolic.py`'s neural
-leaves, `evaluation/model_zoo.py`'s optional GraphSAGE path) and never loads
-an external checkpoint, so the classic unsafe-pickle-deserialization class of
-vulnerability does not apply today. If external checkpoint loading is ever
-added, it must use `weights_only=True` (or a safetensors-format checkpoint)
-— documented here as a standing invariant for future contributors, per this
-review's own contributor guidance.
+Enforced credential separation:
 
-## Summary table
+- a missing custom `base_url` is an error;
+- the custom provider does not fall back to `OPENAI_API_KEY`;
+- frontier-provider construction strips custom `base_url` values;
+- local/draft and frontier requests have independent timeouts.
 
-| Surface | Network-facing? | Auth? | Fails closed on bad input? | Verified live in this review |
-| --- | --- | --- | --- | --- |
-| EDGAR connector | Yes (HTTPS, outbound) | N/A (public API, rate-limited) | Yes | Yes — real SEC data returned |
-| Futures connector | Mock/offline only today | N/A | Yes | Yes (mock path) |
-| Crowding consensus panel | Yes (HTTPS, outbound) | N/A (public data) | Yes | Yes (fixture + malformed-input tests) |
-| MCP stdio | No (local pipe) | Not required | N/A | Yes — real tool call |
-| MCP HTTP (opt-in) | Yes (loopback default) | Bearer token, refuses to start without it | N/A | Yes — refusal verified live |
-| Local-LLM cascade | Opt-in, local by default | Operator-controlled `base_url` | N/A | Code + existing test |
-| HTML report rendering | No | N/A | Yes (escapes all free text) | Yes — XSS payload test |
+Enabling a custom endpoint grants that endpoint access to the prompt content
+sent through the draft path. Operators must treat the endpoint as a data
+processor and restrict it with normal network policy.
+
+## Formula and generated-code boundary
+
+The default factor surface is a typed DSL, not arbitrary Python. Output is
+parsed into an expression tree, validated against registered leaves/operators,
+and evaluated through bounded operator implementations. Parse failures and
+unsupported expressions fail evaluation; the runtime does not substitute saved
+scores.
+
+LLM text is never passed to Python `eval` or `exec`. Connector and artifact
+formats use JSON/YAML/tabular parsers with schema checks. Operator sandbox and
+custom-operator paths must preserve the same resource and syntax restrictions.
+
+## Prompt and memory injection
+
+Research notes and model output can re-enter later model context only through
+structured boundaries:
+
+- research absorption emits bounded `ResearchArchetype` fields instead of
+  concatenating raw documents into generation prompts;
+- `PromptContextBuilder` renders typed memory/library summaries;
+- sealed evaluator feedback allow-lists coarse fields and excludes raw evaluator
+  internals from generator-facing context;
+- malformed evaluator replies fail to a neutral/rejected result;
+- economic rationale is attached to an admitted factor and is not treated as a
+  system instruction.
+
+These controls separate instructions from data structurally. Agent prompts must
+continue to label connector payloads, notes, formulas, and saved artifacts as
+data rather than instructions.
+
+## HTML and report rendering
+
+Formula names, rationales, narrative fields, and model-authored text are escaped
+with `html.escape` before interpolation into HTML reports. An economic rationale
+is marked `UNATTESTED -- LLM DRAFT, NOT REVIEWED` unless its attestation is
+explicitly recorded as human.
+
+Static report generation does not execute embedded model output. Regression
+tests include literal script-tag payloads and assert escaped output.
+
+## Evaluation integrity
+
+Security includes protection against misleading research artifacts:
+
+- runtime analysis recomputes formulas on the selected dataset;
+- train/test boundaries are explicit and shared across analysis paths;
+- point-in-time fundamental joins use availability dates;
+- proxy and partial baselines are labeled in manifests;
+- sealed multi-evaluator mode exposes agreement summaries rather than its
+  scoring internals to generation;
+- unavailable diagnostics remain unavailable rather than defaulting to a safe
+  label.
+
+These controls limit stale-score reuse, look-ahead, provenance ambiguity, and
+reward gaming. They do not turn a backtest into an investment recommendation.
+
+## Secrets and persistence
+
+API keys and bearer tokens belong in environment variables or an approved
+secret store. They must not appear in YAML committed to Git, CLI arguments that
+are routinely logged, reports, session state, RFT JSONL, or benchmark manifests.
+
+Current persistence surfaces store formulas, metrics, policies, trajectory
+metadata, hashes, rewards, and configuration projections—not provider secrets.
+The RFT export records `trains_model: false`; it creates a dataset and does not
+launch model training.
+
+## Model serialization
+
+FactorMiner trains optional small models in process and does not call
+`torch.load` on external checkpoints. Consequently the Python-pickle checkpoint
+execution surface is absent from the current runtime. External serialized model
+objects are not accepted as CLI/MCP inputs.
+
+## Verification
+
+The following checks enforce this document's key invariants:
+
+| Control | Coverage |
+| --- | --- |
+| HTTP requires a token and defaults to loopback | MCP server tests |
+| Tool descriptions retain research-only text | MCP tests and live stdio smoke in CI-compatible environments |
+| Connector timeouts, caps, malformed input, and point-in-time joins | data/crowding regression tests |
+| Custom provider does not read frontier credentials | LLM-interface tests |
+| Sealed feedback excludes evaluator internals | sealed-search tests |
+| HTML escapes model-authored fields | report/MRM tests |
+| Integration files and relative references resolve | `uv run python scripts/check.py` |
+| Package/import contracts remain stable | `test_import_boundaries.py` and CI |

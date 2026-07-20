@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Metric semantics
-    url: https://github.com/minihellboy/factorminer/blob/main/docs/metrics.md
+  - name: Reproducibility and metric semantics
+    url: https://github.com/minihellboy/factorminer/blob/main/docs/reproducibility.md
     about: Read the current IC and ICIR definitions before opening metric questions.
-  - name: FAQ
-    url: https://github.com/minihellboy/factorminer/blob/main/docs/faq.md
-    about: Common answers for setup, data columns, API keys, and reproducibility.
+  - name: Setup and command reference
+    url: https://github.com/minihellboy/factorminer/blob/main/README.md
+    about: Read the supported setup, data contract, and command workflows.

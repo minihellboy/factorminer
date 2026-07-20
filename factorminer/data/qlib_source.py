@@ -61,7 +61,7 @@ def load_qlib_dump(
     a substitute for true turnover data -- callers that need exact turnover
     must supply a dump that already includes it. This mirrors the honesty
     convention used for other derived columns in
-    ``docs/binance-reproduction.md``.
+    ``docs/reproducibility.md``.
 
     Parameters
     ----------

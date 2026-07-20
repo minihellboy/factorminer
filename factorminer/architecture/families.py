@@ -47,8 +47,8 @@ def infer_family(formula: str) -> str:
         return "Cross-Sectional"
     return "Other"
 
-# Coarse "mechanism family" taxonomy (XAlpha-style Macro Brain routing, see
-# docs/landscape-and-extensions.md §1 and docs/architecture.md "Family Discovery").
+# Coarse "mechanism family" taxonomy (XAlpha-style Macro Brain routing).
+# See docs/architecture.md "Memory and retrieval" for the consuming contract.
 # Groups the 11 fine-grained `infer_family` categories (plus the `Other` fallback)
 # into 6 broader mechanisms a research cycle can be themed around. This grouping is
 # additive/local to macro-cycle planning; it does not replace or alter `infer_family`.

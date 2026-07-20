@@ -113,7 +113,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"run_demo.py" = ["E402"]
+"scripts/run_demo.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["factorminer/tests"]

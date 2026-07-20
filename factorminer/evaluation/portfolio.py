@@ -80,7 +80,7 @@ class PortfolioBacktester:
 
         # Turnover for cost adjustment
         turnover = self.compute_turnover(combined_signal, top_fraction=0.2)
-        avg_turnover = float(np.nanmean(turnover))
+        avg_turnover = _finite_mean_or_nan(turnover)
 
         # Long-short return (Q5 - Q1) with transaction costs
         ls_raw = quintile_returns[:, 4] - quintile_returns[:, 0]
@@ -116,7 +116,7 @@ class PortfolioBacktester:
             ic_win_rate = 0.0
 
         # Mean quintile returns
-        q_means = [float(np.nanmean(quintile_returns[:, q])) for q in range(5)]
+        q_means = [_finite_mean_or_nan(quintile_returns[:, q]) for q in range(5)]
 
         # Monotonicity: fraction of adjacent quintile pairs in correct order
         correct_pairs = sum(
@@ -130,8 +130,8 @@ class PortfolioBacktester:
             "q3_return": q_means[2],
             "q4_return": q_means[3],
             "q5_return": q_means[4],
-            "ls_return": float(np.nanmean(ls_net)),
-            "ls_gross_return": float(np.nanmean(ls_raw)),
+            "ls_return": _finite_mean_or_nan(ls_net),
+            "ls_gross_return": _finite_mean_or_nan(ls_raw),
             "ls_cumulative": ls_cumulative,
             "ls_gross_series": ls_raw,
             "ls_net_series": ls_net,
@@ -238,6 +238,13 @@ class PortfolioBacktester:
 # ------------------------------------------------------------------
 # Module-level helpers
 # ------------------------------------------------------------------
+
+def _finite_mean_or_nan(values: np.ndarray) -> float:
+    """Return the finite-value mean, or NaN without an empty-slice warning."""
+    finite = np.asarray(values, dtype=np.float64)
+    finite = finite[np.isfinite(finite)]
+    return float(np.mean(finite)) if finite.size else float("nan")
+
 
 def _rank_array(x: np.ndarray) -> np.ndarray:
     """Compute percentile ranks in [0, 1] for a 1-D array.

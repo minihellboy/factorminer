@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate FactorMiner plugin and managed-agent manifests."""
+"""Validate FactorMiner integration manifests and their local references."""
 
 from __future__ import annotations
 
@@ -11,8 +11,7 @@ from typing import Any
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-PLUGINS = ROOT / "plugins"
-MANAGED = ROOT / "managed-agent-cookbooks"
+INTEGRATIONS = ROOT / "integrations"
 
 errors: list[str] = []
 checked = 0
@@ -66,18 +65,18 @@ def read_frontmatter(path: Path) -> dict[str, Any]:
 
 
 def check_frontmatter() -> None:
-    for path in sorted(PLUGINS.glob("**/agents/*.md")):
+    for path in sorted(INTEGRATIONS.glob("*/plugin/agents/*.md")):
         meta = read_frontmatter(path)
         for key in ("name", "description"):
             if key not in meta:
                 err(f"frontmatter: {rel(path)}: missing '{key}'")
 
-    for path in sorted(PLUGINS.glob("**/commands/*.md")):
+    for path in sorted(INTEGRATIONS.glob("*/plugin/commands/*.md")):
         meta = read_frontmatter(path)
         if "description" not in meta:
             err(f"frontmatter: {rel(path)}: missing 'description'")
 
-    for path in sorted(PLUGINS.glob("**/skills/**/SKILL.md")):
+    for path in sorted(INTEGRATIONS.glob("*/plugin/skills/**/SKILL.md")):
         meta = read_frontmatter(path)
         for key in ("name", "description"):
             if key not in meta:
@@ -141,26 +140,26 @@ def check_refs(path: Path, data: dict[str, Any]) -> None:
 
 
 def check_managed_agents() -> None:
-    for path in sorted(MANAGED.rglob("*.yaml")):
-        data = load_yaml(path)
-        if isinstance(data, dict):
-            check_refs(path, data)
+    for directory in sorted(INTEGRATIONS.glob("*/managed-agent")):
+        for path in sorted(directory.rglob("*.yaml")):
+            data = load_yaml(path)
+            if isinstance(data, dict):
+                check_refs(path, data)
 
-    for directory in sorted(MANAGED.iterdir()) if MANAGED.is_dir() else []:
-        if not directory.is_dir():
-            continue
-        for required in ("agent.yaml", "README.md", "steering-examples.json"):
+        for required in ("agent.yaml", "steering-examples.json"):
             if not (directory / required).is_file():
                 err(f"missing: {rel(directory)}/{required}")
+        if not (directory.parent / "README.md").is_file():
+            err(f"missing: {rel(directory.parent)}/README.md")
 
 
 def check_json_files() -> None:
     patterns = [
         ".claude-plugin/marketplace.json",
-        "plugins/**/.claude-plugin/plugin.json",
-        "plugins/**/.mcp.json",
-        "plugins/**/hooks/*.json",
-        "managed-agent-cookbooks/*/steering-examples.json",
+        "integrations/*/plugin/.claude-plugin/plugin.json",
+        "integrations/*/plugin/.mcp.json",
+        "integrations/*/plugin/hooks/*.json",
+        "integrations/*/managed-agent/steering-examples.json",
     ]
     for pattern in patterns:
         for path in sorted(ROOT.glob(pattern)):

@@ -918,8 +918,8 @@ def _debate_fallback_from_session(output_dir: Path) -> dict[str, Any] | None:
 def read_doc(topic: str) -> str:
     """Return a FactorMiner documentation file.
 
-    Topics include architecture, metrics, reproducibility, baselines, faq,
-    paper-claims, repo-audit, and binance-reproduction.
+    Current topics are architecture, reproducibility, and security. Available
+    topics are discovered from Markdown files under ``docs/`` at runtime.
     """
     safe = topic.replace("..", "").strip("/")
     path = DOCS_DIR / f"{safe}.md"

@@ -65,4 +65,4 @@ uv run factorminer resample-data \
   --rule 10min
 ```
 
-See `docs/binance-reproduction.md` for the paper-style Binance workflow.
+See `docs/reproducibility.md` for the paper-style Binance workflow.
