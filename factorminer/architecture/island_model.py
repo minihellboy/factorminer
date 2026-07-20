@@ -104,8 +104,8 @@ class IslandBiasDescriptor:
         return hints
 
     def filter_candidates(
-        self, candidates: list[tuple[str, str]]
-    ) -> list[tuple[str, str]]:
+        self, candidates: list[Any]
+    ) -> list[Any]:
         """Deterministically bias a generated candidate batch toward this island.
 
         Splits `candidates` into those whose formula's inferred family is in
@@ -116,11 +116,16 @@ class IslandBiasDescriptor:
         if not self.preferred_families or self.family_bias_strength <= 0.0:
             return list(candidates)
 
-        preferred: list[tuple[str, str]] = []
-        other: list[tuple[str, str]] = []
-        for name, formula in candidates:
+        preferred: list[Any] = []
+        other: list[Any] = []
+        for candidate in candidates:
+            formula = (
+                candidate.formula
+                if hasattr(candidate, "formula")
+                else candidate[1]
+            )
             bucket = preferred if infer_family(formula) in self.preferred_families else other
-            bucket.append((name, formula))
+            bucket.append(candidate)
 
         if self.family_bias_strength >= 1.0:
             return preferred or list(candidates)
@@ -152,7 +157,7 @@ class _BiasedFactorGenerator:
         memory_signal: dict[str, Any],
         library_state: dict[str, Any],
         batch_size: int = 40,
-    ) -> list[tuple[str, str]]:
+    ) -> list[Any]:
         biased_signal = dict(memory_signal)
         hints = list(biased_signal.get("recommended_directions", []) or [])
         biased_signal["recommended_directions"] = hints + self.bias.recommended_direction_hints()

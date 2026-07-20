@@ -261,16 +261,49 @@ def _rolling_apply(
     return out
 
 
+def _row_nanmean(sx: np.ndarray, *, keepdims: bool = False) -> np.ndarray:
+    """Row-wise NaN mean that is quiet for rows with no observations."""
+    valid_counts = np.sum(~np.isnan(sx), axis=1)
+    means = np.full(sx.shape[0], np.nan, dtype=np.float64)
+    np.divide(
+        np.nansum(sx, axis=1),
+        valid_counts,
+        out=means,
+        where=valid_counts > 0,
+    )
+    return means[:, None] if keepdims else means
+
+
+def _row_nanvar(
+    sx: np.ndarray,
+    *,
+    ddof: int = 1,
+    keepdims: bool = False,
+) -> np.ndarray:
+    """Row-wise NaN variance with an explicit degrees-of-freedom guard."""
+    means = _row_nanmean(sx, keepdims=True)
+    valid_counts = np.sum(~np.isnan(sx), axis=1)
+    denominator = valid_counts - ddof
+    variances = np.full(sx.shape[0], np.nan, dtype=np.float64)
+    np.divide(
+        np.nansum((sx - means) ** 2, axis=1),
+        denominator,
+        out=variances,
+        where=denominator > 0,
+    )
+    return variances[:, None] if keepdims else variances
+
+
 def _ts_mean(sx: np.ndarray) -> np.ndarray:
-    return np.nanmean(sx, axis=1)
+    return _row_nanmean(sx)
 
 
 def _ts_std(sx: np.ndarray) -> np.ndarray:
-    return np.nanstd(sx, axis=1, ddof=1)
+    return np.sqrt(_row_nanvar(sx))
 
 
 def _ts_var(sx: np.ndarray) -> np.ndarray:
-    return np.nanvar(sx, axis=1, ddof=1)
+    return _row_nanvar(sx)
 
 
 def _ts_sum(sx: np.ndarray) -> np.ndarray:
@@ -282,11 +315,19 @@ def _ts_prod(sx: np.ndarray) -> np.ndarray:
 
 
 def _ts_max(sx: np.ndarray) -> np.ndarray:
-    return np.nanmax(sx, axis=1)
+    out = np.full(sx.shape[0], np.nan, dtype=np.float64)
+    valid = ~np.all(np.isnan(sx), axis=1)
+    if valid.any():
+        out[valid] = np.nanmax(sx[valid], axis=1)
+    return out
 
 
 def _ts_min(sx: np.ndarray) -> np.ndarray:
-    return np.nanmin(sx, axis=1)
+    out = np.full(sx.shape[0], np.nan, dtype=np.float64)
+    valid = ~np.all(np.isnan(sx), axis=1)
+    if valid.any():
+        out[valid] = np.nanmin(sx[valid], axis=1)
+    return out
 
 
 def _ts_argmax(sx: np.ndarray) -> np.ndarray:
@@ -306,23 +347,27 @@ def _ts_argmin(sx: np.ndarray) -> np.ndarray:
 
 
 def _ts_median(sx: np.ndarray) -> np.ndarray:
-    return np.nanmedian(sx, axis=1)
+    out = np.full(sx.shape[0], np.nan, dtype=np.float64)
+    valid = ~np.all(np.isnan(sx), axis=1)
+    if valid.any():
+        out[valid] = np.nanmedian(sx[valid], axis=1)
+    return out
 
 
 def _ts_skew(sx: np.ndarray) -> np.ndarray:
-    m = np.nanmean(sx, axis=1, keepdims=True)
-    s = np.nanstd(sx, axis=1, keepdims=True, ddof=1)
+    m = _row_nanmean(sx, keepdims=True)
+    s = np.sqrt(_row_nanvar(sx, keepdims=True))
     s = np.where(s > _EPS, s, 1.0)
     n = sx.shape[1]
-    sk = np.nanmean(((sx - m) / s) ** 3, axis=1) * n**2 / max((n - 1) * (n - 2), 1)
+    sk = _row_nanmean(((sx - m) / s) ** 3) * n**2 / max((n - 1) * (n - 2), 1)
     return sk
 
 
 def _ts_kurt(sx: np.ndarray) -> np.ndarray:
-    m = np.nanmean(sx, axis=1, keepdims=True)
-    s = np.nanstd(sx, axis=1, keepdims=True, ddof=1)
+    m = _row_nanmean(sx, keepdims=True)
+    s = np.sqrt(_row_nanvar(sx, keepdims=True))
     s = np.where(s > _EPS, s, 1.0)
-    return np.nanmean(((sx - m) / s) ** 4, axis=1) - 3.0
+    return _row_nanmean(((sx - m) / s) ** 4) - 3.0
 
 
 def _ts_rank(sx: np.ndarray) -> np.ndarray:
@@ -333,26 +378,26 @@ def _ts_rank(sx: np.ndarray) -> np.ndarray:
 
 
 def _ts_corr(sx: np.ndarray, sy: np.ndarray) -> np.ndarray:
-    mx = np.nanmean(sx, axis=1, keepdims=True)
-    my = np.nanmean(sy, axis=1, keepdims=True)
+    mx = _row_nanmean(sx, keepdims=True)
+    my = _row_nanmean(sy, keepdims=True)
     dx, dy = sx - mx, sy - my
-    cov = np.nanmean(dx * dy, axis=1)
-    sx_std = np.nanstd(sx, axis=1, ddof=1)
-    sy_std = np.nanstd(sy, axis=1, ddof=1)
+    cov = _row_nanmean(dx * dy)
+    sx_std = np.sqrt(_row_nanvar(sx))
+    sy_std = np.sqrt(_row_nanvar(sy))
     denom = sx_std * sy_std
     return np.where(denom > _EPS, cov / denom, 0.0)
 
 
 def _ts_cov(sx: np.ndarray, sy: np.ndarray) -> np.ndarray:
-    mx = np.nanmean(sx, axis=1, keepdims=True)
-    my = np.nanmean(sy, axis=1, keepdims=True)
-    return np.nanmean((sx - mx) * (sy - my), axis=1)
+    mx = _row_nanmean(sx, keepdims=True)
+    my = _row_nanmean(sy, keepdims=True)
+    return _row_nanmean((sx - mx) * (sy - my))
 
 
 def _ts_beta(sx: np.ndarray, sy: np.ndarray) -> np.ndarray:
     """Rolling OLS slope of x on y."""
-    my = np.nanmean(sy, axis=1, keepdims=True)
-    mx = np.nanmean(sx, axis=1, keepdims=True)
+    my = _row_nanmean(sy, keepdims=True)
+    mx = _row_nanmean(sx, keepdims=True)
     dy = sy - my
     var_y = np.nansum(dy ** 2, axis=1)
     cov_xy = np.nansum((sx - mx) * dy, axis=1)
@@ -361,8 +406,8 @@ def _ts_beta(sx: np.ndarray, sy: np.ndarray) -> np.ndarray:
 
 def _ts_resid(sx: np.ndarray, sy: np.ndarray) -> np.ndarray:
     beta = _ts_beta(sx, sy)
-    my = np.nanmean(sy, axis=1, keepdims=True)
-    mx = np.nanmean(sx, axis=1, keepdims=True)
+    my = _row_nanmean(sy, keepdims=True)
+    mx = _row_nanmean(sx, keepdims=True)
     predicted = mx.squeeze(1) + beta * (sy[:, -1] - my.squeeze(1))
     return sx[:, -1] - predicted
 
@@ -418,18 +463,32 @@ def _cs_rank(x: np.ndarray) -> np.ndarray:
 
 def _cs_zscore(x: np.ndarray) -> np.ndarray:
     M, T = x.shape
-    out = np.empty_like(x, dtype=np.float64)
+    out = np.full_like(x, np.nan, dtype=np.float64)
     for t in range(T):
         col = x[:, t]
-        m = np.nanmean(col)
-        s = np.nanstd(col, ddof=1)
-        out[:, t] = (col - m) / max(s, _EPS)
+        valid = ~np.isnan(col)
+        # A sample standard deviation is undefined below two observations.
+        # Returning NaN explicitly avoids nanmean/nanstd warning on sparse
+        # rolling-window prefixes without changing the mathematical result.
+        if valid.sum() < 2:
+            continue
+        values = col[valid]
+        mean = float(np.mean(values))
+        std = float(np.std(values, ddof=1))
+        out[valid, t] = (values - mean) / max(std, _EPS)
     return out
 
 
 def _cs_demean(x: np.ndarray) -> np.ndarray:
-    m = np.nanmean(x, axis=0, keepdims=True)
-    return x - m
+    valid_counts = np.sum(~np.isnan(x), axis=0, keepdims=True)
+    means = np.full((1, x.shape[1]), np.nan, dtype=np.float64)
+    np.divide(
+        np.nansum(x, axis=0, keepdims=True),
+        valid_counts,
+        out=means,
+        where=valid_counts > 0,
+    )
+    return x - means
 
 
 def _cs_scale(x: np.ndarray) -> np.ndarray:
@@ -446,9 +505,10 @@ def _ts_linreg_slope(x: np.ndarray, window: int) -> np.ndarray:
     out = np.full_like(x, np.nan, dtype=np.float64)
     for t in range(window - 1, T):
         sx = x[:, t - window + 1 : t + 1]
-        x_mean = np.nanmean(sx, axis=1, keepdims=True)
+        x_mean = _row_nanmean(sx, keepdims=True)
         cov = np.nansum((sx - x_mean) * (t_vals[None, :] - t_mean), axis=1)
-        out[:, t] = cov / max(t_var, _EPS)
+        valid = np.any(~np.isnan(sx), axis=1)
+        out[valid, t] = cov[valid] / max(t_var, _EPS)
     return out
 
 
@@ -460,7 +520,7 @@ def _ts_linreg_intercept(x: np.ndarray, window: int) -> np.ndarray:
     out = np.full_like(x, np.nan, dtype=np.float64)
     for t in range(window - 1, T):
         sx = x[:, t - window + 1 : t + 1]
-        x_mean = np.nanmean(sx, axis=1)
+        x_mean = _row_nanmean(sx)
         out[:, t] = x_mean - slope[:, t] * t_mean
     return out
 
@@ -489,7 +549,7 @@ def _ts_linreg_rsquare(x: np.ndarray, window: int) -> np.ndarray:
     out = np.full_like(x, np.nan, dtype=np.float64)
     for t in range(window - 1, T):
         sx = x[:, t - window + 1 : t + 1]
-        x_mean = np.nanmean(sx, axis=1, keepdims=True)
+        x_mean = _row_nanmean(sx, keepdims=True)
         cov = np.nansum((sx - x_mean) * (t_vals[None, :] - t_mean), axis=1)
         slope = cov / max(t_var, _EPS)
         intercept = x_mean.squeeze(1) - slope * t_mean
