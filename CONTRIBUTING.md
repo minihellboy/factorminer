@@ -6,6 +6,9 @@ workflow; technical behavior belongs in the owning documentation.
 
 ## Setup
 
+Python 3.12 or newer is required. CI and the repository tooling run on Python
+3.12, which is the compatibility baseline for contributors and releases.
+
 ```bash
 git clone https://github.com/minihellboy/factorminer.git
 cd factorminer

@@ -3,12 +3,35 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 
 from factorminer.configs import load_default_yaml
 from factorminer.utils.config import load_config
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_package_requires_python_312_or_newer():
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    classifiers = pyproject["project"]["classifiers"]
+    minor_version_classifiers = [
+        classifier
+        for classifier in classifiers
+        if classifier.startswith("Programming Language :: Python :: 3.")
+    ]
+
+    assert pyproject["project"]["requires-python"] == ">=3.12"
+    assert minor_version_classifiers == ["Programming Language :: Python :: 3.12"]
+    assert pyproject["tool"]["ruff"]["target-version"] == "py312"
+    assert pyproject["tool"]["mypy"]["python_version"] == "3.12"
+
+
+def test_ci_uses_single_python_312_runtime():
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+
+    assert 'python-version: "3.12"' in workflow
+    assert "matrix.python-version" not in workflow
 
 
 def test_load_default_yaml_returns_packaged_config():
