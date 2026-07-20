@@ -314,10 +314,13 @@ def facts_to_asof_frame(
         if not facts:
             data[leaf_key] = col
             continue
-        filed_ts = np.array([pd.Timestamp(f.filed).normalize() for f in facts])
-        values = np.array([f.value for f in facts], dtype=np.float64)
+        ordered_facts = sorted(facts, key=lambda fact: pd.Timestamp(fact.filed))
+        filed_ns = pd.DatetimeIndex(
+            [pd.Timestamp(fact.filed).normalize() for fact in ordered_facts]
+        ).asi8
+        values = np.array([fact.value for fact in ordered_facts], dtype=np.float64)
         # For each bar date, rightmost fact with filed <= date
-        idxs = np.searchsorted(filed_ts, dates.values, side="right") - 1
+        idxs = np.searchsorted(filed_ns, dates.asi8, side="right") - 1
         valid = idxs >= 0
         col[valid] = values[idxs[valid]]
         data[leaf_key] = col
