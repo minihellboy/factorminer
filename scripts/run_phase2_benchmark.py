@@ -5,10 +5,10 @@ Generates a complete publication-quality benchmarking report comparing
 HelixFactor (Phase 2) against FactorMiner (Ralph Loop) and all baselines.
 
 Usage:
-    python run_phase2_benchmark.py --mock                  # quick mock data run
-    python run_phase2_benchmark.py --mock --n-factors 40   # custom factor count
-    python run_phase2_benchmark.py --mock --full-ablation  # include all ablations
-    python run_phase2_benchmark.py --data path/to/data.csv # real data
+    python scripts/run_phase2_benchmark.py --mock                  # quick mock data run
+    python scripts/run_phase2_benchmark.py --mock --n-factors 40   # custom factor count
+    python scripts/run_phase2_benchmark.py --mock --full-ablation  # include all ablations
+    python scripts/run_phase2_benchmark.py --data path/to/data.csv # real data
 
 Outputs (in results/phase2_benchmark/):
     benchmark_report.html      — full interactive HTML report

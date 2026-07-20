@@ -1,437 +1,225 @@
 # FactorMiner
 
-**LLM-driven formulaic alpha mining with typed operators, structured memory, strict runtime recomputation, and a Phase 2 Helix research lane**
+**A governed research engine for discovering, evaluating, and documenting
+interpretable alpha factors.**
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![CI](https://github.com/minihellboy/factorminer/actions/workflows/ci.yml/badge.svg)](https://github.com/minihellboy/factorminer/actions/workflows/ci.yml)
 
-FactorMiner is a research framework for discovering interpretable alpha factors from market data. It combines:
+FactorMiner combines a typed formula DSL, LLM-guided search, structured memory,
+strict runtime recomputation, and reviewable research artifacts. It follows the
+system described in [*FactorMiner: A Self-Evolving Agent with Skills and
+Experience Memory for Financial Alpha Discovery*](https://arxiv.org/abs/2602.14670)
+and extends it with explicit architecture contracts, stronger validation, and a
+model-agnostic agent integration surface.
 
-- a typed DSL over OHLCV-style market features
-- an LLM-guided mining loop
-- structured experience memory
-- library admission and replacement based on predictive power and orthogonality
-- strict runtime recomputation for analysis and benchmark reporting
-- an extended Helix lane for Phase 2 retrieval, canonicalization, and post-admission validation
+FactorMiner is research infrastructure. It proposes and evaluates artifacts; it
+does not recommend trades, size positions, bind risk limits, route orders, or
+operate an autonomous account.
 
-The implementation is based on *FactorMiner: A Self-Evolving Agent with Skills and Experience Memory for Financial Alpha Discovery* (Wang et al., 2026), then extended with a cleaner architecture layer and a broader research surface.
+## What is included
 
-## Repository Status
+| Surface | Purpose |
+| --- | --- |
+| Typed DSL and operator registry | Safe, interpretable formulas over OHLCV and registered feature leaves |
+| `RalphLoop` | Canonical paper-style generate/evaluate/evolve lane |
+| `HelixLoop` | Extended retrieval, debate, canonicalization, and validation lane |
+| Policy-based memory | Paper, none, KG, family-, regime-, and edit-aware policies |
+| Runtime evaluation | Formula recomputation on the supplied dataset; saved summaries are not trusted as truth |
+| Benchmark runtime | Top-K freeze, memory/strategy ablations, CPCV/PBO, cost pressure, and efficiency |
+| Research extensions | EDGAR/futures data, crowding, capacity, sensitivity, model-risk, and provenance artifacts |
+| Agent gateway | MCP server plus a plugin and managed-agent reference integration |
 
-Current implementation focus:
+The built-in catalog contains 110 normalized paper factors. Named third-party
+baselines are not all faithful reproductions; manifests label catalog subsets,
+proxies, runtime loops, and saved libraries explicitly. See
+[Reproducibility](docs/reproducibility.md) before interpreting benchmark output.
 
-- canonical paper-style and research mining lanes
-- typed DSL operators for OHLCV-style factor formulas
-- `110` paper factors shipped in the built-in catalog
-- runtime recomputation for analysis and benchmark reporting
-- CI-backed lint, test, package, CLI smoke, and benchmark-smoke checks
+## Install
 
-For live local counts, run:
-
-```bash
-uv run pytest --collect-only -q factorminer/tests
-uv run python - <<'PY'
-from pathlib import Path
-files = sorted(Path("factorminer").rglob("*.py"))
-lines = sum(p.read_text(errors="ignore").count("\n") + 1 for p in files)
-print(f"Python files: {len(files)}")
-print(f"Python lines: {lines}")
-PY
-```
-
-Primary execution surfaces:
-
-- `RalphLoop`: canonical paper-style mining loop
-- `HelixLoop`: Phase 2 research loop with optional retrieval and validation extensions
-- `factorminer.benchmark.runtime`: canonical benchmark runner
-- `factorminer.architecture`: canonical contracts, policies, stages, and services
-
-## Documentation Map
-
-- [Architecture Deep Dive](docs/architecture.md)
-- [Metric Semantics](docs/metrics.md)
-- [Paper Claims Matrix](docs/paper-claims.md)
-- [Benchmark Baselines](docs/baselines.md)
-- [FAQ](docs/faq.md)
-- [Reproducibility Guide](docs/reproducibility.md)
-- [Binance Reproduction Notes](docs/binance-reproduction.md)
-- [Bundled Data Notes](data/README.md)
-- [Repo Audit](docs/repo-audit.md)
-- [Landscape Review & Extension Roadmap](docs/landscape-and-extensions.md)
-- [July 2026 Research & Business Outlook](docs/july-2026-research-and-business-outlook.md)
-- [Security Considerations](docs/security.md)
-- [Contributing](CONTRIBUTING.md)
-- [Roadmap](ROADMAP.md)
-
-## Architecture At A Glance
-
-```mermaid
-flowchart TD
-    A["Market Data"] --> B["DatasetContract"]
-    B --> C["Typed DSL + Operator Registry"]
-    C --> D["Ralph / Helix Stage Pipeline"]
-    D --> E["EvaluationKernel"]
-    E --> F["FactorAdmissionService"]
-    F --> G["FactorLibrary"]
-    D --> H["MemoryPolicy"]
-    H --> I["PromptContextBuilder"]
-    I --> D
-    G --> J["Runtime Analysis"]
-    G --> K["Runtime Benchmarks"]
-    H --> K
-    B --> K
-```
-
-Two execution lanes share the same core contracts:
-
-| Lane | Purpose | Canonical loop | Typical use |
-| --- | --- | --- | --- |
-| Paper lane | strict, benchmark-facing mining | `RalphLoop` | reproducible paper-style runs, library freeze, runtime evaluation |
-| Helix lane | extended research mode | `HelixLoop` | debate, KG retrieval, family-aware prompts, canonicalization, Phase 2 validation |
-
-## Core Concepts
-
-### 1. Typed factor DSL
-
-Factors are formulas over the canonical feature set:
-
-```text
-$open, $high, $low, $close, $volume, $amt, $vwap, $returns
-```
-
-The DSL is parsed into expression trees, executed through the operator registry, and recomputed on demand during analysis and benchmarks.
-Paper appendix operator names such as `SignedPower`, `Med`, `Rsquare`,
-`Slope`, `Resi`, `Eq`, `Min2`, `Max2`, `TsDecay`, and `Scale` are accepted by
-the parser.
-
-### 2. Memory-guided mining
-
-Mining is not plain prompt-and-filter generation. The loop builds a structured retrieval signal from experience memory and library state, then uses it to steer candidate generation.
-
-Supported memory policies:
-
-- `paper`
-- `none`
-- `kg`
-- `family_aware`
-- `regime_aware`
-
-### 3. Strict runtime recomputation
-
-Saved library metadata is not treated as the final source of truth for analysis. The `evaluate`, `combine`, `visualize`, and benchmark paths recompute factor signals from formulas on the supplied dataset.
-
-### 4. Canonical benchmark surface
-
-`factorminer.benchmark.runtime` is the canonical benchmark entry point. It supports:
-
-- Top-K freeze evaluation across universes
-- memory ablations
-- strategy-grid ablations over `memory policy × dependence metric × backend`
-- cost-pressure evaluation
-- operator and factor efficiency benchmarking
-
-## Canonical Runtime Flow
-
-```mermaid
-flowchart LR
-    A["RetrieveStage"] --> B["GenerateStage"]
-    B --> C["EvaluateStage"]
-    C --> D["LibraryUpdateStage"]
-    D --> E["DistillStage"]
-    E --> A
-
-    A -.-> M["MemoryPolicy"]
-    C -.-> K["EvaluationKernel"]
-    D -.-> L["FactorAdmissionService"]
-    B -.-> P["PromptContextBuilder"]
-```
-
-The same stage contract is used by both Ralph and Helix. Helix swaps in richer implementations for retrieval, proposal, validation, and distillation without changing the orchestration model.
-
-## Setup
-
-### Recommended: `uv`
+The recommended contributor setup uses [uv](https://docs.astral.sh/uv/):
 
 ```bash
 git clone https://github.com/minihellboy/factorminer.git
 cd factorminer
-
-uv sync --group dev
-uv sync --group dev --extra llm
 uv sync --group dev --all-extras
 ```
 
-Notes:
-
-- `uv sync --group dev --all-extras` is the intended full contributor setup.
-- The GPU extra is Linux-oriented because `cupy-cuda12x` is not generally installable on macOS.
-- The packaged default config uses the portable NumPy backend. Pass `--gpu` only when CUDA is available.
-- Wheels and sdists include `factorminer/configs/*.yaml` and exclude the internal test package.
-- Use `uv run ...` for all local commands.
-
-### `pip` fallback
+For a smaller local environment:
 
 ```bash
-python3 -m pip install -e .
-python3 -m pip install -e ".[llm]"
-python3 -m pip install -e ".[all]"
+uv sync --group dev
+uv sync --group dev --extra llm   # add hosted/local LLM providers
+uv sync --group dev --extra mcp   # add the MCP server
 ```
 
-## Quick Start
-
-### Demo without API keys
+The portable default backend is NumPy. The CUDA extra is Linux-oriented; use
+`--gpu` only where CUDA is available. A pip editable install also works:
 
 ```bash
-uv run python run_demo.py
+python3 -m pip install -e ".[llm,mcp]"
 ```
 
-### One-command quickstart
+## Quick start
+
+No API key is required for the deterministic demo and mock workflow:
 
 ```bash
+uv run python scripts/run_demo.py
 uv run factorminer quickstart
-```
-
-This runs `doctor`, mines a tiny mock library into
-`/tmp/factorminer-quickstart`, generates a static HTML report, and prints the
-next commands for real data.
-
-### Deterministic quickstart examples
-
-For a runnable, data-shaped walkthrough with sample CSVs and safe `/tmp` output paths, see [examples/quickstart/README.md](examples/quickstart/README.md).
-
-### CLI overview
-
-```bash
-uv run factorminer --help
-```
-
-Primary commands:
-
-- `doctor`
-- `init-config`
-- `quickstart`
-- `validate-data`
-- `resample-data`
-- `mine`
-- `helix`
-- `evaluate`
-- `combine`
-- `visualize`
-- `benchmark` (incl. `benchmark cpcv` — Combinatorial Purged CV + Probability of Backtest Overfitting)
-- `export` (`--format csv|formulas|qlib`, `--anonymize`)
-- `portfolio-construct` (HRP / risk parity / CVaR position weighting over a combined signal)
-- `ingest-research` (screen and classify an external research note into mining-cycle context; `--eligibility-mode ohlcv_only|alt_enabled`)
-- `attach-edgar` (join point-in-time SEC EDGAR XBRL fundamentals — `$eps`/`$revenue`/`$book_equity`/`$shares_out` — onto an OHLCV panel)
-- `build-futures` (build a roll-adjusted continuous futures panel with `$basis`/`$spot`/`$premium`/`$roll_yield`/`$oi` leaves)
-- `crowding` (consensus-factor novelty screen + Lou–Polk CoMetric + hyperbolic decay crowding taxonomy; research risk labels only)
-- `jump-worth` (geometric gate for whether a non-local LLM jump is worth its cost vs. a cheap local edit)
-- `model-co-optimize` (`--model-kind ridge|lasso|xgboost|corr_graphsage`, `--train-objective mse|margin_pairwise|listnet|bpr`)
-- `retrieval-smoke` (hybrid BM25+dense memory-retrieval quality check, no network)
-- `sealed-search` (opt-in Agora-style sealed multi-evaluator promotion, alongside — not replacing — default admission)
-- `export-rft-dataset` (reward-annotated JSONL export for external RFT/GRPO fine-tuning; does not train a model in-process)
-- `mcp-serve` (`--transport stdio|http`; HTTP is opt-in, loopback-only, and requires a bearer token)
-- `session inspect` (`--telemetry` for per-round mining telemetry, `--sensitivity <factor_id>` for AST leaf/subtree ablation)
-
-## Common Workflows
-
-### Mine with mock data
-
-```bash
-uv run factorminer mine --mock -n 2 -b 8 -t 10
-```
-
-Omitting `--gpu` and `--cpu` respects the configured backend. The shipped default is `numpy`; `--gpu` and `--cpu` are explicit overrides.
-
-Paper-mode admission and benchmark selection use `ic_paper_mean =
-abs(mean(IC_t))` and `ic_paper_icir = abs(mean(IC_t)) / std(IC_t)`. The legacy
-diagnostic `ic_abs_mean = mean(abs(IC_t))` is still reported but is not the
-default paper quality gate. See [Metric Semantics](docs/metrics.md).
-
-### First-run health check
-
-```bash
-uv run factorminer doctor
 uv run factorminer doctor --json
 ```
 
-### Create a local starter config
+`quickstart` writes a small library and static report under
+`/tmp/factorminer-quickstart`. To mine directly:
 
 ```bash
-uv run factorminer init-config factorminer.local.yaml
-uv run factorminer --config factorminer.local.yaml mine --mock
+uv run factorminer -o /tmp/factorminer-run mine --mock -n 2 -b 8 -t 10
+uv run factorminer session inspect /tmp/factorminer-run --telemetry
 ```
 
-### Run Helix with selected Phase 2 features
+For real data, validate the schema first:
 
 ```bash
-uv run factorminer --cpu helix --mock --debate --canonicalize -n 2 -b 8 -t 10
+uv run factorminer validate-data path/to/market_data.csv
+uv run factorminer -c factorminer.local.yaml -o output-real \
+  mine --data path/to/market_data.csv
 ```
 
-### Evaluate a saved library with strict recomputation
-
-```bash
-uv run factorminer --cpu evaluate output/factor_library.json --mock --period both --top-k 10
-```
-
-### Combine factors on explicit fit/eval splits
-
-```bash
-uv run factorminer --cpu combine output/factor_library.json \
-  --mock \
-  --fit-period train \
-  --eval-period test \
-  --method all \
-  --selection lasso \
-  --top-k 20
-```
-
-### Visualize recomputed artifacts
-
-```bash
-uv run factorminer --cpu visualize output/factor_library.json \
-  --mock \
-  --period test \
-  --correlation \
-  --ic-timeseries \
-  --quintile \
-  --tearsheet
-```
-
-### Run the strict paper benchmark lane
-
-```bash
-uv run factorminer --cpu --config factorminer/configs/paper_repro.yaml \
-  benchmark table1 --mock --baseline factor_miner
-```
-
-### Run the strategy-grid ablation lane
-
-```bash
-uv run factorminer --cpu benchmark ablation-strategy --mock --baseline factor_miner
-```
-
-### Inspect a completed or partial session
-
-```bash
-uv run factorminer session inspect output
-uv run factorminer session inspect output --json
-```
-
-## Benchmark Surface
-
-Available benchmark commands:
-
-- `benchmark table1`
-- `benchmark ablation-memory`
-- `benchmark ablation-strategy`
-- `benchmark cost-pressure`
-- `benchmark efficiency`
-- `benchmark suite`
-
-The benchmark suite uses the runtime recomputation layer and carries protocol, dataset, and runtime-manifest metadata into emitted artifacts.
-See [Benchmark Baselines](docs/baselines.md) for which baselines are real,
-partial, or proxy-backed today.
-
-## Configuration Model
-
-The default config lives at [`factorminer/configs/default.yaml`](factorminer/configs/default.yaml).
-
-Top-level config sections:
-
-- `mining`
-- `evaluation`
-- `data`
-- `llm`
-- `memory`
-- `phase2`
-- `benchmark`
-- `research`
-
-Important configuration themes:
-
-- `evaluation.backend`: `numpy`, `c`, or `gpu`
-- `--gpu/--cpu`: explicit CLI backend override; omitted means use config
-- `evaluation.redundancy_metric`: `spearman`, `pearson`, or `distance_correlation`
-- `memory.policy`: `paper`, `none`, `kg`, `family_aware`, or `regime_aware`
-- `benchmark.strategy_ablation.*`: runtime grid over memory policy, dependence metric, and backend
-- `research.*`: multi-horizon scoring, uncertainty controls, and selection models
-
-Profile configs shipped in the repo:
-
-- [`factorminer/configs/binance_sample.yaml`](factorminer/configs/binance_sample.yaml)
-- [`factorminer/configs/paper_repro.yaml`](factorminer/configs/paper_repro.yaml)
-- [`factorminer/configs/paper_repro_binance.yaml`](factorminer/configs/paper_repro_binance.yaml)
-- [`factorminer/configs/benchmark_full.yaml`](factorminer/configs/benchmark_full.yaml)
-- [`factorminer/configs/helix_research.yaml`](factorminer/configs/helix_research.yaml)
-- [`factorminer/configs/demo_local.yaml`](factorminer/configs/demo_local.yaml)
-
-## Data Format
-
-Input data is expected to include at least:
+The minimum panel fields are:
 
 ```text
 datetime, asset_id, open, high, low, close, volume, amount
 ```
 
-Accepted identifier aliases include `code`, `ticker`, `symbol`, `ts_code`, and `amt`. If `vwap` or `returns` are missing, the runtime layer derives them.
+Identifier aliases such as `symbol`, `ticker`, `code`, and `ts_code` are
+accepted. Missing `vwap` and `returns` can be derived by the runtime layer.
 
-## Project Layout
+## Core workflows
+
+Run the extended research lane:
+
+```bash
+uv run factorminer --cpu helix --mock --debate --canonicalize -n 2 -b 8 -t 10
+```
+
+Recompute and evaluate a saved library:
+
+```bash
+uv run factorminer --cpu evaluate output/factor_library.json \
+  --mock --period both --top-k 10
+```
+
+Build a composite on explicit fit/evaluation splits:
+
+```bash
+uv run factorminer --cpu combine output/factor_library.json \
+  --mock --fit-period train --eval-period test --method all \
+  --selection lasso --top-k 20
+```
+
+Run a benchmark or the standalone Phase 2 report builder:
+
+```bash
+uv run factorminer --cpu --config factorminer/configs/paper_repro.yaml \
+  benchmark table1 --mock --baseline factor_miner
+uv run factorminer --cpu benchmark ablation-strategy --mock \
+  --baseline factor_miner
+uv run python scripts/run_phase2_benchmark.py --mock
+```
+
+The CLI also exposes data validation/resampling, visualization, CPCV, portfolio
+construction, crowding and sensitivity diagnostics, EDGAR/futures attachment,
+research ingestion, RFT dataset export, sealed search, model co-optimization,
+and MCP transports. Use `uv run factorminer --help` and command-level `--help`
+as the authoritative command reference.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    D["Market data"] --> C["Dataset contract"]
+    C --> L["Ralph / Helix stages"]
+    M["Memory policy"] --> L
+    L --> E["Evaluation kernel"]
+    E --> A["Admission service"]
+    A --> F["Factor library"]
+    F --> R["Runtime analysis"]
+    F --> B["Runtime benchmarks"]
+    C --> R
+    C --> B
+```
+
+Both loops use the same validated factor generator, parser, stage contract,
+admission service, and policy persistence. Helix adds richer components without
+creating a parallel benchmark or memory infrastructure. The architecture layer
+owns reusable contracts and policy; loops should remain orchestration.
+
+See [Architecture](docs/architecture.md) for contracts, package ownership, and
+dependency direction.
+
+## Repository layout
 
 ```text
 factorminer/
-├── agent/           LLM providers, prompts, debate
-├── architecture/    Canonical contracts, policies, stages, services
-├── benchmark/       Canonical runtime benchmark suite and compatibility exports
-├── configs/         YAML profiles
-├── core/            Loops, parser, expression trees, factor library, I/O
-├── data/            Loaders, preprocessing, tensor building, mock data
-├── evaluation/      Metrics, runtime recomputation, analysis, validation
-├── memory/          Experience memory, KG retrieval, embeddings
-├── operators/       Operator specs, backends, registry
-├── tests/           Pytest coverage
-└── utils/           Config loading, plotting, reporting
+├── factorminer/
+│   ├── architecture/   contracts, policies, stages, reusable services
+│   ├── core/           loops, DSL parser, expression trees, library, I/O
+│   ├── agent/          providers, prompts, generation, debate
+│   ├── data/           loaders, preprocessing, connectors, tensor building
+│   ├── evaluation/     recomputation, metrics, validation, reports
+│   ├── benchmark/      canonical runtime benchmarks and compatibility shim
+│   ├── memory/         stores, retrieval, KG, embeddings
+│   ├── operators/      typed operator specs and execution backends
+│   ├── mcp/            agent-facing MCP server
+│   └── tests/          regression and contract coverage
+├── integrations/       plugin and managed-agent reference deployments
+├── scripts/            demos, standalone runners, repository validation
+├── docs/               architecture, research, reproducibility, security
+└── data/               documented public onboarding sample
 ```
 
-## Current Implementation Notes
+`output/` is mutable runtime state and intentionally ignored. Repository-local
+configuration belongs in a separate untracked file, not in the shipped defaults.
 
-- `factorminer.architecture` is now the canonical place for protocol, dataset, memory, evaluation, stage, and prompt boundaries.
-- `factorminer.benchmark.runtime` is the canonical benchmark runner.
-- `factorminer.benchmark.helix_benchmark` is a deprecated 46-line import shim;
-  `run_phase2_benchmark.py` delegates its comparisons and ablations to the
-  canonical runtime.
-- Ralph and Helix share validated factor generation plus policy-based memory
-  persistence; `ExperienceMemoryManager` remains only for compatibility.
-- `output/` is ignored and should be treated as mutable runtime state, not source-controlled project state.
+## Agent and financial-services integration
+
+FactorMiner can run as a local stdio MCP server or an opt-in authenticated HTTP
+server. The reference `factor-researcher` integration keeps two deployment
+forms beside each other:
+
+- `integrations/factor-researcher/plugin/`
+- `integrations/factor-researcher/managed-agent/`
+
+Both reuse the same system prompt and skills. External data services remain
+customer-controlled; FactorMiner preserves the research-only boundary and
+returns artifacts for human review. Setup, connector examples, permissions,
+and deployment notes are in the
+[integration guide](integrations/factor-researcher/README.md).
+
+## Documentation
+
+| Document | Owns |
+| --- | --- |
+| [Architecture](docs/architecture.md) | Runtime contracts, dependency direction, package ownership, debt |
+| [Reproducibility](docs/reproducibility.md) | Data contracts, metrics, baseline provenance, public and paper-scale workflows |
+| [Security](docs/security.md) | Connectors, MCP, model/content boundaries, persistence, secrets |
+| [Integration guide](integrations/factor-researcher/README.md) | Agent packaging, financial-data connectors, deployment guardrails |
+| [Contributing](CONTRIBUTING.md) | PR scope, checks, ownership, and documentation governance |
 
 ## Development
 
-### Run tests
-
-```bash
-uv run pytest -q factorminer/tests
-```
-
-### Lint
-
 ```bash
 uv run ruff check .
-```
-
-### Build a wheel
-
-```bash
+uv run python scripts/check.py
+uv run pytest -q factorminer/tests
 uv build
 ```
 
-### Scoped type-health check
-
-Full-repo mypy is intentionally non-blocking for now. The current cleanup target reports the fixed stabilization surface without making CI depend on it:
-
-```bash
-uv run mypy --ignore-missing-imports --follow-imports=skip factorminer/utils/config.py factorminer/evaluation/runtime.py factorminer/operators/sandbox.py factorminer/operators/custom.py factorminer/operators/auto_inventor.py factorminer/memory/evolution.py factorminer/memory/online_regime_memory.py factorminer/cli.py
-```
+See [Contributing](CONTRIBUTING.md) for focused test commands, import-boundary
+rules, and PR expectations.
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE).
+MIT. See [LICENSE](LICENSE).

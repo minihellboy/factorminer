@@ -7,8 +7,8 @@ performers ("migration"). This is a population-diversity mechanism, not a new
 mining algorithm: it reuses the existing `RalphLoop`/`HelixLoop` mining loop
 unchanged (one loop instance per island) and the existing
 `FactorAdmissionService` admission/replacement logic (one destination-library
-gate per migrant). See `docs/landscape-and-extensions.md` §2 ("AlphaEvolve /
-FunSearch") for the motivating gap: FactorMiner's family-aware memory policy
+gate per migrant). The design follows the island-population pattern used by
+AlphaEvolve/FunSearch: FactorMiner's family-aware memory policy
 reranks *one* shared library by family gap; it has no multi-population /
 periodic-migration mechanism to prevent one dominant factor family from
 crowding out the search.

@@ -27,7 +27,7 @@ from factorminer.core.library_io import save_library
 from factorminer.core.session import MiningSession
 from factorminer.evaluation.runtime import DatasetSplit, EvaluationDataset, FactorEvaluationArtifact
 from factorminer.utils.config import load_config
-from run_phase2_benchmark import (
+from scripts.run_phase2_benchmark import (
     _build_phase2_manifest,
     _collect_runtime_manifest_refs,
     _generate_markdown_report,

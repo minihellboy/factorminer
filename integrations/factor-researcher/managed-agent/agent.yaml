@@ -8,7 +8,7 @@ name: factor-researcher
 model: claude-opus-4-7
 
 system:
-  file: ../../plugins/agent-plugins/factor-researcher/agents/factor-researcher.md
+  file: ../plugin/agents/factor-researcher.md
   append: >-
     You are running headless. Write every artifact under ./out/. You orchestrate;
     you do not run the engine yourself. Delegate each workflow phase to a leaf
@@ -34,7 +34,7 @@ mcp_servers:
   - { type: url, name: daloopa, url: "${DALOOPA_MCP_URL}" }
 
 skills:
-  - { from_plugin: ../../plugins/agent-plugins/factor-researcher }
+  - { from_plugin: ../plugin }
 
 callable_agents:
   - { manifest: ./subagents/data-steward.yaml }

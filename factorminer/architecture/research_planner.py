@@ -1,6 +1,6 @@
 """Macro research-cycle planner routed by coarse mechanism family (XAlpha Macro Brain).
 
-XAlpha (arXiv, Jul 2026 -- see `docs/landscape-and-extensions.md` §1) plans research
+XAlpha (arXiv:2607.08332) plans research
 cycles with a "Macro Brain" that names a cycle theme and routes generation toward a
 mechanism family, in one of three modes: fixed-theme, coarse-guided, or memory-driven.
 This module implements the equivalent surface for FactorMiner, reusing

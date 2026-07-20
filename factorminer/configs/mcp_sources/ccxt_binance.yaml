@@ -1,7 +1,7 @@
 # ccxt-backed MCP source config -- crypto OHLCV via mcp-server-ccxt
 # (https://github.com/doggybee/mcp-server-ccxt), reusing FactorMiner's generic
 # MCPDataSourceConfig client (factorminer/data/mcp_source.py). See "Crypto
-# connectors (ccxt)" in docs/financial-services-integration.md for the full
+# connectors (ccxt)" in integrations/factor-researcher/README.md for the full
 # explanation of the fields below.
 #
 # Usage:
@@ -38,7 +38,7 @@ constant_columns:
   asset_id: "BTC/USDT"
 # Public OHLCV has no separate quote-asset turnover field; approximate dollar
 # volume as close * volume (documented approximation, same spirit as the
-# recomputed `vwap` in docs/binance-reproduction.md).
+# recomputed `vwap` in docs/reproducibility.md).
 derive_amount_from_close_volume: true
 # ccxt timestamps are epoch milliseconds.
 datetime_unit: ms
