@@ -37,7 +37,7 @@ import json
 import logging
 import time
 import warnings
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -207,7 +207,7 @@ def _build_phase2_manifest(
     return {
         "benchmark_name": "phase2",
         "output_dir": str(output_dir),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "run_parameters": {
             "methods": methods,
             "seed": seed,

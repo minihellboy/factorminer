@@ -34,7 +34,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -139,7 +139,7 @@ class RegimeSpecificPattern:
     ic_out_of_regime: float = 0.0
     regime_specificity: float = 1.0
     discovery_date: datetime = field(
-        default_factory=lambda: datetime.now(tz=timezone.utc)
+        default_factory=lambda: datetime.now(tz=UTC)
     )
     confidence: float = 1.0
     n_observations: int = 1
@@ -175,10 +175,10 @@ class RegimeSpecificPattern:
     @classmethod
     def from_dict(cls, d: dict) -> RegimeSpecificPattern:
         discovery_date = datetime.fromisoformat(
-            d.get("discovery_date", datetime.now(tz=timezone.utc).isoformat())
+            d.get("discovery_date", datetime.now(tz=UTC).isoformat())
         )
         if discovery_date.tzinfo is None:
-            discovery_date = discovery_date.replace(tzinfo=timezone.utc)
+            discovery_date = discovery_date.replace(tzinfo=UTC)
         return cls(
             formula_template=d["formula_template"],
             regime=RegimeState.from_dict(d["regime"]),

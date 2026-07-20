@@ -53,7 +53,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -106,7 +106,7 @@ RESEARCH_MODE_CAVEAT = (
 )
 
 
-class AgreementRule(str, Enum):
+class AgreementRule(StrEnum):
     """Multi-evaluator agreement rule for promotion eligibility."""
 
     MAJORITY = "majority"
