@@ -1,0 +1,67 @@
+# Example: equity panel + SEC EDGAR XBRL fundamental leaves
+# Usage:
+#   uv run factorminer --cpu mine --config factorminer/configs/edgar_fundamentals_example.yaml --mock
+#
+# For a live panel, attach fundamentals first:
+#   uv run factorminer attach-edgar --data prices.csv --cik-map cik_map.yaml -o panel_with_fundamentals.csv
+# then point data_path at the joined file.
+
+data_path: null
+output_dir: "./output/edgar_example"
+
+mining:
+  target_library_size: 20
+  batch_size: 10
+  max_iterations: 5
+  ic_threshold: 0.02
+  icir_threshold: 0.3
+  correlation_threshold: 0.7
+
+evaluation:
+  backend: "numpy"
+  num_workers: 2
+  fast_screen_assets: 20
+  signal_failure_policy: "reject"
+
+data:
+  market: "a_shares"
+  asset_class: "equity"
+  universe: "CSI500"
+  frequency: "1d"
+  # Defaults + EDGAR leaves (must be registered / present as columns)
+  features:
+    - "$open"
+    - "$high"
+    - "$low"
+    - "$close"
+    - "$volume"
+    - "$amt"
+    - "$vwap"
+    - "$returns"
+    - "$eps"
+    - "$revenue"
+    - "$book_equity"
+    - "$shares_out"
+  train_period: ["2024-01-01", "2024-09-30"]
+  test_period: ["2024-10-01", "2024-12-31"]
+  targets:
+    - name: "paper"
+      entry_delay_bars: 1
+      holding_bars: 1
+      price_pair: "open_to_close"
+      return_transform: "simple"
+  default_target: "paper"
+
+llm:
+  provider: "mock"
+  model: "mock"
+  temperature: 0.8
+  max_tokens: 2048
+  batch_candidates: 10
+
+memory:
+  policy: "paper"
+
+# RMA A-layer: keep research fragments that map onto registered fundamental leaves
+research_absorption:
+  eligibility_mode: "alt_enabled"

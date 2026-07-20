@@ -117,18 +117,22 @@ data:
 # LLM provider settings
 # ---------------------------------------------------------------------------
 llm:
-  # Provider name: "openai", "anthropic", "google", or "mock"
+  # Provider name: "openai", "anthropic", "google", "openai_compatible",
+  # "local", or "mock"
   provider: "google"
 
   # Model identifier (provider-specific)
   # OpenAI:    "gpt-4o", "gpt-4", etc.
   # Anthropic: "claude-sonnet-4-6", "claude-opus-4-6", etc.
   # Google:    "gemini-2.0-flash", etc.
+  # Local:     Ollama/vLLM/SGLang model name
   model: "gemini-2.0-flash"
 
   # API key for the chosen provider.
   # Can also be set via environment variables:
   #   OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY
+  # NEVER set a frontier API key when provider is openai_compatible/local —
+  # local engines use cascade.draft_api_key / local_api_key instead.
   api_key: null
 
   # Sampling temperature for factor generation (higher = more creative)
@@ -139,6 +143,41 @@ llm:
 
   # Number of candidate factors requested per LLM call
   batch_candidates: 40
+
+  # Prompt caching (default ON). Anthropic: cache_control ephemeral breakpoint
+  # on the stable system prefix. OpenAI: prompt_cache_key from that prefix.
+  # Harmless no-op under --mock / Google.
+  prompt_cache: true
+
+  # Request timeout seconds for frontier HTTP clients.
+  timeout_s: 120.0
+
+  # Optional OpenAI-compatible base_url (local YAML only — SSRF-sensitive;
+  # never accept from remote/untrusted input). Prefer cascade.draft_base_url
+  # for local draft engines so frontier keys are not forwarded.
+  base_url: null
+
+  # Cheap-first cascade: local draft -> deterministic DSL parse signal ->
+  # frontier escalate only on parse failure. Default OFF.
+  # Viable because FactorMiner has a deterministic expression parser — a free
+  # routing signal most generic agentic-cost papers do not have.
+  cascade_enabled: false
+  cascade_draft_provider: "openai_compatible"
+  cascade_draft_model: "llama3.2"
+  # SECURITY (SSRF): draft_base_url from local config only.
+  cascade_draft_base_url: "http://127.0.0.1:11434/v1"
+  cascade_timeout_s: 60.0
+  cascade_escalate_on_parse_failure: true
+
+  # Nested cascade block (optional alternative to the flat cascade_* keys).
+  # cascade:
+  #   enabled: false
+  #   draft_provider: openai_compatible
+  #   draft_model: llama3.2
+  #   draft_base_url: "http://127.0.0.1:11434/v1"
+  #   draft_api_key: local
+  #   timeout_s: 60.0
+  #   escalate_on_parse_failure: true
 
 # ---------------------------------------------------------------------------
 # Experience memory system

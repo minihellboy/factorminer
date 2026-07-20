@@ -22,7 +22,7 @@ import json
 import logging
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from concurrent.futures import as_completed
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -53,9 +53,13 @@ from factorminer.architecture import (
 from factorminer.core.factor_library import FactorLibrary
 from factorminer.core.library_io import load_library, save_library
 from factorminer.core.loop_services import LoopExecutionService
-from factorminer.core.provenance import build_factor_provenance, build_run_manifest
+from factorminer.core.provenance import (
+    build_factor_provenance,
+    build_run_manifest,
+    infer_parent_lineage,
+)
 from factorminer.core.session import MiningSession
-from factorminer.core.types import FEATURES
+from factorminer.core.types import get_features
 from factorminer.evaluation.metrics import (
     compute_factor_stats,
 )
@@ -161,7 +165,12 @@ class EvaluationResult:
     projection_loss: float = 0.0
     effective_rank_gain: float = 0.0
     score_vector: dict[str, Any] | None = None
-
+    # Parent-formula lineage for EditAwareMemoryPolicy + MRM developmental history.
+    parent_formula: str = ""
+    parent_ic_paper_mean: float | None = None
+    edit_type: str = ""
+    edit_motif: str = ""
+    secondary_parent_formula: str = ""
 
 # ---------------------------------------------------------------------------
 # Factor Generator: wraps LLM + prompt builder + output parser
@@ -600,7 +609,7 @@ class ValidationPipeline:
         Handles two formats:
           - dict: already maps ``"$close"`` etc. to ``(M, T)`` arrays.
           - np.ndarray of shape ``(M, T, F)``: sliced along the last axis
-            using the canonical ``FEATURES`` ordering.
+            using the active feature registry ordering (defaults + extras).
         """
         if isinstance(self.data_tensor, dict):
             return self.data_tensor
@@ -608,7 +617,7 @@ class ValidationPipeline:
         # (M, T, F) numpy array — map each feature slice
         data_dict: dict[str, np.ndarray] = {}
         n_features = self.data_tensor.shape[2] if self.data_tensor.ndim == 3 else 0
-        for i, feat_name in enumerate(FEATURES):
+        for i, feat_name in enumerate(get_features()):
             if i < n_features:
                 data_dict[feat_name] = self.data_tensor[:, :, i]
         return data_dict
@@ -1026,6 +1035,7 @@ class RalphLoop:
         payload: IterationPayload,
     ) -> list[EvaluationResult]:
         results = self.pipeline.evaluate_batch(payload.candidates)
+        self._annotate_result_lineage(results, payload.library_state)
         self.lifecycle_store.record_batch_results(self.iteration, results)
         return results
 
@@ -1061,23 +1071,96 @@ class RalphLoop:
     # Trajectory builder for memory formation
     # ------------------------------------------------------------------
 
+    def _annotate_result_lineage(
+        self,
+        results: list[EvaluationResult],
+        library_state: Mapping[str, Any] | None,
+    ) -> None:
+        """Attach parent_formula lineage onto evaluation results in-place.
+
+        Uses the admitted-library snapshot available at generation time so
+        EditAwareMemoryPolicy can observe real parent→child edges on the
+        subsequent distill/form step.
+        """
+        library_factors = [
+            {
+                "id": f.id,
+                "name": f.name,
+                "formula": f.formula,
+                "ic_paper_mean": f.ic_paper_mean,
+                "ic_mean": f.ic_mean,
+            }
+            for f in self.library.list_factors()
+        ]
+        for result in results:
+            if result.parent_formula:
+                continue
+            lineage = infer_parent_lineage(
+                result.formula,
+                library_state,
+                library_factors=library_factors,
+            )
+            result.parent_formula = str(lineage.get("parent_formula", "") or "")
+            parent_ic = lineage.get("parent_ic_paper_mean")
+            try:
+                result.parent_ic_paper_mean = (
+                    float(parent_ic) if parent_ic is not None else None
+                )
+            except (TypeError, ValueError):
+                result.parent_ic_paper_mean = None
+            result.edit_type = str(lineage.get("edit_type", "") or "")
+            result.edit_motif = str(lineage.get("edit_motif", "") or "")
+            result.secondary_parent_formula = str(
+                lineage.get("secondary_parent_formula", "") or ""
+            )
+
+    def _lineage_fields(self, result: EvaluationResult) -> dict[str, Any]:
+        return {
+            "parent_formula": result.parent_formula or "",
+            "parent_ic_paper_mean": result.parent_ic_paper_mean,
+            "edit_type": result.edit_type or "",
+            "edit_motif": result.edit_motif or "",
+            "secondary_parent_formula": result.secondary_parent_formula or "",
+            # Canonical quality aliases used by EditAwareMemoryPolicy.
+            "ic_paper_mean": result.ic_paper_mean,
+            "paper_ic": result.ic_paper_mean,
+        }
+
     def _build_trajectory(self, results: list[EvaluationResult]) -> list[dict[str, Any]]:
         """Build mining trajectory tau for memory formation.
 
         Converts evaluation results into the dict format expected by
-        ``form_memory``.
+        ``form_memory``. Always merges parent_formula lineage so
+        ``EditAwareMemoryPolicy`` can extract edit-motif edges.
         """
+        by_key = {
+            (r.factor_name, r.formula): r
+            for r in results
+        }
         lifecycle_trajectory = self.lifecycle_store.build_trajectory(self.iteration)
         if lifecycle_trajectory:
-            return lifecycle_trajectory
+            trajectory: list[dict[str, Any]] = []
+            for entry in lifecycle_trajectory:
+                merged = dict(entry)
+                key = (str(entry.get("factor_id", "")), str(entry.get("formula", "")))
+                result = by_key.get(key)
+                if result is not None:
+                    merged.update(self._lineage_fields(result))
+                    if "paper_ic" not in merged:
+                        merged["paper_ic"] = result.ic_paper_mean
+                    if "ic_paper_mean" not in merged:
+                        merged["ic_paper_mean"] = result.ic_paper_mean
+                trajectory.append(merged)
+            return trajectory
 
-        trajectory: list[dict[str, Any]] = []
+        trajectory = []
         for r in results:
             entry: dict[str, Any] = {
                 "factor_id": r.factor_name,
                 "formula": r.formula,
                 "ic": r.ic_mean,
                 "paper_ic": r.ic_paper_mean,
+                "ic_paper_mean": r.ic_paper_mean,
                 "ic_abs_mean": r.ic_abs_mean,
                 "icir": r.icir,
                 "paper_icir": r.ic_paper_icir,
@@ -1086,6 +1169,7 @@ class RalphLoop:
                 "admitted": r.admitted,
                 "rejection_reason": r.rejection_reason,
             }
+            entry.update(self._lineage_fields(r))
             trajectory.append(entry)
         return trajectory
 
@@ -1539,6 +1623,14 @@ class RalphLoop:
                 phase2=phase2_summary,
                 target_stack=run_manifest.get("target_stack", []),
                 research_metrics=factor.research_metrics,
+                parent_formula=result.parent_formula,
+                parent_ic_paper_mean=result.parent_ic_paper_mean,
+                edit_type=result.edit_type,
+                edit_motif=result.edit_motif,
+                secondary_parent_formula=result.secondary_parent_formula,
+                draft_rationale=True,
+                llm_provider=getattr(self, "llm", None) or getattr(self.generator, "llm", None),
+                use_llm_rationale=False,
             ).to_dict()
 
     def _generator_family(self) -> str:

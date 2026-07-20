@@ -1,5 +1,20 @@
 """FactorMiner data pipeline: loading, preprocessing, and tensor construction."""
 
+from factorminer.data.edgar_source import (
+    EDGAR_FEATURE_LEAVES,
+    EdgarClient,
+    EdgarConfig,
+    attach_edgar_to_panel,
+    load_edgar_fundamentals,
+    register_edgar_features,
+)
+from factorminer.data.futures_source import (
+    FUTURES_FEATURE_LEAVES,
+    FuturesConfig,
+    build_continuous_futures_panel,
+    generate_mock_futures_panel,
+    register_futures_features,
+)
 from factorminer.data.loader import (
     OHLCV_COLUMNS,
     REQUIRED_COLUMNS,
@@ -83,4 +98,16 @@ __all__ = [
     "compute_targets",
     "sample_assets",
     "temporal_split",
+    # edgar / futures alt-data lanes
+    "EDGAR_FEATURE_LEAVES",
+    "EdgarClient",
+    "EdgarConfig",
+    "attach_edgar_to_panel",
+    "load_edgar_fundamentals",
+    "register_edgar_features",
+    "FUTURES_FEATURE_LEAVES",
+    "FuturesConfig",
+    "build_continuous_futures_panel",
+    "generate_mock_futures_panel",
+    "register_futures_features",
 ]

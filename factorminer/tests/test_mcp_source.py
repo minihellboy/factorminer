@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
 from factorminer.data.mcp_source import (
@@ -116,3 +117,93 @@ def test_known_mcp_connectors_include_upstream_fsi_endpoints() -> None:
     assert "factset" in connectors
     assert "lseg" in connectors
     assert connectors["factset"]["url"] == "https://mcp.factset.com/mcp"
+
+
+def test_records_to_frame_handles_positional_rows_with_constants_and_derived_amount() -> None:
+    config = MCPDataSourceConfig(
+        transport="stdio",
+        command="npx",
+        args=["-y", "@mcpfun/mcp-server-ccxt"],
+        tool="get-ohlcv",
+        arguments={"exchange": "binance", "symbol": "BTC/USDT", "timeframe": "5m"},
+        field_mapping={
+            "datetime": "timestamp",
+            "open": "open",
+            "high": "high",
+            "low": "low",
+            "close": "close",
+            "volume": "volume",
+        },
+        columns_order=["timestamp", "open", "high", "low", "close", "volume"],
+        constant_columns={"asset_id": "BTC/USDT"},
+        derive_amount_from_close_volume=True,
+        datetime_unit="ms",
+    )
+    records = [
+        [1704067200000, 100.0, 102.0, 99.0, 101.0, 10.0],
+        [1704067500000, 101.0, 103.0, 100.0, 102.0, 20.0],
+    ]
+
+    frame = _records_to_frame(records, config)
+
+    assert list(frame.columns) == list(CANONICAL_COLUMNS)
+    assert (frame["asset_id"] == "BTC/USDT").all()
+    assert frame.loc[0, "amount"] == 101.0 * 10.0
+    assert frame.loc[0, "datetime"] == pd.Timestamp("2024-01-01 00:00:00")
+
+
+def test_config_allows_amount_via_derive_flag_without_field_mapping() -> None:
+    mapping = _field_mapping()
+    mapping.pop("amount")
+
+    config = MCPDataSourceConfig(
+        transport="http",
+        url="https://example.com/mcp",
+        tool="get_prices",
+        field_mapping=mapping,
+        derive_amount_from_close_volume=True,
+    )
+
+    assert "amount" not in config.field_mapping
+
+
+def test_config_allows_amount_via_constant_columns() -> None:
+    mapping = _field_mapping()
+    mapping.pop("amount")
+
+    config = MCPDataSourceConfig(
+        transport="http",
+        url="https://example.com/mcp",
+        tool="get_prices",
+        field_mapping=mapping,
+        constant_columns={"amount": "0"},
+    )
+
+    assert config.constant_columns["amount"] == "0"
+
+
+def test_columns_order_rejects_unmapped_field_mapping_targets() -> None:
+    with pytest.raises(ValueError, match="not present in columns_order"):
+        MCPDataSourceConfig(
+            transport="stdio",
+            command="npx",
+            tool="get-ohlcv",
+            field_mapping={
+                "datetime": "timestamp",
+                "open": "open",
+                "high": "high",
+                "low": "low",
+                "close": "close",
+                "volume": "volume",
+                "asset_id": "not_in_columns_order",
+                "amount": "not_in_columns_order_either",
+            },
+            columns_order=["timestamp", "open", "high", "low", "close", "volume"],
+        )
+
+
+def test_known_mcp_connectors_include_ccxt() -> None:
+    connectors = {connector["name"]: connector for connector in known_mcp_connectors()}
+
+    assert "ccxt" in connectors
+    assert "mcp-server-ccxt" in connectors["ccxt"]["url"]

@@ -3,6 +3,10 @@
 Provides block bootstrap confidence intervals, Benjamini-Hochberg FDR
 control, and Deflated Sharpe Ratio (Bailey & López de Prado, 2014) to
 guard against data-snooping and multiple-testing bias in factor research.
+
+Also provides a thin additive bridge for Agora-style sealed multi-evaluator
+agreement diagnostics (see ``factorminer.architecture.sealed_joint_search``).
+That bridge never changes default single-factor significance behavior.
 """
 
 from __future__ import annotations
@@ -29,6 +33,26 @@ class SignificanceConfig:
     deflated_sharpe_enabled: bool = True
     min_deflated_sharpe: float = 0.0
     seed: int = 42
+
+
+@dataclass(frozen=True)
+class SealedAgreementConfig:
+    """Opt-in config for sealed multi-evaluator agreement diagnostics.
+
+    Additive companion to :class:`SignificanceConfig`. Default ``enabled=False``
+    keeps existing significance behavior byte-identical. When enabled, callers
+    may attach a coarse multi-evaluator agreement summary alongside classical
+    DSR/FDR/bootstrap results — useful as an anti-Goodhart research overlay,
+    not a replacement for those tests.
+
+    See arXiv:2606.29194 (Agora). Paper caveat: single-seed variance is real;
+    do not treat sealed agreement as a proven default upgrade.
+    """
+
+    enabled: bool = False
+    agreement_rule: str = "majority"
+    min_agree: int = 2
+    include_llm_judge: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -377,7 +401,14 @@ class DeflatedSharpeCalculator:
 
         # Higher moments of returns
         gamma3 = float(skew(valid, bias=False))
-        gamma4 = float(kurtosis(valid, fisher=True, bias=False))  # excess kurtosis
+        # Bailey & Lopez de Prado's gamma4 is *raw* (non-excess) kurtosis --
+        # a normal distribution has gamma4 = 3, giving the familiar
+        # (gamma4 - 1) / 4 = 0.5 asymptotic variance term. scipy's default
+        # `fisher=True` returns *excess* kurtosis (normal = 0); using that
+        # directly here would understate var_correction for fat-tailed
+        # returns (gamma4_excess > 0 is the common case for real return
+        # series) and make the deflation systematically too permissive.
+        gamma4 = float(kurtosis(valid, fisher=False, bias=False))  # raw kurtosis
 
         # Variance correction incorporating skewness and kurtosis
         var_correction = (1.0 - gamma3 * SR + (gamma4 - 1.0) / 4.0 * SR ** 2) / T
@@ -491,3 +522,132 @@ def check_significance(
             )
 
     return True, None, details
+
+
+# ---------------------------------------------------------------------------
+# Sealed multi-evaluator agreement bridge (Agora / research mode)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SealedAgreementSummary:
+    """Coarse multi-evaluator agreement summary for one candidate.
+
+    Intentionally free of per-evaluator weight vectors and raw score
+    components so it can sit next to classical significance details without
+    becoming a second gameable single objective.
+
+    ``agreement_fraction`` is ``n_passed / n_evaluators`` (a pass rate),
+    not a chance-corrected inter-rater statistic (e.g. Fleiss' kappa) --
+    see ``architecture.sealed_joint_search.SealedFeedback``'s docstring
+    for the full reasoning (the source paper's own mechanism is
+    report-based disagreement-carrying, not a kappa/concordance
+    statistic, and kappa is unstable at this panel's small N anyway).
+    """
+
+    candidate_name: str
+    n_evaluators: int
+    n_passed: int
+    agreement_fraction: float
+    promoted: bool
+    disagreement: bool
+    agreement_rule: str
+    passed_personas: tuple[str, ...]
+    failed_personas: tuple[str, ...]
+
+    def to_dict(self) -> dict:
+        return {
+            "candidate_name": self.candidate_name,
+            "n_evaluators": self.n_evaluators,
+            "n_passed": self.n_passed,
+            "agreement_fraction": self.agreement_fraction,
+            "promoted": self.promoted,
+            "disagreement": self.disagreement,
+            "agreement_rule": self.agreement_rule,
+            "passed_personas": list(self.passed_personas),
+            "failed_personas": list(self.failed_personas),
+        }
+
+
+def summarize_sealed_agreement(
+    candidate_name: str,
+    *,
+    ic_paper_mean: float,
+    icir: float = 0.0,
+    ic_win_rate: float = 0.5,
+    ic_std: float = 0.0,
+    intervention_robustness: float = 0.5,
+    cpcv_ic_std: float = 0.02,
+    max_library_dependence: float = 0.0,
+    novelty_score: float | None = None,
+    formula: str = "",
+    config: SealedAgreementConfig | None = None,
+) -> SealedAgreementSummary | None:
+    """Run sealed multi-evaluator agreement and return a coarse summary.
+
+    Returns ``None`` when sealed agreement is disabled (the default), so
+    existing ``check_significance`` callers are unaffected. This function does
+    **not** alter bootstrap/DSR/FDR logic.
+
+    Parameters are plain metric scalars already available from FactorMiner's
+    evaluation stack — no need to import evaluator weight vectors here.
+    """
+    cfg = config or SealedAgreementConfig()
+    if not cfg.enabled:
+        return None
+
+    # Local import keeps the classical significance path free of the sealed
+    # panel dependency unless this opt-in bridge is actually used.
+    from factorminer.architecture.sealed_joint_search import (
+        AgreementRule,
+        CandidateObservation,
+        SealedJointSearchConfig,
+        SealedJointSearchEngine,
+    )
+
+    try:
+        rule = AgreementRule(cfg.agreement_rule)
+    except ValueError:
+        rule = AgreementRule.MAJORITY
+
+    novelty = (
+        float(novelty_score)
+        if novelty_score is not None
+        else max(0.0, 1.0 - float(max_library_dependence))
+    )
+    obs = CandidateObservation(
+        name=candidate_name,
+        formula=formula,
+        ic_paper_mean=float(ic_paper_mean),
+        ic_mean=float(ic_paper_mean),
+        ic_std=float(ic_std),
+        icir=float(icir),
+        ic_win_rate=float(ic_win_rate),
+        intervention_robustness=float(intervention_robustness),
+        cpcv_ic_std=float(cpcv_ic_std),
+        cpcv_ic_mean=float(ic_paper_mean),
+        max_library_dependence=float(max_library_dependence),
+        novelty_score=novelty,
+    )
+    engine = SealedJointSearchEngine(
+        SealedJointSearchConfig(
+            enabled=True,
+            agreement_rule=rule,
+            min_agree=cfg.min_agree,
+            include_llm_judge=cfg.include_llm_judge,
+            retain_internal_scores=False,
+        )
+    )
+    decision = engine.evaluate_one(obs)
+    fb = decision.feedback
+    return SealedAgreementSummary(
+        candidate_name=candidate_name,
+        n_evaluators=decision.n_evaluators,
+        n_passed=decision.n_passed,
+        agreement_fraction=decision.agreement_fraction,
+        promoted=decision.promoted,
+        disagreement=decision.disagreement,
+        agreement_rule=decision.agreement_rule,
+        passed_personas=fb.passed_personas if fb is not None else (),
+        failed_personas=fb.failed_personas if fb is not None else (),
+    )

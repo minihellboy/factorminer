@@ -24,20 +24,26 @@ Stable paper-facing inventory:
 - canonical paper-style and research mining lanes
 - runtime recomputation for analysis and benchmark reporting
 
-Package inventory:
+Package inventory (verified fresh for this pass — `architecture`, `data`,
+`evaluation`, `memory`, `tests` grew further since the previous audit
+update; see [Landscape Review & Extension Roadmap](landscape-and-extensions.md)
+§10 for the 17-item round that drove most of this growth, and the chat
+history of the subsequent deep-audit + research pass for the 12 bug fixes
+and 4 methodology closures layered on top):
 
 | Package | Python files | Role |
 | --- | ---: | --- |
-| `agent` | 8 | providers, prompting, debate |
-| `architecture` | 14 | canonical contracts, policies, stages, services |
-| `benchmark` | 5 | runtime benchmark suite and legacy benchmark helpers |
+| `agent` | 8 | providers, prompting, debate, prompt caching, cascade routing |
+| `architecture` | 21 | canonical contracts, policies, stages, services, sealed search, island model |
+| `benchmark` | 5 | runtime benchmark suite (`runtime.py`, 2,289 lines) and legacy benchmark helpers (`helix_benchmark.py`, 2,203 lines — see Repository Health Risks) |
 | `configs` | 1 | packaged YAML profile resources |
-| `core` | 13 | loops, factor library, parser, expression tree, I/O |
-| `data` | 6 | loading, preprocessing, tensorization, mock generation |
-| `evaluation` | 17 | metrics, recomputation, validation, portfolio analysis |
-| `memory` | 10 | memory store, retrieval, KG, embeddings |
+| `core` | 13 | loops, factor library, parser, expression tree, I/O, provenance |
+| `data` | 10 | loading, preprocessing, tensorization, mock generation, Qlib/MCP/EDGAR/futures sources |
+| `evaluation` | 24 | metrics, recomputation, validation, portfolio/risk/capacity/crowding analysis, model zoo |
+| `mcp` | 2 | FactorMiner-as-MCP-server surface (authenticated HTTP + stdio) |
+| `memory` | 10 | memory store, retrieval (BM25+dense hybrid), KG, embeddings — plus a still-live `ExperienceMemoryManager` legacy path alongside policy-based memory, see Repository Health Risks |
 | `operators` | 15 | operator implementations, backends, and sandboxing |
-| `tests` | 33 | regression coverage |
+| `tests` | 63 | regression coverage (839 individual test functions) |
 | `utils` | 6 | config, reporting, plotting |
 
 ## What Is Structurally Strong
@@ -271,34 +277,84 @@ This audit pass updates:
 
 ## Repository Health Risks
 
+### High-risk: nothing is committed
+
+`git log` ends at `fea3553 add financial services integration`. Every
+finding and every fix in this document's current revision — the full
+architecture refactor follow-through, all 17 landscape-extension items, and
+the 12-bug deep-audit pass — exists only as ~106 uncommitted working-tree
+files. No CI run has ever exercised any of it. Issue #5 is still open on
+GitHub because nothing has been pushed since the work it asked for was
+implemented. This supersedes every other item below in priority: it is not
+possible to verify "healthy main branch" (see `ROADMAP.md`) against a
+branch nothing has reached.
+
+### High-risk structural issue: `RalphLoop`/`HelixLoop` infrastructure fork
+
+New finding this pass. `core/ralph_loop.py` defines its own `FactorGenerator`
+(~54 lines: no cascade routing, no prompt-cache prefix, no repair/retry, a
+hand-rolled regex parser instead of the shared `agent/output_parser.py`) and
+depends on `memory/experience_memory.py::ExperienceMemoryManager` (594
+lines) rather than the policy-based memory surface. `HelixLoop` uses
+neither — it uses `agent.factor_generator.FactorGenerator` and
+`architecture/memory_policy.py`. Every recent infrastructure improvement
+(prompt caching, cascade routing, policy-based memory) therefore reaches
+only `HelixLoop`, not the default `RalphLoop` mining path. This is worse
+than a static duplication: it means new investment keeps landing on one
+side of a fork instead of shared infrastructure.
+
 ### Medium-risk structural issues
 
 - `HelixLoop` still concentrates many optional concerns in one file
-- legacy benchmark/reporting surfaces still coexist with the canonical path
+  (1,489 lines / 45 class+def members — essentially unchanged in size
+  across three work passes; the architecture layer held for *new* work,
+  but the pre-existing bulk was never reduced)
+- `benchmark/helix_benchmark.py` (2,203 lines) and `benchmark/runtime.py`
+  (2,289 lines) are now nearly equal in size — no longer a small legacy
+  shim beside a canonical path; a genuine 50/50 parallel implementation
 - some config projection logic still exists in multiple places
 - full-repo mypy debt is visible but not yet suitable as a blocking CI gate
 
 ### Medium-risk product issues
 
-- documentation can drift again if architecture changes are not reflected in the docs layer
+- documentation can drift again if architecture changes are not reflected
+  in the docs layer (this pass re-synced `README.md`, `docs/architecture.md`,
+  `docs/landscape-and-extensions.md`, and added `docs/security.md`)
 - heuristic family inference is useful but not yet a robust research surface
 
 ### Low-risk but noisy issues
 
-- NaN-window runtime warnings in expression-tree execution
+- NaN-window runtime warnings in expression-tree execution — flagged in
+  this document across three consecutive passes now without being fixed;
+  fires in every full test run (`test_ralph_loop.py` alone: 17 warnings per
+  run)
 - style debt in some older loop code
 
 ## Recommended Next Implementation Order
 
 If continuing from the current state, the best next order is:
 
-1. Land the trust/onboarding release and GitHub issue replies.
-2. Continue shrinking `core/helix_loop.py` into policies and services.
-3. Resolve the legacy benchmark split by moving more reporting concerns to the runtime suite.
-4. Add learned or cluster-based factor-family discovery.
-5. Make policy-level experiment manifests richer and easier to compare across runs.
-6. Address the expression-tree warning surface explicitly.
-7. Expand scoped mypy cleanup before considering a blocking type gate.
+1. Push the uncommitted work as reviewable commits/PRs along the natural
+   epic seams; verify packaging config against the newly-grown
+   `architecture/`, `evaluation/`, `data/`, and `mcp/` packages; close
+   issue #5 once merged.
+2. Unify `RalphLoop` onto `agent.factor_generator.FactorGenerator` and
+   policy-based memory, closing the infrastructure fork above.
+3. Quiet the expression-tree NaN-window warning surface — small, and
+   deferred three times now.
+4. Collapse `benchmark/helix_benchmark.py` into `runtime.py`, or formally
+   freeze and label it legacy-only rather than letting it keep pace in size.
+5. Continue shrinking `core/helix_loop.py` into policies and services.
+6. Add learned or cluster-based factor-family discovery.
+7. Expand scoped mypy cleanup, anchored on round-2's already-typed
+   `@dataclass(frozen=True)` contracts, before considering a blocking type
+   gate.
+
+Deliberately **not** next: another landscape/feature-extension round. Round
+2 alone introduced 12 real bugs found by one dedicated audit pass; the
+newest surfaces (crowding, sealed search, capacity/risk modeling) should
+accumulate real usage and test coverage before a round 3 adds a further
+layer on top.
 
 ## Recommended GitHub Docs Surface
 
@@ -309,6 +365,11 @@ The best public-facing docs structure for the repo now is:
 - `docs/faq.md`: answers to setup, data, model, and API-key confusion
 - `docs/reproducibility.md`: mock versus private-data reproduction paths
 - `docs/architecture.md`: technical architecture and runtime contract
+- `docs/security.md`: threat model for every externally-facing surface
+  (data connectors, MCP transport, local-LLM providers, LLM-authored report
+  content)
+- `docs/landscape-and-extensions.md`: full extension roadmap and
+  implementation-status evidence for every landscape item
 - `docs/repo-audit.md`: implementation inventory, strengths, debt, roadmap
 
 That is enough structure for a serious GitHub repo without overbuilding a docs system too early.
@@ -318,10 +379,21 @@ That is enough structure for a serious GitHub repo without overbuilding a docs s
 The repo is no longer just a paper prototype. It now has:
 
 - a canonical architecture layer
-- a canonical benchmark-runtime surface
-- stage-composed loops
-- policy-based memory
+- a canonical benchmark-runtime surface (though not yet the *only*
+  benchmark surface — see Repository Health Risks)
+- stage-composed loops (forked onto separate infrastructure between
+  `RalphLoop` and `HelixLoop` — see Repository Health Risks)
+- policy-based memory (live on the `HelixLoop` path; `RalphLoop` still uses
+  a separate legacy manager)
 - pluggable dependence metrics
 - stronger reproducibility and artifact semantics
+- a materially expanded, audited research surface: crowding/risk/portfolio
+  evaluation, MCP-server hardening, prompt caching and cascade routing,
+  sealed multi-evaluator search, EDGAR/futures data connectors — see
+  [Landscape Review & Extension Roadmap](landscape-and-extensions.md)
 
-The next challenge is not invention of more surfaces. It is disciplined consolidation of the remaining heavy modules around the architecture layer that now exists.
+The next challenge is still not invention of more surfaces. It is, in
+order: getting the existing work committed and reviewable at all, then
+disciplined consolidation of the remaining heavy modules — most urgently
+the `RalphLoop`/`HelixLoop` infrastructure fork — around the architecture
+layer that now exists.

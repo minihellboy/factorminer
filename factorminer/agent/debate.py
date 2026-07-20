@@ -11,6 +11,10 @@ The full pipeline (``DebateOrchestrator``) also supports:
 - ``DebateMemory`` tracking: specialist leaderboards, blind spot detection.
 - Parallel specialist generation (thread-pool).
 - Structured ``DebateResult`` dataclass capturing the full debate state.
+
+Prompt caching: specialists share one byte-stable system prefix via
+``PrefixedCacheProvider`` so parallel Anthropic/OpenAI calls hit the same
+cache breakpoint rather than each specialist subtly perturbing the prefix.
 """
 
 from __future__ import annotations
@@ -23,9 +27,10 @@ from typing import Any
 
 from factorminer.agent.critic import CriticAgent, CriticScore
 from factorminer.agent.factor_generator import FactorGenerator
-from factorminer.agent.llm_interface import LLMProvider
+from factorminer.agent.llm_interface import LLMProvider, PrefixedCacheProvider
 from factorminer.agent.output_parser import CandidateFactor
 from factorminer.agent.prompt_builder import (
+    SYSTEM_PROMPT,
     PromptBuilder,
     normalize_factor_references,
 )
@@ -561,12 +566,25 @@ class DebateGenerator:
         debate_config: DebateConfig | None = None,
         prompt_builder: PromptBuilder | None = None,
     ) -> None:
-        self.llm_provider = llm_provider
         self.config = debate_config or DebateConfig()
 
+        # Stable shared system prefix for prompt caching across specialists.
+        # Specialist suffixes are appended AFTER this prefix so the cached
+        # breakpoint content is identical byte-for-byte for every parallel call.
         base_system_prompt = (
-            prompt_builder.system_prompt if prompt_builder else None
+            prompt_builder.system_prompt if prompt_builder else SYSTEM_PROMPT
         )
+        self._cacheable_prefix = base_system_prompt
+
+        # Wrap once so every specialist/critic generate() shares the prefix
+        # without each call site having to pass cacheable_prefix explicitly.
+        if isinstance(llm_provider, PrefixedCacheProvider):
+            self.llm_provider = llm_provider
+        else:
+            self.llm_provider = PrefixedCacheProvider(
+                llm_provider,
+                cacheable_prefix=base_system_prompt,
+            )
 
         # Build SpecialistAgent instances
         self._specialist_agents: list[SpecialistAgent] = []
@@ -588,6 +606,7 @@ class DebateGenerator:
                 llm_provider=self.llm_provider,
                 prompt_builder=specialist_pb,
                 temperature=spec.temperature,
+                cacheable_prefix=base_system_prompt,
             )
             self._specialist_generators[spec.name] = gen
 

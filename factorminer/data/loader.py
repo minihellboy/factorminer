@@ -119,12 +119,35 @@ def _validate_columns(df: pd.DataFrame, path: Path) -> pd.DataFrame:
     return df
 
 
-def _coerce_types(df: pd.DataFrame) -> pd.DataFrame:
-    """Ensure numeric types for OHLCV columns and datetime index."""
+def _coerce_types(
+    df: pd.DataFrame,
+    *,
+    extra_numeric: Sequence[str] | None = None,
+) -> pd.DataFrame:
+    """Ensure numeric types for OHLCV columns, extras, and datetime index."""
     df["datetime"] = pd.to_datetime(df["datetime"])
     df["asset_id"] = df["asset_id"].astype(str)
     for col in OHLCV_COLUMNS:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    # Preserve any additional numeric leaf columns (fundamentals, futures, ...)
+    # rather than silently dropping them. Known non-numeric metadata is skipped.
+    skip = {"datetime", "asset_id", "universe", "is_halt", *OHLCV_COLUMNS}
+    candidates = list(extra_numeric or [])
+    for col in df.columns:
+        if col in skip or col in candidates:
+            continue
+        if pd.api.types.is_numeric_dtype(df[col]):
+            candidates.append(col)
+            continue
+        # Attempt coercion for object columns that look numeric
+        coerced = pd.to_numeric(df[col], errors="coerce")
+        if coerced.notna().any():
+            df[col] = coerced
+            candidates.append(col)
+    for col in candidates:
+        if col in df.columns and col not in skip:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
     return df
 
 

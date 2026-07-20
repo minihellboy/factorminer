@@ -234,6 +234,81 @@ class TestRetrieval:
 
         assert all("neighbor_factor" not in item for item in refreshed["semantic_neighbors"])
 
+    def test_conflict_cluster_prompt_line_not_char_split(self):
+        """Regression test: conflict cluster descriptions must appear whole
+        in the prompt, not iterated as individual characters.
+
+        A prior bug did ``', '.join(cluster[:6])`` where ``cluster`` was
+        already a single preformatted description string returned by
+        ``_describe_conflict_cluster`` -- slicing/joining a string operates
+        on its characters, producing garbage like
+        ``"Cluster: f, _, a,  , |,  "`` instead of the real description.
+        """
+        memory = ExperienceMemory()
+        kg = FactorKnowledgeGraph()
+        kg.add_factor(FactorNode(
+            factor_id="f_a",
+            formula="CsRank(Corr($close,$volume,20))",
+            operators=["CsRank", "Corr"],
+            features=["$close", "$volume"],
+            admitted=True,
+        ))
+        kg.add_factor(FactorNode(
+            factor_id="f_b",
+            formula="CsRank(Corr($close,$volume,10))",
+            operators=["CsRank", "Corr"],
+            features=["$close", "$volume"],
+            admitted=True,
+        ))
+        kg.add_correlation_edge("f_a", "f_b", rho=0.9)
+
+        result = retrieve_memory_enhanced(memory, kg=kg)
+
+        assert result["conflict_warnings"]
+        cluster_lines = [
+            line for line in result["prompt_text"].split("\n") if "Cluster:" in line
+        ]
+        assert cluster_lines
+        # Full factor ids must survive intact, not be shredded into chars.
+        assert "f_a" in cluster_lines[0]
+        assert "f_b" in cluster_lines[0]
+        # A char-split of "f_a ..." would never contain a 2+ char run like
+        # "f_a" immediately followed by real content -- guard the garbage
+        # pattern directly too.
+        assert ", _," not in cluster_lines[0]
+
+    def test_semantic_gaps_empty_when_coverage_is_actually_good(self):
+        """Regression test: well-covered success patterns must report zero
+        gaps, not every operator in the template vocabulary.
+
+        A prior bug used ``uncovered_ops or template_ops``, and an empty
+        *set* is falsy in Python -- so a genuine "no gaps found" result
+        (empty set) silently collapsed into "every operator is a gap".
+        """
+        memory = ExperienceMemory()
+        memory.success_patterns = [
+            SuccessPattern(
+                name="p1",
+                description="d",
+                template="CsRank(Corr($close, $volume, 20))",
+                success_rate="High",
+                example_factors=[],
+                occurrence_count=3,
+            )
+        ]
+        # Seed the embedder (via recent_admissions auto-seeding) with the
+        # exact same formula so the anchor similarity check finds a
+        # near-identical match (similarity >= the 0.72 coverage bar).
+        memory.state.recent_admissions = [
+            {"factor_id": "seed1", "formula": "CsRank(Corr($close, $volume, 20))"}
+        ]
+        embedder = FormulaEmbedder(use_faiss=False)
+
+        result = retrieve_memory_enhanced(memory, kg=None, embedder=embedder)
+
+        assert result["semantic_gaps"] == []
+        assert "SEMANTIC GAPS" not in result["prompt_text"]
+
 
 # ---------------------------------------------------------------------------
 # Full update cycle

@@ -1,0 +1,69 @@
+# Example: continuous-contract futures lane with basis/spot/premium/oi leaves
+# Usage:
+#   uv run factorminer --cpu mine --config factorminer/configs/futures_continuous_example.yaml --mock
+#
+# Build a continuous panel offline:
+#   uv run factorminer build-futures --mock -o futures_panel.csv
+
+data_path: null
+output_dir: "./output/futures_example"
+
+mining:
+  target_library_size: 20
+  batch_size: 10
+  max_iterations: 5
+  ic_threshold: 0.02
+  icir_threshold: 0.3
+  correlation_threshold: 0.7
+
+evaluation:
+  backend: "numpy"
+  num_workers: 2
+  fast_screen_assets: 20
+  signal_failure_policy: "reject"
+
+data:
+  market: "futures"
+  asset_class: "futures"
+  universe: "CONTINUOUS"
+  frequency: "1d"
+  features:
+    - "$open"
+    - "$high"
+    - "$low"
+    - "$close"
+    - "$volume"
+    - "$amt"
+    - "$vwap"
+    - "$returns"
+    - "$basis"
+    - "$spot"
+    - "$premium"
+    - "$roll_yield"
+    - "$oi"
+  train_period: ["2024-01-01", "2024-09-30"]
+  test_period: ["2024-10-01", "2024-12-31"]
+  targets:
+    - name: "paper"
+      entry_delay_bars: 1
+      holding_bars: 1
+      price_pair: "close_to_close"
+      return_transform: "simple"
+  default_target: "paper"
+
+llm:
+  provider: "mock"
+  model: "mock"
+  temperature: 0.8
+  max_tokens: 2048
+  batch_candidates: 10
+
+memory:
+  policy: "paper"
+
+# Capacity: use contract-multiplier path when sizing futures
+phase2:
+  capacity:
+    enabled: true
+    volume_mode: "contracts"
+    contract_multiplier: 50.0

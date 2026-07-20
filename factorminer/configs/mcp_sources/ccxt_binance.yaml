@@ -1,0 +1,45 @@
+# ccxt-backed MCP source config -- crypto OHLCV via mcp-server-ccxt
+# (https://github.com/doggybee/mcp-server-ccxt), reusing FactorMiner's generic
+# MCPDataSourceConfig client (factorminer/data/mcp_source.py). See "Crypto
+# connectors (ccxt)" in docs/financial-services-integration.md for the full
+# explanation of the fields below.
+#
+# Usage:
+#   npx -y @mcpfun/mcp-server-ccxt &   # or let the client launch it (stdio)
+#   uv run factorminer fetch-data --mcp-config factorminer/configs/mcp_sources/ccxt_binance.yaml \
+#       --output /tmp/btc_usdt_5m.csv
+#   uv run factorminer resample-data /tmp/btc_usdt_5m.csv /tmp/btc_usdt_10m.csv --rule 10min
+#
+# `get-ohlcv` is single-symbol-per-call. For a multi-asset panel (e.g. the
+# paper's 64-symbol Binance universe), copy this file per symbol -- edit
+# `arguments.symbol` and `constant_columns.asset_id` -- run `fetch-data` once
+# per copy, and concatenate the resulting files before `validate-data`.
+transport: stdio
+command: npx
+args: ["-y", "@mcpfun/mcp-server-ccxt"]
+tool: get-ohlcv
+arguments:
+  exchange: binance
+  symbol: "BTC/USDT"
+  timeframe: "5m"
+  limit: 1000
+records_path: ""
+# ccxt's fetchOHLCV rows are positional: [timestamp, open, high, low, close, volume].
+columns_order: ["timestamp", "open", "high", "low", "close", "volume"]
+field_mapping:
+  datetime: timestamp
+  open: open
+  high: high
+  low: low
+  close: close
+  volume: volume
+# The symbol is a call argument, not a row field -- inject it as asset_id.
+constant_columns:
+  asset_id: "BTC/USDT"
+# Public OHLCV has no separate quote-asset turnover field; approximate dollar
+# volume as close * volume (documented approximation, same spirit as the
+# recomputed `vwap` in docs/binance-reproduction.md).
+derive_amount_from_close_volume: true
+# ccxt timestamps are epoch milliseconds.
+datetime_unit: ms
+timeout: 60.0

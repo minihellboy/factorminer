@@ -16,7 +16,9 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# Default feature ordering matching the paper specification
+# Default bare panel-column feature ordering matching the paper specification.
+# DSL leaves use the "$" prefix (see factorminer.core.types); these are the
+# DataFrame column names that feed the (M, T, F) tensor.
 DEFAULT_FEATURES: list[str] = [
     "open", "high", "low", "close", "volume", "amount", "vwap", "returns",
 ]
@@ -64,8 +66,8 @@ class TensorConfig:
         Name of the column holding the target variable (created by
         :func:`compute_target`).
     """
-
     features: list[str] = field(default_factory=lambda: list(DEFAULT_FEATURES))
+    extra_features: list[str] = field(default_factory=list)
     backend: Backend = "numpy"
     dtype: str = "float32"
     train_end: str | None = None
@@ -75,6 +77,19 @@ class TensorConfig:
     target_column: str = "target"
     target_columns: list[str] = field(default_factory=list)
     default_target: str = "target"
+
+    def resolved_features(self) -> list[str]:
+        """Return ordered feature columns = defaults/base + extras (deduped)."""
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for name in list(self.features) + list(self.extra_features):
+            col = str(name).lstrip("$")
+            if col == "amt":
+                col = "amount"
+            if col not in seen:
+                seen.add(col)
+                ordered.append(col)
+        return ordered
 
 
 # ---------------------------------------------------------------------------
@@ -284,8 +299,10 @@ def build_tensor(
     if config is None:
         config = TensorConfig()
 
+    feature_cols = config.resolved_features()
+
     # Validate required feature columns
-    missing = [f for f in config.features if f not in df.columns]
+    missing = [f for f in feature_cols if f not in df.columns]
     if missing:
         raise ValueError(f"DataFrame is missing feature columns: {missing}")
 
@@ -297,10 +314,10 @@ def build_tensor(
         "Building tensor: %d assets x %d time steps x %d features",
         len(asset_ids),
         len(timestamps),
-        len(config.features),
+        len(feature_cols),
     )
 
-    data_np = _build_3d(df, asset_ids, timestamps, config.features)
+    data_np = _build_3d(df, asset_ids, timestamps, feature_cols)
 
     # Target
     resolved_target_columns = list(config.target_columns or [config.target_column])
@@ -332,7 +349,7 @@ def build_tensor(
         target=target,
         asset_ids=asset_ids,
         timestamps=timestamps,
-        feature_names=list(config.features),
+        feature_names=list(feature_cols),
         targets=targets,
         default_target=default_target_name,
     )

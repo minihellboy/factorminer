@@ -93,9 +93,59 @@ def test_high_capital_degrades_ic(market_data):
         config=config,
     )
     cap_est = estimator.estimate("test", signals)
-    # The capacity curve should show increasing degradation
+    # This fixture's signals/returns are independent (near-zero true IC),
+    # so degradation is guarded to 0.0 rather than blowing up on a
+    # near-zero-gross-IC ratio (see capacity.py's 1e-3 guard). The
+    # meaningful, non-degenerate check -- degradation actually rising with
+    # capital on a *real* factor -- is test_capacity_degradation_is_not_a_noop.
     degradations = list(cap_est.capacity_curve.values())
-    assert degradations[-1] >= degradations[0]
+    assert all(0.0 <= d <= 1.0 for d in degradations)
+
+
+def test_capacity_degradation_is_not_a_noop(rng):
+    """Net-of-cost degradation must actually respond to cost, not be a no-op.
+
+    Regression test: a prior implementation subtracted a uniform per-bar
+    cost from every asset's return before computing Spearman IC. Spearman
+    IC is a rank correlation and is exactly invariant to any
+    column-constant shift, so that implementation made capacity_curve
+    identically 0.0 and max_capacity_usd always +inf regardless of cost or
+    capital -- a silent no-op. This test uses a genuinely correlated
+    factor (signals informative about returns) and asserts degradation
+    actually rises with capital, and that break_even_cost_bps /
+    net_ls_return are sensitive to cost.
+    """
+    M, T = 30, 60
+    true_alpha = rng.normal(size=(M, 1)) * np.ones((1, T))
+    returns = 0.6 * true_alpha + 0.4 * rng.normal(size=(M, T)) * 0.01
+    signals = true_alpha + 0.3 * rng.normal(size=(M, T))
+    volume = np.abs(rng.normal(1e6, 1e5, (M, T)))
+
+    config = CapacityConfig(capacity_levels=[1e4, 1e7, 1e9, 1e11])
+    estimator = CapacityEstimator(returns=returns, volume=volume, config=config)
+
+    cap_est = estimator.estimate("real_factor", signals)
+    degradations = list(cap_est.capacity_curve.values())
+
+    # Must not be the flat all-zero no-op curve.
+    assert any(d > 0.0 for d in degradations), (
+        "capacity_curve is entirely zero -- net-of-cost screening is a no-op"
+    )
+    # Degradation should rise (non-strictly) with capital.
+    assert degradations[-1] > degradations[0]
+    assert all(0.0 <= d <= 1.0 for d in degradations)
+
+    # break_even_cost_bps must be a real, positive return-space quantity,
+    # not an IC-space number mislabeled as bps.
+    assert cap_est.break_even_cost_bps > 0.0
+
+    # net_cost_evaluation: net_ls_return must actually decrease vs. gross
+    # as capital rises (previously gross_ls_return was the cross-sectional
+    # market mean, not a long-short spread, and net_icir never moved).
+    low = estimator.net_cost_evaluation("real_factor", signals, capital=1e4)
+    high = estimator.net_cost_evaluation("real_factor", signals, capital=1e11)
+    assert high.net_ls_return < low.net_ls_return
+    assert high.net_icir <= low.net_icir
 
 
 # -----------------------------------------------------------------------

@@ -32,6 +32,8 @@ class DatasetContract:
     asset_count: int = 0
     period_count: int = 0
     split_sizes: dict[str, int] = field(default_factory=dict)
+    extra_features: list[str] = field(default_factory=list)
+    asset_class: str = "equity"
 
     @classmethod
     def from_runtime_dataset(cls, cfg: Any, dataset: Any) -> DatasetContract:
@@ -39,8 +41,19 @@ class DatasetContract:
         asset_ids = getattr(dataset, "asset_ids", None)
         timestamps = getattr(dataset, "timestamps", None)
         splits = getattr(dataset, "splits", None) or {}
+        feature_names = list(getattr(dataset, "data_dict", {}).keys())
+        default_feats = {
+            "$open", "$high", "$low", "$close", "$volume", "$amt", "$vwap", "$returns",
+            "open", "high", "low", "close", "volume", "amount", "vwap", "returns",
+        }
+        extras = [f for f in feature_names if f not in default_feats]
+        asset_class = str(
+            getattr(getattr(cfg, "data", None), "asset_class", None)
+            or getattr(getattr(cfg, "data", None), "market", "equity")
+            or "equity"
+        )
         return cls(
-            feature_names=list(getattr(dataset, "data_dict", {}).keys()),
+            feature_names=feature_names,
             data_shape=tuple(np.shape(getattr(dataset, "data_tensor", ()))),
             returns_shape=tuple(np.shape(getattr(dataset, "returns", ()))),
             default_target=str(
@@ -60,6 +73,8 @@ class DatasetContract:
                 name: int(getattr(split, "size", 0))
                 for name, split in splits.items()
             },
+            extra_features=extras,
+            asset_class=asset_class,
         )
 
     @classmethod
@@ -73,6 +88,15 @@ class DatasetContract:
         target_horizons: dict[str, int] | None = None,
     ) -> DatasetContract:
         feature_names = list(getattr(getattr(cfg, "data", None), "features", []))
+        default_feats = {
+            "$open", "$high", "$low", "$close", "$volume", "$amt", "$vwap", "$returns",
+        }
+        extras = [f for f in feature_names if f not in default_feats]
+        asset_class = str(
+            getattr(getattr(cfg, "data", None), "asset_class", None)
+            or getattr(getattr(cfg, "data", None), "market", "equity")
+            or "equity"
+        )
         return cls(
             feature_names=feature_names,
             data_shape=tuple(np.shape(data_tensor)),
@@ -84,6 +108,8 @@ class DatasetContract:
             test_period=list(getattr(getattr(cfg, "data", None), "test_period", [])),
             asset_count=int(np.shape(returns)[0]) if np.ndim(returns) >= 1 else 0,
             period_count=int(np.shape(returns)[1]) if np.ndim(returns) >= 2 else 0,
+            extra_features=extras,
+            asset_class=asset_class,
         )
 
     def to_dict(self) -> dict[str, Any]:

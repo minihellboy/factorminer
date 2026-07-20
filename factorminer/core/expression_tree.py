@@ -14,8 +14,8 @@ from collections.abc import Iterator
 import numpy as np
 
 from factorminer.core.types import (
-    FEATURE_SET,
     OperatorSpec,
+    get_feature_set,
 )
 
 # Epsilon for safe division / log
@@ -86,10 +86,10 @@ class LeafNode(Node):
     __slots__ = ("feature_name",)
 
     def __init__(self, feature_name: str) -> None:
-        if feature_name not in FEATURE_SET:
+        if feature_name not in get_feature_set():
             raise ValueError(
                 f"Unknown feature '{feature_name}'. "
-                f"Expected one of {sorted(FEATURE_SET)}."
+                f"Expected one of {sorted(get_feature_set())}."
             )
         self.feature_name = feature_name
 

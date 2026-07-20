@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from factorminer.evaluation.crowding import long_short_returns
 from factorminer.evaluation.metrics import compute_ic, compute_icir
 
 # ---------------------------------------------------------------------------
@@ -59,6 +60,9 @@ class CapacityConfig:
     top_fraction: float = 0.20
     trading_days_per_year: float = 252.0
     bars_per_day: float = 24.0
+    # Futures-aware sizing (additive; equity/crypto path unchanged when "equity")
+    volume_mode: str = "dollar"  # "dollar" | "contracts"
+    contract_multiplier: float = 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +105,9 @@ class CapacityEstimate:
     capacity_curve : dict[float, float]
         Mapping from capital level (USD) to IC degradation fraction.
     break_even_cost_bps : float
-        Approximate single-leg cost (bps) at which net IC drops to zero.
+        One-way cost (bps) at which the round-trip cost exactly consumes
+        the gross long-short return spread, i.e. where ``net_ls_return``
+        would hit zero.
     """
 
     factor_name: str
@@ -162,10 +168,13 @@ class MarketImpactModel:
 
     def __init__(self, config: CapacityConfig | None = None) -> None:
         self.config = config or CapacityConfig()
+        if self.config.volume_mode not in {"dollar", "contracts"}:
+            raise ValueError("volume_mode must be 'dollar' or 'contracts'")
+        if self.config.contract_multiplier <= 0:
+            raise ValueError("contract_multiplier must be > 0")
         self._sigma_bar: float = self.config.sigma_annual / np.sqrt(
             self.config.trading_days_per_year * self.config.bars_per_day
         )
-
     # ------------------------------------------------------------------
     def estimate_impact(
         self,
@@ -197,9 +206,20 @@ class MarketImpactModel:
 
         participation = np.full(T, np.nan, dtype=np.float64)
 
+        # Optional contract-count volume path: convert contracts * multiplier
+        # * reference price into dollar volume. Callers pass either dollar
+        # volume (equity/crypto default) or raw contract volume when
+        # volume_mode == "contracts".
+        vol_panel = np.asarray(volume, dtype=np.float64)
+        if cfg.volume_mode == "contracts":
+            # Without a separate price panel we treat `volume` as already
+            # contract counts and scale by multiplier only; callers who have
+            # prices should pre-multiply via futures_source.notional_volume.
+            vol_panel = vol_panel * float(cfg.contract_multiplier)
+
         for t in range(T):
             sig_t = signals[:, t]
-            vol_t = volume[:, t]
+            vol_t = vol_panel[:, t]
 
             valid_sig = ~np.isnan(sig_t)
             if valid_sig.sum() < n_leg:
@@ -282,13 +302,28 @@ class CapacityEstimator:
         """Compute impact-adjusted returns.
 
         For a long-short strategy the round-trip cost is approximately
-        ``2 * impact`` (entry + exit on each leg).  We subtract the cost
-        uniformly from returns as a simple first-order approximation.
+        ``2 * impact`` (entry + exit on each leg). Cost is applied only to
+        the assets actually traded each bar -- the long and short legs
+        implied by ``signals`` at ``config.top_fraction`` -- and with
+        opposite sign per leg: it reduces the long leg's apparent return
+        and raises the short leg's apparent return back toward zero,
+        shrinking the return spread the signal is scored against.
+
+        This must NOT be a uniform per-bar shift applied to every asset.
+        Spearman IC (``compute_ic``) is a rank correlation and is exactly
+        invariant to any column-constant shift, so subtracting the same
+        cost from every asset in the cross-section leaves IC (and every
+        metric derived from it) completely unchanged regardless of cost
+        or capital -- silently turning the entire net-of-cost screen into
+        a no-op. Applying cost only -- and asymmetrically -- to the
+        traded extremes is what actually perturbs the cross-sectional
+        rank order the signal is being scored against.
 
         Parameters
         ----------
         signals : np.ndarray, shape (M, T)
-            Factor signals (unused beyond shape; cost applied uniformly).
+            Factor signals; determines which assets are actually traded
+            (long/short legs) each bar.
         impact_bps : np.ndarray, shape (T,)
             One-way impact per bar in basis points.
 
@@ -298,7 +333,21 @@ class CapacityEstimator:
             Adjusted returns matrix.
         """
         cost = 2.0 * impact_bps / 1e4  # round-trip, fractional
-        return self.returns - cost[np.newaxis, :]
+        sig = np.asarray(signals, dtype=np.float64)
+        net = self.returns.copy()
+        m, t = sig.shape
+        leg_n = max(1, int(round(m * self.config.top_fraction)))
+        for j in range(t):
+            col = sig[:, j]
+            finite = np.flatnonzero(np.isfinite(col))
+            if finite.size < 2 * leg_n:
+                continue
+            order = finite[np.argsort(col[finite])]
+            short_idx = order[:leg_n]
+            long_idx = order[-leg_n:]
+            net[long_idx, j] -= cost[j]
+            net[short_idx, j] += cost[j]
+        return net
 
     # ------------------------------------------------------------------
     # public API
@@ -335,8 +384,15 @@ class CapacityEstimator:
             net_ic = compute_ic(signals, net_ret)
             abs_net_mean = abs(self._mean_ic(net_ic))
 
-            if abs_gross_mean > 1e-12:
-                deg = 1.0 - abs_net_mean / abs_gross_mean
+            # Degradation is conceptually a fraction of edge lost to cost,
+            # so it belongs in [0, 1]. Guard against dividing by a
+            # negligible gross IC (near-zero-edge/noise factors), which
+            # would otherwise make the ratio numerically unstable and
+            # swing to large, meaningless magnitudes in either direction;
+            # clip the well-defined case too since costs can never
+            # improve IC, so an apparent negative degradation is noise.
+            if abs_gross_mean > 1e-3:
+                deg = max(0.0, min(1.0, 1.0 - abs_net_mean / abs_gross_mean))
             else:
                 deg = 0.0
 
@@ -349,10 +405,16 @@ class CapacityEstimator:
             capitals, degradations, self.config.ic_degradation_limit
         )
 
-        # Break-even cost: gross IC expressed in bps
-        # If the full round-trip cost equals the gross L-S spread the alpha
-        # vanishes.  Approximate as gross_mean_ic * 10000 (IC ~ return spread).
-        break_even_bps = abs_gross_mean * 1e4
+        # Break-even cost: the one-way bps cost at which the round-trip
+        # cost (2x one-way) exactly consumes the gross long-short return
+        # spread. Using |gross_ls_mean| keeps this well-defined regardless
+        # of the factor's raw signal-return sign convention.
+        gross_ls_for_breakeven = long_short_returns(
+            signals, self.returns, leg_fraction=self.config.top_fraction
+        )
+        finite_ls = gross_ls_for_breakeven[np.isfinite(gross_ls_for_breakeven)]
+        abs_gross_ls_mean = abs(float(np.mean(finite_ls))) if finite_ls.size else 0.0
+        break_even_bps = abs_gross_ls_mean / 2.0 * 1e4
 
         return CapacityEstimate(
             factor_name=factor_name,
@@ -396,8 +458,12 @@ class CapacityEstimator:
         net_ic = compute_ic(signals, net_ret)
         net_icir = compute_icir(net_ic)
 
-        # Gross / net long-short return (mean across time of Q5-Q1 proxy)
-        gross_ls = float(np.nanmean(self.returns.mean(axis=0)))
+        # Gross / net long-short return (Q-top minus Q-bottom spread).
+        ls_series = long_short_returns(
+            signals, self.returns, leg_fraction=self.config.top_fraction
+        )
+        finite_ls_series = ls_series[np.isfinite(ls_series)]
+        gross_ls = float(np.mean(finite_ls_series)) if finite_ls_series.size else 0.0
         # Simplified: subtract round-trip impact from L-S return
         net_ls = gross_ls - 2.0 * impact.avg_impact_bps / 1e4
 

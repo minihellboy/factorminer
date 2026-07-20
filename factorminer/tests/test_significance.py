@@ -172,3 +172,52 @@ def test_deflated_sharpe_short_series(config):
     result = calc.compute("short", ls_returns, n_trials=10)
     assert result.passes is False
     assert result.raw_sharpe == 0.0
+
+
+def test_deflated_sharpe_uses_raw_not_excess_kurtosis(config):
+    """DSR's variance-correction term must use raw (non-excess) kurtosis.
+
+    Bailey & Lopez de Prado (2014) define gamma4 as raw kurtosis (normal
+    distribution => gamma4 = 3), giving ``(gamma4 - 1) / 4 == 0.5`` for
+    normal returns. Plugging in scipy's *excess* kurtosis (``fisher=True``,
+    normal => 0) directly would instead give ``(0 - 1) / 4 == -0.25`` --
+    silently understating ``var_correction`` (and so overstating
+    ``deflated_sharpe``) for real, typically fat-tailed return series,
+    exactly where deflation matters most. This fixture uses a large mean
+    return so SR clearly exceeds the expected max SR under the null,
+    making the bug's practical direction (falsely inflated deflated_sharpe)
+    unambiguous regardless of n_trials.
+    """
+    from scipy.stats import kurtosis, skew
+
+    rng = np.random.default_rng(11)
+    T = 500
+    base = rng.normal(loc=0.0035, scale=0.01, size=T)
+    jump_mask = rng.random(T) < 0.03
+    base[jump_mask] += rng.normal(scale=0.08, size=int(jump_mask.sum()))
+    ls_returns = base
+
+    calc = DeflatedSharpeCalculator(config)
+    result = calc.compute("fat_tailed", ls_returns, n_trials=10)
+
+    mean_r = float(np.mean(ls_returns))
+    std_r = float(np.std(ls_returns, ddof=1))
+    sr = (mean_r / std_r) * np.sqrt(252.0)
+    gamma3 = float(skew(ls_returns, bias=False))
+    gamma4_raw = float(kurtosis(ls_returns, fisher=False, bias=False))
+    e_max_sr = calc._expected_max_sr(10)
+    assert gamma4_raw > 3.5, "fixture must be fat-tailed for this test to be meaningful"
+    assert sr > e_max_sr, "fixture must clear the null bar for the bug's direction to be unambiguous"
+    expected_var_correction = (1.0 - gamma3 * sr + (gamma4_raw - 1.0) / 4.0 * sr**2) / T
+    expected_dsr = (sr - e_max_sr) / np.sqrt(expected_var_correction)
+
+    assert result.deflated_sharpe == pytest.approx(expected_dsr, rel=1e-6)
+
+    # Pin the regression explicitly: computing with *excess* kurtosis
+    # instead must give a materially different (falsely higher) result.
+    gamma4_excess = float(kurtosis(ls_returns, fisher=True, bias=False))
+    buggy_var_correction = (1.0 - gamma3 * sr + (gamma4_excess - 1.0) / 4.0 * sr**2) / T
+    assert buggy_var_correction > 0
+    buggy_dsr = (sr - e_max_sr) / np.sqrt(buggy_var_correction)
+    assert result.deflated_sharpe < buggy_dsr
+    assert result.deflated_sharpe != pytest.approx(buggy_dsr, rel=1e-3)

@@ -11,6 +11,7 @@ them as dense vectors. Supports:
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 
 import numpy as np
 
@@ -39,6 +40,15 @@ try:
     _has_sklearn = True
 except ImportError:
     TfidfVectorizer = None  # type: ignore[assignment]
+
+
+# Optional code-specialized checkpoint name. Operators may pass this as
+# ``model_name=`` when sentence-transformers is installed. Never downloaded
+# unless explicitly requested -- tests/mock use the hash/TF-IDF fallbacks.
+# Same lazy/optional pattern as the default MiniLM path (no hard dependency,
+# no forced network I/O during ``--mock`` or CI).
+CODE_SPECIALIZED_MODEL_NAME = "nomic-ai/CodeRankEmbed"
+DEFAULT_MODEL_NAME = "all-MiniLM-L6-v2"
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +138,7 @@ class FormulaEmbedder:
 
     def __init__(
         self,
-        model_name: str = "all-MiniLM-L6-v2",
+        model_name: str = DEFAULT_MODEL_NAME,
         use_faiss: bool = True,
     ) -> None:
         self._model_name = model_name
@@ -297,7 +307,36 @@ class FormulaEmbedder:
         return vec
 
     def _encode_tfidf(self, text: str) -> np.ndarray:
-        """Encode using TF-IDF over all cached texts + query.
+        """Encode a single text using TF-IDF over all cached texts + query.
+
+        Delegates to :meth:`_encode_tfidf_batch` for a single text so the
+        single- and multi-text paths share one fit/refresh implementation.
+        """
+        return self._encode_tfidf_batch([text])[0]
+
+    def _encode_batch(self, texts: Sequence[str]) -> list[np.ndarray]:
+        """Encode multiple texts, guaranteeing they share one vector space.
+
+        The TF-IDF backend's vocabulary is corpus-dependent: two texts
+        encoded via separate :meth:`_encode` calls can land in
+        different-dimensional vector spaces (whichever terms happened to
+        be in *that specific call's* corpus), so comparing them (e.g.
+        cosine similarity) can silently fail with a dimension mismatch.
+        Callers that need to compare several texts against each other
+        (a query against multiple candidates) must batch through this
+        method instead of looping single-text ``_encode`` calls.
+        """
+        texts = list(texts)
+        if not texts:
+            return []
+        if _has_sentence_transformers or not _has_sklearn:
+            # Fixed-dimensionality backends: independent per-text encoding
+            # is already dimensionally consistent, no shared fit needed.
+            return [self._encode(t) for t in texts]
+        return self._encode_tfidf_batch(texts)
+
+    def _encode_tfidf_batch(self, texts: list[str]) -> list[np.ndarray]:
+        """TF-IDF-encode multiple texts from one shared fit.
 
         Because TF-IDF vocabulary can change when new documents are
         added, we refit when dirty. This is cheap for the expected
@@ -305,18 +344,16 @@ class FormulaEmbedder:
         """
         if self._tfidf is None:
             self._tfidf = TfidfVectorizer(max_features=512)
-            self._tfidf_dirty = True
 
-        # Collect all known texts + this one
+        # Collect all known texts + every requested text, in ONE corpus so
+        # every returned vector comes from the same fit/vocabulary.
         corpus = [t for _, t in self._cache.values()]
-        query_idx = len(corpus)
-        corpus.append(text)
+        query_start = len(corpus)
+        corpus.extend(texts)
 
-        # Always refit because vocab may have grown
         matrix = self._tfidf.fit_transform(corpus)
-        vec = np.asarray(matrix[query_idx].toarray(), dtype=np.float32).flatten()
 
-        # Re-encode cached entries with updated vocab
+        # Re-encode cached entries with updated vocab.
         for i, fid in enumerate(self._ids):
             updated = np.asarray(matrix[i].toarray(), dtype=np.float32).flatten()
             norm = np.linalg.norm(updated)
@@ -324,12 +361,19 @@ class FormulaEmbedder:
                 updated /= norm
             self._cache[fid] = (updated, self._cache[fid][1])
 
-        norm = np.linalg.norm(vec)
-        if norm > 0:
-            vec /= norm
+        results: list[np.ndarray] = []
+        for offset in range(len(texts)):
+            vec = np.asarray(
+                matrix[query_start + offset].toarray(), dtype=np.float32
+            ).flatten()
+            norm = np.linalg.norm(vec)
+            if norm > 0:
+                vec /= norm
+            results.append(vec)
+
         self._tfidf_dirty = False
         self._index_dirty = True
-        return vec
+        return results
 
     @staticmethod
     def _encode_hash(text: str, dim: int = 128) -> np.ndarray:

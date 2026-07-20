@@ -33,6 +33,7 @@ from factorminer.architecture import (
     OnlineForgettingService,
     RetrieveStage,
 )
+from factorminer.architecture.model_stage import ModelCoOptimizeStage
 from factorminer.core.factor_library import FactorLibrary
 from factorminer.core.loop_services import LoopExecutionService
 from factorminer.core.parser import try_parse
@@ -285,6 +286,8 @@ class HelixLoop(RalphLoop):
         self._embedder: Any | None = None
         self._auto_inventor: Any | None = None
         self._custom_op_store: Any | None = None
+        self._debate_rounds: list[dict[str, Any]] = []
+
 
         self._init_phase2_components(llm_provider)
         self.stages.update(
@@ -294,6 +297,7 @@ class HelixLoop(RalphLoop):
                 "evaluate": EvaluateStage(self._stage_evaluate_helix),
                 "library_update": LibraryUpdateStage(self._stage_library_update_helix),
                 "distill": DistillStage(self._stage_distill_helix),
+                "model_co_optimize": ModelCoOptimizeStage.from_mining_config(config),
             }
         )
 
@@ -498,6 +502,7 @@ class HelixLoop(RalphLoop):
         )
 
         self._loop_services.run_stage_chain(payload, ("distill",))
+        self.stages["model_co_optimize"].run(self, payload)
 
         # Build stats
         elapsed = time.time() - t0
@@ -546,6 +551,7 @@ class HelixLoop(RalphLoop):
         payload: IterationPayload,
     ) -> list[EvaluationResult]:
         results = self.pipeline.evaluate_batch(payload.candidates)
+        self._annotate_result_lineage(results, payload.library_state)
         self.lifecycle_store.record_batch_results(self.iteration, results)
         return results
 
@@ -617,6 +623,7 @@ class HelixLoop(RalphLoop):
                     library_state=library_state,
                     batch_size=batch_size,
                 )
+                self._record_debate_round()
                 # Convert CandidateFactor objects to (name, formula) tuples
                 tuples: list[tuple[str, str]] = []
                 for c in debate_candidates:
@@ -640,6 +647,78 @@ class HelixLoop(RalphLoop):
             library_state=library_state,
             batch_size=batch_size,
         )
+
+    def _record_debate_round(self) -> None:
+        """Serialize the latest debate/critic result into the run directory.
+
+        Writes ``debate_log.json`` under the configured output directory so an
+        external planner (MCP ``inspect_debate``) can inspect specialist
+        proposals, critic scores, and shortlist reasoning after the process
+        exits. Failures are swallowed -- debate telemetry must never abort mining.
+        """
+        generator = self._debate_generator
+        if generator is None:
+            return
+        result = getattr(generator, "last_debate_result", None)
+        if result is None:
+            return
+
+        critic_scores: list[dict[str, Any]] = []
+        for score in getattr(result, "critic_scores", None) or []:
+            critic_scores.append(
+                {
+                    "factor_name": getattr(score, "factor_name", ""),
+                    "formula": getattr(score, "formula", ""),
+                    "source_specialist": getattr(score, "source_specialist", ""),
+                    "scores": dict(getattr(score, "scores", {}) or {}),
+                    "composite_score": float(getattr(score, "composite_score", 0.0) or 0.0),
+                    "keep": bool(getattr(score, "keep", False)),
+                    "critique": getattr(score, "critique", "") or "",
+                }
+            )
+
+        round_payload: dict[str, Any] = {
+            "iteration": int(getattr(self, "iteration", 0) or 0),
+            "all_proposals": list(getattr(result, "all_proposals", None) or []),
+            "after_dedup": list(getattr(result, "after_dedup", None) or []),
+            "after_critic": list(getattr(result, "after_critic", None) or []),
+            "specialist_proposals": {
+                str(name): list(formulas)
+                for name, formulas in (getattr(result, "specialist_proposals", None) or {}).items()
+            },
+            "specialist_success_rates": {
+                str(name): float(rate)
+                for name, rate in (getattr(result, "specialist_success_rates", None) or {}).items()
+            },
+            "critic_scores": critic_scores,
+            "debate_stats": dict(getattr(result, "debate_stats", None) or {}),
+        }
+
+        leaderboard = None
+        get_leaderboard = getattr(generator, "get_specialist_leaderboard", None)
+        if callable(get_leaderboard):
+            try:
+                leaderboard = get_leaderboard()
+            except Exception:  # pragma: no cover - defensive
+                leaderboard = None
+        if leaderboard is not None:
+            round_payload["specialist_leaderboard"] = leaderboard
+
+        self._debate_rounds.append(round_payload)
+
+        output_dir = Path(getattr(self.config, "output_dir", "./output"))
+        try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            path = output_dir / "debate_log.json"
+            payload = {
+                "ok": True,
+                "research_artifact_only": True,
+                "n_rounds": len(self._debate_rounds),
+                "rounds": self._debate_rounds,
+            }
+            path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+        except OSError as exc:  # pragma: no cover - disk errors should not kill the loop
+            logger.warning("Helix: failed to persist debate_log.json: %s", exc)
 
     # ------------------------------------------------------------------
     # Stage 3: Canonicalization + deduplication

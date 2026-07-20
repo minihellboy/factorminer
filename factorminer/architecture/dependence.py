@@ -130,3 +130,186 @@ def build_dependence_metric(name: str | None) -> DependenceMetric:
         "Unsupported redundancy/dependence metric "
         f"'{name}'. Expected one of: spearman, pearson, distance_correlation"
     )
+
+
+# ---------------------------------------------------------------------------
+# Spectral span diagnostics (Hypothesis-Redundancy / LLM jump gate)
+# ---------------------------------------------------------------------------
+#
+# These operate on *formula-signal* matrices (columns = explored formulas),
+# not on the pairwise cross-factor dependence metrics above. Used by
+# ``architecture.geometry.assess_llm_jump_worth``.
+
+
+def library_span_basis(
+    span: np.ndarray,
+    *,
+    energy_fraction: float = 0.99,
+    min_singular: float = 1e-10,
+) -> tuple[np.ndarray, int]:
+    """Orthonormal basis for the column span of ``span`` via thin SVD.
+
+    Deliberately NOT column-centered: this basis spans ``{span @ w}``, the
+    literal column span, because callers (:func:`orthogonal_escape_score`,
+    :func:`architecture.geometry.assess_llm_jump_worth`) project a
+    candidate vector onto it and score the *uncentered* residual energy.
+    A candidate that is exactly a linear combination of ``span``'s columns
+    must have zero residual against this basis. Centering here would make
+    that false: a nonzero-mean in-span candidate would then show spurious
+    residual energy in its own (unrepresentable) mean component, reporting
+    a false "escape"/novelty score for coverage the library already has.
+    (:func:`spectral_compression_score` intentionally centers its own
+    independent SVD -- it measures library self-redundancy via co-movement
+    structure, a different, legitimate use of centering that does not
+    share this function.)
+
+    Parameters
+    ----------
+    span : np.ndarray, shape (D, K)
+        Columns are flattened explored-formula signals.
+    energy_fraction : float
+        Keep leading singular vectors until this fraction of total
+        squared singular value is captured (numerical rank soft-cut).
+    min_singular : float
+        Absolute floor on singular values treated as nonzero.
+
+    Returns
+    -------
+    basis : np.ndarray, shape (D, R)
+        Orthonormal columns spanning the retained subspace (may be empty).
+    rank : int
+        Number of retained columns.
+    """
+    mat = np.asarray(span, dtype=np.float64)
+    if mat.ndim != 2 or mat.size == 0 or mat.shape[0] == 0 or mat.shape[1] == 0:
+        return np.zeros((0, 0), dtype=np.float64), 0
+
+    mat = np.nan_to_num(mat, nan=0.0, posinf=0.0, neginf=0.0)
+
+    try:
+        # economy SVD: U is (D, K_eff)
+        u, s, _vt = np.linalg.svd(mat, full_matrices=False)
+    except np.linalg.LinAlgError:
+        return np.zeros((mat.shape[0], 0), dtype=np.float64), 0
+
+    if s.size == 0:
+        return np.zeros((mat.shape[0], 0), dtype=np.float64), 0
+
+    energy = s * s
+    total = float(np.sum(energy))
+    if total < 1e-18:
+        return np.zeros((mat.shape[0], 0), dtype=np.float64), 0
+
+    frac = float(np.clip(energy_fraction, 0.5, 1.0))
+    cdf = np.cumsum(energy) / total
+    rank = int(np.searchsorted(cdf, frac) + 1)
+    rank = max(1, min(rank, int(np.sum(s > min_singular))))
+    if rank <= 0:
+        return np.zeros((mat.shape[0], 0), dtype=np.float64), 0
+    return np.asarray(u[:, :rank], dtype=np.float64), rank
+
+
+def spectral_compression_score(
+    span: np.ndarray,
+    *,
+    energy_fraction: float = 0.95,
+) -> float:
+    """How compressed is the explored-formula span?
+
+    Returns a score in ``[0, 1]``: 1 means nearly rank-1 (highly redundant
+    library — a non-local jump is more valuable); 0 means energy is spread
+    across many directions (span already rich — local edits may suffice).
+
+    Defined as ``1 - (effective_rank - 1) / (k - 1)`` clipped, where
+    effective rank is the number of singular values needed to capture
+    ``energy_fraction`` of total energy.
+    """
+    mat = np.asarray(span, dtype=np.float64)
+    if mat.ndim != 2 or mat.shape[1] <= 1 or mat.size == 0:
+        return 0.0
+
+    mat = np.nan_to_num(mat, nan=0.0, posinf=0.0, neginf=0.0)
+    mat = mat - np.mean(mat, axis=0, keepdims=True)
+    try:
+        _u, s, _vt = np.linalg.svd(mat, full_matrices=False)
+    except np.linalg.LinAlgError:
+        return 0.0
+
+    if s.size == 0:
+        return 0.0
+    energy = s * s
+    total = float(np.sum(energy))
+    if total < 1e-18:
+        return 1.0  # all-zero span is fully "compressed"
+
+    frac = float(np.clip(energy_fraction, 0.5, 1.0))
+    cdf = np.cumsum(energy) / total
+    eff_rank = int(np.searchsorted(cdf, frac) + 1)
+    k = int(mat.shape[1])
+    if k <= 1:
+        return 0.0
+    # eff_rank == 1 → score 1; eff_rank == k → score 0
+    score = 1.0 - (eff_rank - 1) / (k - 1)
+    return float(np.clip(score, 0.0, 1.0))
+
+
+def orthogonal_escape_score(
+    span: np.ndarray,
+    candidate: np.ndarray,
+    *,
+    energy_fraction: float = 0.99,
+) -> float:
+    """Fraction of candidate energy outside the library span (in ``[0, 1]``)."""
+    mat = np.asarray(span, dtype=np.float64)
+    cand = np.asarray(candidate, dtype=np.float64).reshape(-1)
+    if mat.ndim != 2 or mat.size == 0:
+        return 1.0
+    d = min(mat.shape[0], cand.shape[0])
+    if d < 1:
+        return 0.0
+    mat = np.nan_to_num(mat[:d, :], nan=0.0, posinf=0.0, neginf=0.0)
+    cand = np.nan_to_num(cand[:d], nan=0.0, posinf=0.0, neginf=0.0)
+    basis, rank = library_span_basis(mat, energy_fraction=energy_fraction)
+    energy = float(np.dot(cand, cand))
+    if energy < 1e-18:
+        return 0.0
+    if rank == 0 or basis.size == 0:
+        return 1.0
+    coeffs = basis.T @ cand
+    projection = basis @ coeffs
+    residual = cand - projection
+    return float(np.clip(np.dot(residual, residual) / energy, 0.0, 1.0))
+
+
+def residual_alignment_score(
+    candidate_or_residual: np.ndarray,
+    target: np.ndarray,
+    *,
+    span_basis: np.ndarray | None = None,
+) -> float:
+    """Absolute cosine alignment of residual direction with target residual.
+
+    If ``span_basis`` is supplied, both vectors are first orthogonalized
+    against it so alignment reflects *new* explanatory power, not span
+    rehashing. Returns a score in ``[0, 1]``.
+    """
+    a = np.asarray(candidate_or_residual, dtype=np.float64).reshape(-1)
+    b = np.asarray(target, dtype=np.float64).reshape(-1)
+    n = min(a.shape[0], b.shape[0])
+    if n < 2:
+        return 0.0
+    a = np.nan_to_num(a[:n], nan=0.0, posinf=0.0, neginf=0.0)
+    b = np.nan_to_num(b[:n], nan=0.0, posinf=0.0, neginf=0.0)
+
+    if span_basis is not None and np.asarray(span_basis).size > 0:
+        basis = np.asarray(span_basis, dtype=np.float64)
+        if basis.ndim == 2 and basis.shape[0] >= n and basis.shape[1] > 0:
+            b_use = basis[:n, :]
+            a = a - b_use @ (b_use.T @ a)
+            b = b - b_use @ (b_use.T @ b)
+
+    na = float(np.linalg.norm(a))
+    nb = float(np.linalg.norm(b))
+    if na < 1e-18 or nb < 1e-18:
+        return 0.0
+    return float(np.clip(abs(np.dot(a, b)) / (na * nb), 0.0, 1.0))

@@ -1893,6 +1893,169 @@ def run_cost_pressure_benchmark(
     return result
 
 
+def run_cpcv_benchmark(
+    cfg,
+    *,
+    data_path: str | None = None,
+    mock: bool = False,
+    baseline: str = "factor_miner",
+) -> dict:
+    """Run Combinatorial Purged CV + Probability of Backtest Overfitting diagnostics.
+
+    Companion to `run_table1_benchmark`'s Top-K freeze evaluation: rather
+    than one frozen train/test split, every candidate in `baseline`'s
+    catalog is scored on every `CombinatorialPurgedCV` path built from the
+    freeze universe, producing an ``(n_trials, n_paths)`` out-of-sample
+    long-short performance matrix. That matrix drives
+    `ProbabilityOfBacktestOverfitting` (Bailey, Borwein, Lopez de Prado &
+    Zhu, 2017) and, for the best-performing trial's per-path OOS series,
+    `DeflatedSharpeCalculator` -- the same paper's companion statistic,
+    already implemented in `evaluation.significance`. Together they answer
+    "is the *best* candidate's edge real, or an artifact of trying many
+    candidates against a validation scheme that leaks information".
+
+    Parameters
+    ----------
+    cfg
+        Hierarchical benchmark config (see `factorminer.utils.config.Config`).
+    data_path : str, optional
+        Market data path; ignored when `mock=True`.
+    mock : bool
+        Use deterministic mock market data instead of `data_path`.
+    baseline : str
+        Candidate catalog id understood by `_get_baseline_entries`
+        (e.g. ``"factor_miner"``, ``"alpha101_classic"``, ``"gplearn"``).
+
+    Returns
+    -------
+    dict
+        JSON-safe manifest with `cpcv_config`, `cpcv`, `pbo`, and
+        `deflated_sharpe` sections plus best-trial provenance.
+    """
+    from factorminer.evaluation.cross_validation import (
+        CombinatorialPurgedCV,
+        CrossValidationConfig,
+        ProbabilityOfBacktestOverfitting,
+    )
+    from factorminer.evaluation.portfolio import PortfolioBacktester
+    from factorminer.evaluation.significance import (
+        DeflatedSharpeCalculator,
+        SignificanceConfig,
+    )
+
+    freeze_cfg = _cfg_with_overrides(cfg, cfg.benchmark.freeze_universe)
+    dataset, dataset_hash = load_benchmark_dataset(
+        freeze_cfg,
+        data_path=data_path,
+        universe=cfg.benchmark.freeze_universe,
+        mock=mock,
+    )
+
+    entries = _get_baseline_entries(baseline, cfg.benchmark.seed)
+    factors = _factors_from_entries(entries)
+    artifacts = evaluate_factors(factors, dataset, signal_failure_policy="reject")
+    succeeded = [artifact for artifact in artifacts if artifact.succeeded]
+
+    cv_config = CrossValidationConfig()
+    manifest: dict[str, Any] = {
+        "benchmark_name": "cpcv",
+        "baseline": baseline,
+        "freeze_universe": cfg.benchmark.freeze_universe,
+        "dataset_hash": dataset_hash,
+        "candidate_count": len(factors),
+        "succeeded_count": len(succeeded),
+        "cpcv_config": asdict(cv_config),
+        "cpcv": None,
+        "pbo": None,
+        "deflated_sharpe": None,
+        "best_trial": None,
+        "warnings": [],
+    }
+
+    if len(succeeded) < 2:
+        manifest["warnings"].append(
+            "Fewer than 2 factors recomputed successfully; PBO/DSR require multiple trials."
+        )
+        return _json_safe(manifest)
+
+    full_split = dataset.get_split("full")
+    n_samples = int(full_split.returns.shape[1])
+    cv = CombinatorialPurgedCV(cv_config)
+    try:
+        splits = cv.split(n_samples, label_horizon=1)
+    except ValueError as exc:
+        manifest["warnings"].append(f"CPCV split failed: {exc}")
+        return _json_safe(manifest)
+
+    backtester = PortfolioBacktester()
+    returns_panel = full_split.returns.T  # (T, N assets)
+    trial_names = [artifact.name for artifact in succeeded]
+    n_trials = len(succeeded)
+    n_paths = len(splits)
+    is_oos_matrix = np.full((n_trials, n_paths), np.nan, dtype=np.float64)
+
+    for trial_idx, artifact in enumerate(succeeded):
+        stats = backtester.quintile_backtest(artifact.signals_full.T, returns_panel)
+        ls_series = np.asarray(stats["ls_net_series"], dtype=np.float64)
+        for split in splits:
+            test_values = ls_series[split.test_indices]
+            finite = test_values[np.isfinite(test_values)]
+            if finite.size:
+                is_oos_matrix[trial_idx, split.path_id] = float(np.mean(finite))
+
+    valid_path_mask = np.all(np.isfinite(is_oos_matrix), axis=0)
+    clean_matrix = is_oos_matrix[:, valid_path_mask]
+
+    manifest["cpcv"] = {
+        "n_samples": n_samples,
+        "n_paths": n_paths,
+        "n_valid_paths": int(clean_matrix.shape[1]),
+        "label_horizon": 1,
+    }
+
+    if clean_matrix.shape[1] < cv_config.min_paths_for_pbo:
+        manifest["warnings"].append(
+            f"Only {clean_matrix.shape[1]} usable CPCV paths (< "
+            f"min_paths_for_pbo={cv_config.min_paths_for_pbo}); skipping PBO."
+        )
+    else:
+        pbo_result = ProbabilityOfBacktestOverfitting(cv_config).compute(clean_matrix)
+        manifest["pbo"] = {
+            "pbo": pbo_result.pbo,
+            "n_combinations": pbo_result.n_combinations,
+            "passes": pbo_result.passes,
+            "logit_values": [float(value) for value in pbo_result.logit_values],
+        }
+
+    mean_oos = np.nanmean(is_oos_matrix, axis=1)
+    best_idx = int(np.nanargmax(mean_oos))
+    best_name = trial_names[best_idx]
+    best_series = is_oos_matrix[best_idx][np.isfinite(is_oos_matrix[best_idx])]
+
+    # `best_series` is one performance value per CPCV path (a subset of test
+    # groups), not one value per calendar period -- annualization_factor=1.0
+    # keeps the Deflated Sharpe on the same path-level scale as `pbo`
+    # instead of implying a false calendar annualization.
+    dsr_result = DeflatedSharpeCalculator(SignificanceConfig()).compute(
+        best_name, best_series, n_trials=n_trials, annualization_factor=1.0
+    )
+    manifest["deflated_sharpe"] = {
+        "factor_name": dsr_result.factor_name,
+        "raw_sharpe": dsr_result.raw_sharpe,
+        "deflated_sharpe": dsr_result.deflated_sharpe,
+        "haircut": dsr_result.haircut,
+        "p_value": dsr_result.p_value,
+        "n_trials": dsr_result.n_trials,
+        "passes": dsr_result.passes,
+    }
+    manifest["best_trial"] = {
+        "name": best_name,
+        "mean_oos_performance": float(mean_oos[best_idx]),
+    }
+
+    return _json_safe(manifest)
+
+
 def _time_callable(fn, repeats: int = 3) -> float:
     timings: list[float] = []
     for _ in range(repeats):

@@ -11,10 +11,13 @@ from factorminer.agent.debate import (
 from factorminer.agent.factor_generator import FactorGenerator
 from factorminer.agent.llm_interface import (
     AnthropicProvider,
+    CascadeProvider,
     GoogleProvider,
     LLMProvider,
     MockProvider,
+    OpenAICompatibleProvider,
     OpenAIProvider,
+    PrefixedCacheProvider,
     create_provider,
 )
 from factorminer.agent.output_parser import CandidateFactor, parse_llm_output
@@ -40,11 +43,13 @@ from factorminer.agent.specialists import (
 __all__ = [
     # Generator
     "FactorGenerator",
-    # LLM providers
     "LLMProvider",
     "OpenAIProvider",
+    "OpenAICompatibleProvider",
     "AnthropicProvider",
     "GoogleProvider",
+    "CascadeProvider",
+    "PrefixedCacheProvider",
     "MockProvider",
     "create_provider",
     # Parsing

@@ -58,6 +58,8 @@ Primary execution surfaces:
 - [Binance Reproduction Notes](docs/binance-reproduction.md)
 - [Bundled Data Notes](data/README.md)
 - [Repo Audit](docs/repo-audit.md)
+- [Landscape Review & Extension Roadmap](docs/landscape-and-extensions.md)
+- [Security Considerations](docs/security.md)
 - [Contributing](CONTRIBUTING.md)
 - [Roadmap](ROADMAP.md)
 
@@ -215,9 +217,20 @@ Primary commands:
 - `evaluate`
 - `combine`
 - `visualize`
-- `benchmark`
-- `export`
-- `session inspect`
+- `benchmark` (incl. `benchmark cpcv` — Combinatorial Purged CV + Probability of Backtest Overfitting)
+- `export` (`--format csv|formulas|qlib`, `--anonymize`)
+- `portfolio-construct` (HRP / risk parity / CVaR position weighting over a combined signal)
+- `ingest-research` (screen and classify an external research note into mining-cycle context; `--eligibility-mode ohlcv_only|alt_enabled`)
+- `attach-edgar` (join point-in-time SEC EDGAR XBRL fundamentals — `$eps`/`$revenue`/`$book_equity`/`$shares_out` — onto an OHLCV panel)
+- `build-futures` (build a roll-adjusted continuous futures panel with `$basis`/`$spot`/`$premium`/`$roll_yield`/`$oi` leaves)
+- `crowding` (consensus-factor novelty screen + Lou–Polk CoMetric + hyperbolic decay crowding taxonomy; research risk labels only)
+- `jump-worth` (geometric gate for whether a non-local LLM jump is worth its cost vs. a cheap local edit)
+- `model-co-optimize` (`--model-kind ridge|lasso|xgboost|corr_graphsage`, `--train-objective mse|margin_pairwise|listnet|bpr`)
+- `retrieval-smoke` (hybrid BM25+dense memory-retrieval quality check, no network)
+- `sealed-search` (opt-in Agora-style sealed multi-evaluator promotion, alongside — not replacing — default admission)
+- `export-rft-dataset` (reward-annotated JSONL export for external RFT/GRPO fine-tuning; does not train a model in-process)
+- `mcp-serve` (`--transport stdio|http`; HTTP is opt-in, loopback-only, and requires a bearer token)
+- `session inspect` (`--telemetry` for per-round mining telemetry, `--sensitivity <factor_id>` for AST leaf/subtree ablation)
 
 ## Common Workflows
 
