@@ -24,6 +24,7 @@ from factorminer.benchmark.runtime import (
     run_ablation_strategy_benchmark,
     run_benchmark_suite,
     run_cost_pressure_benchmark,
+    run_cpcv_benchmark,
     run_efficiency_benchmark,
     run_runtime_mining_benchmark,
     run_table1_benchmark,
@@ -31,17 +32,17 @@ from factorminer.benchmark.runtime import (
 )
 
 _LEGACY_EXPORTS = {
-    "HelixBenchmark": ("factorminer.benchmark.helix_benchmark", "HelixBenchmark"),
-    "BenchmarkResult": ("factorminer.benchmark.helix_benchmark", "BenchmarkResult"),
-    "MethodResult": ("factorminer.benchmark.helix_benchmark", "MethodResult"),
-    "DMTestResult": ("factorminer.benchmark.helix_benchmark", "DMTestResult"),
+    "HelixBenchmark": ("factorminer.benchmark.runtime", "HelixBenchmark"),
+    "BenchmarkResult": ("factorminer.benchmark.runtime", "BenchmarkResult"),
+    "MethodResult": ("factorminer.benchmark.runtime", "MethodResult"),
+    "DMTestResult": ("factorminer.benchmark.runtime", "DMTestResult"),
     "StatisticalComparisonTests": (
-        "factorminer.benchmark.helix_benchmark",
+        "factorminer.benchmark.runtime",
         "StatisticalComparisonTests",
     ),
-    "SpeedBenchmark": ("factorminer.benchmark.helix_benchmark", "SpeedBenchmark"),
-    "OperatorSpeedResult": ("factorminer.benchmark.helix_benchmark", "OperatorSpeedResult"),
-    "PipelineSpeedResult": ("factorminer.benchmark.helix_benchmark", "PipelineSpeedResult"),
+    "SpeedBenchmark": ("factorminer.benchmark.runtime", "SpeedBenchmark"),
+    "OperatorSpeedResult": ("factorminer.benchmark.runtime", "OperatorSpeedResult"),
+    "PipelineSpeedResult": ("factorminer.benchmark.runtime", "PipelineSpeedResult"),
 }
 
 _OPTIONAL_EXPORTS = {
@@ -89,6 +90,7 @@ __all__ = [
     "run_ablation_strategy_benchmark",
     "run_benchmark_suite",
     "run_cost_pressure_benchmark",
+    "run_cpcv_benchmark",
     "run_efficiency_benchmark",
     "run_runtime_mining_benchmark",
     "run_table1_benchmark",

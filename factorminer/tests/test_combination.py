@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from factorminer.evaluation.backtest import compute_ic_series
 from factorminer.evaluation.combination import FactorCombiner
 from factorminer.evaluation.selection import FactorSelector
 
@@ -128,6 +129,192 @@ class TestICWeighted:
     def test_empty_raises(self, combiner):
         with pytest.raises(ValueError, match="not be empty"):
             combiner.ic_weighted({}, {})
+
+
+# ---------------------------------------------------------------------------
+# Temporal reweighting (AlphaForge-style)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def regime_shift_signals_returns():
+    """Two factors whose predictive power swaps halfway through the sample.
+
+    Factor 1 drives returns in the first half; factor 2 drives returns in
+    the second half. A single static weighting (fit once over the whole
+    sample) necessarily under-weights whichever factor is currently
+    predictive, while a temporally-reweighted composite can track the
+    regime shift.
+    """
+    rng = np.random.default_rng(42)
+    T, N = 200, 30
+    factor_a = rng.normal(0, 1, (T, N))
+    factor_b = rng.normal(0, 1, (T, N))
+    noise = rng.normal(0, 0.01, (T, N))
+
+    returns = np.zeros((T, N))
+    returns[:100] = 0.05 * factor_a[:100] + noise[:100]
+    returns[100:] = 0.05 * factor_b[100:] + noise[100:]
+
+    return {1: factor_a, 2: factor_b}, returns
+
+
+class TestTemporalReweight:
+    """Test AlphaForge-style dynamic/temporal reweighting."""
+
+    def test_output_shape(self, combiner, simple_signals, rng):
+        T, N = next(iter(simple_signals.values())).shape
+        returns = rng.normal(0, 1, (T, N))
+        result = combiner.temporal_reweight(simple_signals, returns)
+        assert result.shape == (T, N)
+
+    def test_beats_static_ic_weighted_under_regime_shift(
+        self, combiner, regime_shift_signals_returns
+    ):
+        signals, returns = regime_shift_signals_returns
+
+        # Static baseline: one IC-weighted combination fit over the whole
+        # sample (mirrors how `ic_weighted` is normally driven).
+        static_ic_values = {
+            fid: float(np.nanmean(compute_ic_series(sig, returns)))
+            for fid, sig in signals.items()
+        }
+        static_composite = combiner.ic_weighted(signals, static_ic_values)
+
+        temporal_composite = combiner.temporal_reweight(
+            signals, returns, lookback=40, rebalance_every=20, method="ic_weighted"
+        )
+
+        assert not np.allclose(static_composite, temporal_composite)
+
+        static_full_ic = np.nanmean(compute_ic_series(static_composite, returns))
+        temporal_full_ic = np.nanmean(compute_ic_series(temporal_composite, returns))
+        assert temporal_full_ic > static_full_ic
+
+    def test_degenerate_rebalance_first_block_falls_back_to_equal_weight(
+        self, combiner, simple_signals, rng
+    ):
+        """Regression test for the first-block look-ahead fix.
+
+        A prior implementation bootstrapped the first rebalance block's
+        weight-estimation window from that SAME block's own data -- a real
+        look-ahead (using data a block would be scored against to also
+        weight it). AlphaForge's cited algorithm (arXiv:2406.18394,
+        Algorithm 2) is walk-forward for every step with no such
+        exception, so with ``rebalance_every >= T`` (a single block with
+        zero trailing history), the walk-forward-honest answer is
+        uninformed equal weighting, NOT the full-sample static
+        ic_weighted result (which only matched before because of the
+        look-ahead).
+        """
+        T, N = next(iter(simple_signals.values())).shape
+        returns = rng.normal(0, 1, (T, N))
+
+        equal_composite = combiner.equal_weight(simple_signals)
+        static_ic_values = {
+            fid: float(np.nanmean(compute_ic_series(sig, returns)))
+            for fid, sig in simple_signals.items()
+        }
+        static_ic_composite = combiner.ic_weighted(simple_signals, static_ic_values)
+
+        temporal_composite = combiner.temporal_reweight(
+            simple_signals, returns, lookback=60, rebalance_every=T + 100,
+            method="ic_weighted",
+        )
+
+        np.testing.assert_array_almost_equal(equal_composite, temporal_composite)
+        assert not np.allclose(static_ic_composite, temporal_composite), (
+            "must NOT reproduce the full-sample static result -- a walk-forward "
+            "block with zero trailing history has strictly less information "
+            "than the full-sample computation and must not match it exactly"
+        )
+
+    def test_first_block_composite_independent_of_its_own_returns(
+        self, combiner, simple_signals, rng
+    ):
+        """Decisive no-look-ahead proof: the first rebalance block has zero
+        trailing history, so its composite must not depend AT ALL on the
+        returns for that same block -- changing them must not change it.
+        A look-ahead implementation (weights estimated from the block's
+        own data) would fail this: perturbing the first block's returns
+        would change the IC estimate used to weight that very block.
+        """
+        T, N = next(iter(simple_signals.values())).shape
+        rebalance_every = 15
+        returns_a = rng.normal(0, 1, (T, N))
+        returns_b = returns_a.copy()
+        # Perturb ONLY the first block's returns -- a real look-ahead would
+        # change that block's own estimated weights and thus its composite.
+        returns_b[:rebalance_every] = rng.normal(5.0, 3.0, (rebalance_every, N))
+
+        composite_a = combiner.temporal_reweight(
+            simple_signals, returns_a, lookback=60,
+            rebalance_every=rebalance_every, method="ic_weighted",
+        )
+        composite_b = combiner.temporal_reweight(
+            simple_signals, returns_b, lookback=60,
+            rebalance_every=rebalance_every, method="ic_weighted",
+        )
+
+        # First block must be identical despite the perturbation.
+        np.testing.assert_array_almost_equal(
+            composite_a[:rebalance_every], composite_b[:rebalance_every]
+        )
+        # Sanity: later blocks (which DO have trailing history reaching
+        # back before the perturbed span, once the lookback window moves
+        # past it) may legitimately differ -- this test only asserts the
+        # first block's independence, not that perturbation is inert
+        # everywhere.
+
+    def test_degenerate_rebalance_matches_static_equal_weight(
+        self, combiner, simple_signals, rng
+    ):
+        T, N = next(iter(simple_signals.values())).shape
+        returns = rng.normal(0, 1, (T, N))
+
+        static_composite = combiner.equal_weight(simple_signals)
+        temporal_composite = combiner.temporal_reweight(
+            simple_signals, returns, rebalance_every=T + 100, method="equal_weight",
+        )
+        np.testing.assert_array_almost_equal(static_composite, temporal_composite)
+
+    def test_degenerate_rebalance_matches_static_orthogonal(
+        self, combiner, simple_signals, rng
+    ):
+        T, N = next(iter(simple_signals.values())).shape
+        returns = rng.normal(0, 1, (T, N))
+
+        static_composite = combiner.orthogonal(simple_signals)
+        temporal_composite = combiner.temporal_reweight(
+            simple_signals, returns, rebalance_every=T + 100, method="orthogonal",
+        )
+        np.testing.assert_array_almost_equal(static_composite, temporal_composite)
+
+    def test_empty_raises(self, combiner, rng):
+        with pytest.raises(ValueError, match="not be empty"):
+            combiner.temporal_reweight({}, rng.normal(0, 1, (10, 5)))
+
+    def test_invalid_method_raises(self, combiner, simple_signals, rng):
+        T, N = next(iter(simple_signals.values())).shape
+        returns = rng.normal(0, 1, (T, N))
+        with pytest.raises(ValueError, match="Unknown method"):
+            combiner.temporal_reweight(simple_signals, returns, method="bogus")
+
+    def test_invalid_rebalance_every_raises(self, combiner, simple_signals, rng):
+        T, N = next(iter(simple_signals.values())).shape
+        returns = rng.normal(0, 1, (T, N))
+        with pytest.raises(ValueError, match="rebalance_every"):
+            combiner.temporal_reweight(simple_signals, returns, rebalance_every=0)
+
+    def test_invalid_lookback_raises(self, combiner, simple_signals, rng):
+        T, N = next(iter(simple_signals.values())).shape
+        returns = rng.normal(0, 1, (T, N))
+        with pytest.raises(ValueError, match="lookback"):
+            combiner.temporal_reweight(simple_signals, returns, lookback=0)
+
+    def test_returns_shape_mismatch_raises(self, combiner, simple_signals, rng):
+        bad_returns = rng.normal(0, 1, (10, 3))
+        with pytest.raises(ValueError, match="shape must match"):
+            combiner.temporal_reweight(simple_signals, bad_returns)
 
 
 # ---------------------------------------------------------------------------

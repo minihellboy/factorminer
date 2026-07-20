@@ -10,9 +10,10 @@ from __future__ import annotations
 from typing import Any
 
 from factorminer.core.types import (
-    FEATURES,
     OPERATOR_REGISTRY,
     OperatorSpec,
+    get_feature_descriptions,
+    get_features,
 )
 
 
@@ -55,35 +56,74 @@ def _format_operator_table() -> str:
     return "\n".join(lines)
 
 
-def _format_feature_list() -> str:
-    """Build a description of available raw features."""
-    descriptions = {
-        "$open": "opening price",
-        "$high": "highest price in the bar",
-        "$low": "lowest price in the bar",
-        "$close": "closing price",
-        "$volume": "trading volume (shares)",
-        "$amt": "trading amount (currency value)",
-        "$vwap": "volume-weighted average price",
-        "$returns": "close-to-close returns",
-    }
+def _format_feature_list(features: list[str] | None = None) -> str:
+    """Build a description of available raw features.
+
+    Uses the live feature registry so extra leaves (fundamentals, futures)
+    appear in generation prompts once registered. Descriptions come from
+    :data:`factorminer.core.types.FEATURE_DESCRIPTIONS`.
+    """
+    names = list(features) if features is not None else get_features()
+    descriptions = get_feature_descriptions(names)
     lines = []
-    for feat in FEATURES:
+    for feat in names:
         desc = descriptions.get(feat, "")
-        lines.append(f"  {feat}: {desc}")
+        if desc:
+            lines.append(f"  {feat}: {desc}")
+        else:
+            lines.append(f"  {feat}")
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# System prompt
-# ---------------------------------------------------------------------------
+def _asset_class_framing(asset_class: str | None = None) -> str:
+    """Return the opening sentence for the system prompt by asset class."""
+    kind = (asset_class or "equity").strip().lower()
+    if kind in {"futures", "future", "continuous_futures"}:
+        return (
+            "You are a quantitative researcher mining formulaic alpha factors "
+            "for cross-sectional futures / continuous-contract selection."
+        )
+    if kind in {"crypto", "cryptocurrency", "digital_asset"}:
+        return (
+            "You are a quantitative researcher mining formulaic alpha factors "
+            "for cryptocurrency cross-sectional selection."
+        )
+    if kind in {"multi_asset", "multi-asset", "mixed"}:
+        return (
+            "You are a quantitative researcher mining formulaic alpha factors "
+            "across a multi-asset panel."
+        )
+    return (
+        "You are a quantitative researcher mining formulaic alpha factors "
+        "for stock selection."
+    )
 
-SYSTEM_PROMPT = f"""You are a quantitative researcher mining formulaic alpha factors for stock selection.
+
+def build_system_prompt(
+    *,
+    features: list[str] | None = None,
+    asset_class: str | None = None,
+) -> str:
+    """Build the generation system prompt for the active feature set.
+
+    Parameters
+    ----------
+    features :
+        Optional explicit DSL leaf list. Defaults to the live registry
+        (``get_features()``), so callers that ``register_features(...)``
+        before building prompts automatically surface new leaves.
+    asset_class :
+        Optional framing hint (``equity`` / ``futures`` / ``crypto``).
+        Defaults to equity/stock-selection language for backward compatibility.
+    """
+    feature_block = _format_feature_list(features)
+    framing = _asset_class_framing(asset_class)
+    return f"""{framing}
 
 Your goal is to generate novel, predictive factor expressions using a tree-structured domain-specific language (DSL). Each factor is a composition of operators applied to raw market features.
 
 ## RAW FEATURES (leaf nodes)
-{_format_feature_list()}
+{feature_block}
 
 ## OPERATOR LIBRARY
 {_format_operator_table()}
@@ -98,7 +138,7 @@ Your goal is to generate novel, predictive factor expressions using a tree-struc
 4. No infix operators; use Add(x,y) instead of x+y, Sub(x,y) instead of x-y, etc.
 5. Parameters like window sizes are trailing numeric arguments after expression children.
 6. Valid window sizes are integers; check each operator's parameter ranges above.
-7. Cross-sectional operators (CsRank, CsZScore, CsDemean, CsScale, CsNeutralize) operate across all stocks at each time step -- they are crucial for making factors comparable.
+7. Cross-sectional operators (CsRank, CsZScore, CsDemean, CsScale, CsNeutralize) operate across all assets at each time step -- they are crucial for making factors comparable.
 
 ## EXAMPLES OF WELL-FORMED FACTORS
 - Neg(CsRank(Delta($close, 5)))
@@ -120,10 +160,20 @@ Your goal is to generate novel, predictive factor expressions using a tree-struc
 - Always wrap the outermost expression with a cross-sectional operator (CsRank, CsZScore) for comparability.
 - Combine DIFFERENT operator types for novelty (e.g., time-series + cross-sectional + arithmetic).
 - Use diverse window sizes; avoid always defaulting to 10.
-- Explore uncommon feature combinations ($amt, $vwap are underused).
+- Explore uncommon feature combinations ($amt, $vwap, and any registered alt-data leaves are underused).
 - Factors with depth 3-7 tend to be best: deep enough to capture non-trivial patterns but not so deep they overfit.
 - Prefer economically meaningful combinations over random nesting.
 """
+
+
+# ---------------------------------------------------------------------------
+# System prompt
+# ---------------------------------------------------------------------------
+
+# Default system prompt — rebuilt from the live feature registry at import
+# time. Callers that register extra leaves should prefer
+# :func:`build_system_prompt` (or pass a custom string into PromptBuilder).
+SYSTEM_PROMPT = build_system_prompt()
 
 
 # ---------------------------------------------------------------------------
@@ -171,8 +221,22 @@ class PromptBuilder:
     The user prompt varies each iteration based on memory signals.
     """
 
-    def __init__(self, system_prompt: str | None = None) -> None:
-        self._system_prompt = system_prompt or SYSTEM_PROMPT
+    def __init__(
+        self,
+        system_prompt: str | None = None,
+        *,
+        features: list[str] | None = None,
+        asset_class: str | None = None,
+    ) -> None:
+        if system_prompt is not None:
+            self._system_prompt = system_prompt
+        else:
+            self._system_prompt = build_system_prompt(
+                features=features,
+                asset_class=asset_class,
+            )
+        self._features = list(features) if features is not None else None
+        self._asset_class = asset_class
 
     @property
     def system_prompt(self) -> str:

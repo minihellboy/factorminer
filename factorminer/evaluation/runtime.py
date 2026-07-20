@@ -20,6 +20,8 @@ from factorminer.evaluation.metrics import (
 
 logger = logging.getLogger(__name__)
 
+# Static paper defaults kept for backwards-compatible imports. Prefer the
+# helpers below so extra registered leaves (fundamentals, futures, ...) map too.
 FEATURE_TO_COLUMN = {
     "$open": "open",
     "$high": "high",
@@ -32,6 +34,22 @@ FEATURE_TO_COLUMN = {
 }
 
 COLUMN_TO_FEATURE = {value: key for key, value in FEATURE_TO_COLUMN.items()}
+
+
+def _feature_to_column(name: str) -> str:
+    """Map a DSL leaf (or bare name) onto a panel DataFrame column."""
+    from factorminer.core.types import feature_to_column
+
+    return feature_to_column(name)
+
+
+def _column_to_feature(column: str) -> str:
+    """Map a panel column onto a DSL leaf name."""
+    from factorminer.core.types import column_to_feature
+
+    if column in COLUMN_TO_FEATURE:
+        return COLUMN_TO_FEATURE[column]
+    return column_to_feature(column)
 
 
 class SignalComputationError(RuntimeError):
@@ -156,9 +174,8 @@ def load_runtime_dataset(
         raise ValueError("Runtime dataset target must be a 2-D (M, T) array")
 
     data_dict = {
-        COLUMN_TO_FEATURE[column]: data_tensor[:, :, idx]
+        _column_to_feature(column): data_tensor[:, :, idx]
         for idx, column in enumerate(dataset.feature_names)
-        if column in COLUMN_TO_FEATURE
     }
 
     splits = {
@@ -374,17 +391,15 @@ def analysis_split_names(period: str) -> list[str]:
 
 def _resolve_feature_columns(config_features: Sequence[str]) -> list[str]:
     if not config_features:
-        return list(COLUMN_TO_FEATURE.keys())
+        return list(COLUMN_TO_FEATURE.values())
 
     resolved: list[str] = []
+    seen: set[str] = set()
     for feature in config_features:
-        if feature in FEATURE_TO_COLUMN:
-            resolved.append(FEATURE_TO_COLUMN[feature])
-            continue
-        stripped = feature.lstrip("$")
-        if stripped == "amt":
-            stripped = "amount"
-        resolved.append(stripped)
+        col = _feature_to_column(str(feature))
+        if col not in seen:
+            seen.add(col)
+            resolved.append(col)
     return resolved
 
 

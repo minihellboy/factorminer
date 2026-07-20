@@ -21,7 +21,11 @@ from factorminer.memory.memory_store import (
     StrategicInsight,
     SuccessPattern,
 )
-from factorminer.memory.retrieval import retrieve_memory
+from factorminer.memory.retrieval import (
+    HybridRetrievalConfig,
+    retrieval_quality_smoke,
+    retrieve_memory,
+)
 
 # Phase 2: Optional imports (graceful if dependencies missing)
 try:
@@ -65,6 +69,8 @@ __all__ = [
     "form_memory",
     "evolve_memory",
     "retrieve_memory",
+    "HybridRetrievalConfig",
+    "retrieval_quality_smoke",
     # Manager
     "ExperienceMemoryManager",
     # Phase 2: Knowledge Graph

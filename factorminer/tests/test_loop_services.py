@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from factorminer.architecture import IterationPayload
+from factorminer.architecture import IterationPayload, Phase2ComponentFactory
 from factorminer.core.loop_services import LoopExecutionService
 
 
@@ -181,3 +181,20 @@ def test_zero_admission_guidance_explains_tiny_strict_runs() -> None:
     assert "No factors were admitted" in warning
     assert "3 assets x 8 periods" in warning
     assert "ic=0.04" in warning
+
+
+def test_phase2_component_factory_is_inert_when_every_feature_is_disabled() -> None:
+    factory = Phase2ComponentFactory()
+
+    components = factory.build(
+        llm_provider=object(),
+        data_tensor=np.zeros((2, 3, 1)),
+        returns=np.zeros((2, 3)),
+        output_dir="unused",
+    )
+
+    assert components.debate_generator is None
+    assert components.canonicalizer is None
+    assert components.causal_validator is None
+    assert components.knowledge_graph is None
+    assert components.auto_inventor is None

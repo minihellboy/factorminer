@@ -108,6 +108,8 @@ def _factor_rows(library_payload: Mapping[str, Any]) -> list[dict[str, Any]]:
         if not isinstance(factor, Mapping):
             continue
         provenance = factor.get("provenance") or {}
+        if not isinstance(provenance, Mapping):
+            provenance = {}
         research_metrics = factor.get("research_metrics") or {}
         family_hint = _first_non_empty(
             provenance.get("family_hint"),
@@ -118,6 +120,10 @@ def _factor_rows(library_payload: Mapping[str, Any]) -> list[dict[str, Any]]:
             research_metrics.get("group"),
             factor.get("category"),
         )
+        rationale = provenance.get("economic_rationale") or factor.get("economic_rationale") or {}
+        if not isinstance(rationale, Mapping):
+            rationale = {}
+        attested = bool(rationale.get("attested", False)) and rationale.get("source") == "human"
         rows.append(
             {
                 "id": factor.get("id", "-"),
@@ -144,6 +150,12 @@ def _factor_rows(library_payload: Mapping[str, Any]) -> list[dict[str, Any]]:
                 "metric_version": factor.get("metric_version", "legacy_abs_ic"),
                 "family_hint": family_hint,
                 "provenance_loop": provenance.get("loop_type", "-"),
+                "parent_formula": provenance.get("parent_formula", "")
+                or factor.get("parent_formula", ""),
+                "edit_type": provenance.get("edit_type", "") or factor.get("edit_type", ""),
+                "edit_motif": provenance.get("edit_motif", ""),
+                "economic_rationale": dict(rationale),
+                "economic_rationale_attested": attested,
             }
         )
 
@@ -360,11 +372,55 @@ def _first_numeric(payload: Mapping[str, Any], *keys: str) -> Any:
     return None
 
 
+def _resolve_lifecycle_path(
+    library_source: JSONSource, lifecycle_source: JSONSource | None
+) -> Path | None:
+    """Locate a ``factor_lifecycle.jsonl`` log for decay/telemetry sections.
+
+    An explicit ``lifecycle_source`` (file or directory) takes precedence;
+    otherwise this looks for ``factor_lifecycle.jsonl`` next to
+    ``library_source`` (the directory ``factorminer mine``/``quickstart``
+    already write it into). Returns ``None`` when nothing is found so
+    callers can render the report without a decay/telemetry section.
+    """
+    if lifecycle_source is not None:
+        if isinstance(lifecycle_source, Mapping):
+            return None
+        path = Path(lifecycle_source)
+        if path.is_dir():
+            path = path / "factor_lifecycle.jsonl"
+        return path if path.exists() else None
+
+    if isinstance(library_source, Mapping):
+        return None
+    library_path = Path(library_source)
+    candidate_dir = library_path if library_path.is_dir() else library_path.parent
+    candidate = candidate_dir / "factor_lifecycle.jsonl"
+    return candidate if candidate.exists() else None
+
+
+def _lifecycle_sections(lifecycle_path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Build the ``decay`` and ``telemetry`` report payload sections."""
+    from factorminer.architecture.lifecycle import FactorLifecycleStore
+    from factorminer.evaluation.decay import build_decay_report
+
+    store = FactorLifecycleStore.load(lifecycle_path)
+    return build_decay_report(store), store.telemetry_summary()
+
+
 def build_report_payload(
     library_source: JSONSource,
     *,
     session_log_source: JSONSource | None = None,
     benchmark_sources: Sequence[JSONSource] | None = None,
+    lifecycle_source: JSONSource | None = None,
+    include_mrm_pack: bool = False,
+    mrm_pack: Mapping[str, Any] | None = None,
+    significance_summary: Mapping[str, Any] | None = None,
+    pbo_summary: Mapping[str, Any] | None = None,
+    cpcv_summary: Mapping[str, Any] | None = None,
+    causal_summary: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
+    decay_summary: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Load and normalize report inputs into a structured payload."""
 
@@ -382,6 +438,29 @@ def build_report_payload(
     family_counts = Counter(row["family_hint"] for row in factor_rows)
     category_counts = Counter(row["category"] for row in factor_rows)
     session_counts = _session_counts(session_log)
+
+    lifecycle_path = _resolve_lifecycle_path(library_source, lifecycle_source)
+    decay_rows: list[dict[str, Any]] = []
+    telemetry: dict[str, Any] | None = None
+    if lifecycle_path is not None:
+        decay_rows, telemetry = _lifecycle_sections(lifecycle_path)
+
+    mrm_payload: dict[str, Any] | None = None
+    if mrm_pack is not None:
+        mrm_payload = dict(mrm_pack)
+    elif include_mrm_pack:
+        from factorminer.evaluation.mrm_pack import build_mrm_pack
+
+        pack = build_mrm_pack(
+            library,
+            library_source=_json_label(library_source, "factor_library"),
+            significance_summary=significance_summary,
+            pbo_summary=pbo_summary,
+            cpcv_summary=cpcv_summary,
+            causal_summary=causal_summary,
+            decay_summary=decay_summary if decay_summary is not None else decay_rows,
+        )
+        mrm_payload = pack.to_dict()
 
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -410,6 +489,9 @@ def build_report_payload(
         "artifact_warnings": _artifact_warnings(library, len(factor_rows), session_counts),
         "recomputation_failures": _recomputation_failures(library, session_log),
         "next_commands": _next_commands(library_source),
+        "decay": decay_rows,
+        "telemetry": telemetry,
+        "mrm_pack": mrm_payload,
         "benchmarks": [
             {
                 "label": section.label,
@@ -680,6 +762,123 @@ def render_markdown_report(payload: Mapping[str, Any]) -> str:
                 )
             )
 
+    decay_rows = payload.get("decay") or []
+    if decay_rows:
+        lines.append("")
+        lines.append("## Factor Decay / Half-Life")
+        lines.append(
+            _markdown_table(
+                [
+                    "Factor",
+                    "Formula",
+                    "IC @ Admission",
+                    "IC Current",
+                    "Half-Life (iters)",
+                    "Trend Slope",
+                    "Classification",
+                    "Observations",
+                ],
+                [
+                    [
+                        row["factor_id"],
+                        row["formula"],
+                        row["ic_at_admission"],
+                        row["ic_current"],
+                        row["half_life_iterations"],
+                        row["trend_slope"],
+                        row["classification"],
+                        row["observations"],
+                    ]
+                    for row in decay_rows
+                ],
+            )
+        )
+
+    telemetry = payload.get("telemetry")
+    if telemetry:
+        lines.append("")
+        lines.append("## Mining Telemetry")
+        lines.append(
+            f"- Iterations tracked: `{len(telemetry.get('iterations', []))}`  \n"
+            f"- Total candidates: `{telemetry.get('total_candidates', 0)}`  \n"
+            f"- Total rejected: `{telemetry.get('total_rejected', 0)}`  \n"
+            f"- Overall rejection rate: `{_fmt_num(telemetry.get('overall_rejection_rate'), 3)}`"
+        )
+        if telemetry.get("rejection_reason_totals"):
+            lines.append("")
+            lines.append(
+                _markdown_table(
+                    ["Rejection reason", "Count"],
+                    sorted(
+                        telemetry["rejection_reason_totals"].items(), key=lambda kv: -kv[1]
+                    ),
+                )
+            )
+        if telemetry.get("per_iteration"):
+            lines.append("")
+            lines.append(
+                _markdown_table(
+                    [
+                        "Iteration",
+                        "Candidates",
+                        "Parse Errors",
+                        "IC-Screen Rejected",
+                        "Duplicates",
+                        "Correlation Rejected",
+                        "Admitted",
+                        "Rejection Rate",
+                    ],
+                    [
+                        [
+                            row["iteration"],
+                            row["candidates_seen"],
+                            row["parse_errors"],
+                            row["ic_screen_rejected"],
+                            row["duplicate_rejected"],
+                            row["correlation_rejected"],
+                            row["admitted"],
+                            row["rejection_rate"],
+                        ]
+                        for row in telemetry["per_iteration"]
+                    ],
+                )
+            )
+
+    mrm_pack = payload.get("mrm_pack")
+    if mrm_pack:
+        from factorminer.evaluation.mrm_pack import render_mrm_pack_markdown
+
+        lines.append("")
+        lines.append(render_mrm_pack_markdown(mrm_pack).rstrip())
+
+    rationale_rows = [
+        row
+        for row in library.get("factors", [])
+        if isinstance(row.get("economic_rationale"), Mapping) and row.get("economic_rationale")
+    ]
+    if rationale_rows:
+        from factorminer.core.provenance import UNATTESTED_RATIONALE_BANNER
+
+        lines.append("")
+        lines.append("## Economic Rationales")
+        for row in rationale_rows:
+            rationale = row.get("economic_rationale") or {}
+            lines.append("")
+            lines.append(f"### {row.get('name', row.get('id', '-'))}")
+            if not row.get("economic_rationale_attested"):
+                lines.append(f"**{UNATTESTED_RATIONALE_BANNER}**")
+            lines.append(
+                f"- Mathematical structure: {rationale.get('mathematical_structure', '')}"
+            )
+            lines.append(
+                f"- Financial semantics: {rationale.get('financial_semantics', '')}"
+            )
+            lines.append(f"- Market logic: {rationale.get('market_logic', '')}")
+            if row.get("parent_formula"):
+                lines.append(f"- Parent formula: `{row.get('parent_formula')}`")
+                lines.append(f"- Edit type: `{row.get('edit_type') or '-'}`")
+
+
     if payload.get("artifact_warnings"):
         lines.append("")
         lines.append("## Artifact Warnings")
@@ -904,6 +1103,149 @@ def render_html_report(payload: Mapping[str, Any]) -> str:
             ]
         )
 
+    decay_rows = payload.get("decay") or []
+    if decay_rows:
+        parts.extend(
+            [
+                "<section>",
+                "<h2>Factor Decay / Half-Life</h2>",
+                _html_table(
+                    [
+                        "Factor",
+                        "Formula",
+                        "IC @ Admission",
+                        "IC Current",
+                        "Half-Life (iters)",
+                        "Trend Slope",
+                        "Classification",
+                        "Observations",
+                    ],
+                    [
+                        [
+                            row["factor_id"],
+                            row["formula"],
+                            row["ic_at_admission"],
+                            row["ic_current"],
+                            row["half_life_iterations"],
+                            row["trend_slope"],
+                            row["classification"],
+                            row["observations"],
+                        ]
+                        for row in decay_rows
+                    ],
+                ),
+                "</section>",
+            ]
+        )
+
+    telemetry = payload.get("telemetry")
+    if telemetry:
+        parts.extend(
+            [
+                "<section>",
+                "<h2>Mining Telemetry</h2>",
+                '<div class="cards">',
+                _card("Iterations tracked", len(telemetry.get("iterations", []))),
+                _card("Total candidates", telemetry.get("total_candidates", 0)),
+                _card("Total rejected", telemetry.get("total_rejected", 0)),
+                _card(
+                    "Overall rejection rate", _fmt_num(telemetry.get("overall_rejection_rate"), 3)
+                ),
+                "</div>",
+                _html_table(
+                    ["Rejection reason", "Count"],
+                    sorted(
+                        telemetry.get("rejection_reason_totals", {}).items(),
+                        key=lambda kv: -kv[1],
+                    ),
+                ),
+                _html_table(
+                    [
+                        "Iteration",
+                        "Candidates",
+                        "Parse Errors",
+                        "IC-Screen Rejected",
+                        "Duplicates",
+                        "Correlation Rejected",
+                        "Admitted",
+                        "Rejection Rate",
+                    ],
+                    [
+                        [
+                            row["iteration"],
+                            row["candidates_seen"],
+                            row["parse_errors"],
+                            row["ic_screen_rejected"],
+                            row["duplicate_rejected"],
+                            row["correlation_rejected"],
+                            row["admitted"],
+                            row["rejection_rate"],
+                        ]
+                        for row in telemetry.get("per_iteration", [])
+                    ],
+                ),
+                "</section>",
+            ]
+        )
+
+    mrm_pack = payload.get("mrm_pack")
+    if mrm_pack:
+        from factorminer.evaluation.mrm_pack import (
+            UNATTESTED_RATIONALE_BANNER,
+            render_mrm_pack_html,
+        )
+
+        # Embed body fragment only (strip outer html document if present).
+        mrm_html = render_mrm_pack_html(mrm_pack)
+        body_start = mrm_html.find("<body>")
+        body_end = mrm_html.rfind("</body>")
+        if body_start >= 0 and body_end > body_start:
+            fragment = mrm_html[body_start + len("<body>") : body_end]
+        else:
+            fragment = mrm_html
+        parts.append("<section>")
+        parts.append(fragment)
+        parts.append("</section>")
+    else:
+        UNATTESTED_RATIONALE_BANNER = "UNATTESTED -- LLM DRAFT, NOT REVIEWED"
+
+    rationale_rows = [
+        row
+        for row in library.get("factors", [])
+        if isinstance(row.get("economic_rationale"), Mapping) and row.get("economic_rationale")
+    ]
+    if rationale_rows:
+        parts.extend(["<section>", "<h2>Economic Rationales</h2>"])
+        for row in rationale_rows:
+            rationale = row.get("economic_rationale") or {}
+            parts.append(f"<h3>{html.escape(str(row.get('name', row.get('id', '-'))))}</h3>")
+            if not row.get("economic_rationale_attested"):
+                parts.append(
+                    '<div style="background:#fef2f2;border:1px solid #f87171;color:#7f1d1d;'
+                    'padding:10px;border-radius:8px;font-weight:700;margin:8px 0">'
+                    f"{html.escape(UNATTESTED_RATIONALE_BANNER)}</div>"
+                )
+            parts.append(
+                "<p><strong>Mathematical structure:</strong> "
+                f"{html.escape(str(rationale.get('mathematical_structure', '')))}</p>"
+            )
+            parts.append(
+                "<p><strong>Financial semantics:</strong> "
+                f"{html.escape(str(rationale.get('financial_semantics', '')))}</p>"
+            )
+            parts.append(
+                "<p><strong>Market logic:</strong> "
+                f"{html.escape(str(rationale.get('market_logic', '')))}</p>"
+            )
+            if row.get("parent_formula"):
+                parts.append(
+                    "<p><strong>Parent formula:</strong> "
+                    f"<code>{html.escape(str(row.get('parent_formula')))}</code> "
+                    f"(edit: {html.escape(str(row.get('edit_type') or '-'))})</p>"
+                )
+        parts.append("</section>")
+
+
     if payload.get("artifact_warnings"):
         parts.extend(["<section>", "<h2>Artifact Warnings</h2>", "<ul>"])
         for warning in payload["artifact_warnings"]:
@@ -1001,6 +1343,9 @@ def generate_report(
     *,
     session_log_source: JSONSource | None = None,
     benchmark_sources: Sequence[JSONSource] | None = None,
+    lifecycle_source: JSONSource | None = None,
+    include_mrm_pack: bool = False,
+    mrm_pack: Mapping[str, Any] | None = None,
     format: str = "markdown",
     output_path: str | Path | None = None,
 ) -> str:
@@ -1010,6 +1355,9 @@ def generate_report(
         library_source,
         session_log_source=session_log_source,
         benchmark_sources=benchmark_sources,
+        lifecycle_source=lifecycle_source,
+        include_mrm_pack=include_mrm_pack,
+        mrm_pack=mrm_pack,
     )
     if format == "markdown":
         report = render_markdown_report(payload)
@@ -1032,6 +1380,9 @@ def write_report(
     *,
     session_log_source: JSONSource | None = None,
     benchmark_sources: Sequence[JSONSource] | None = None,
+    lifecycle_source: JSONSource | None = None,
+    include_mrm_pack: bool = False,
+    mrm_pack: Mapping[str, Any] | None = None,
     format: str = "markdown",
 ) -> Path:
     """Generate a report and save it to ``output_path``."""
@@ -1040,6 +1391,9 @@ def write_report(
         library_source,
         session_log_source=session_log_source,
         benchmark_sources=benchmark_sources,
+        lifecycle_source=lifecycle_source,
+        include_mrm_pack=include_mrm_pack,
+        mrm_pack=mrm_pack,
         format=format,
         output_path=output_path,
     )
@@ -1053,6 +1407,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("library", help="Path to factor_library.json or its base path")
     parser.add_argument(
         "--session-log", dest="session_log", default=None, help="Optional session_log.json path"
+    )
+    parser.add_argument(
+        "--lifecycle",
+        dest="lifecycle",
+        default=None,
+        help=(
+            "Optional factor_lifecycle.jsonl path or containing directory. "
+            "Auto-discovered next to the library path when omitted."
+        ),
     )
     parser.add_argument(
         "--benchmark",
@@ -1076,6 +1439,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.library,
         session_log_source=args.session_log,
         benchmark_sources=args.benchmarks,
+        lifecycle_source=args.lifecycle,
         format=args.format,
         output_path=args.output,
     )

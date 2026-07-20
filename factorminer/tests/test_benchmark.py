@@ -10,8 +10,10 @@ import numpy as np
 import pandas as pd
 from click.testing import CliRunner
 
-from factorminer.benchmark.helix_benchmark import StatisticalComparisonTests, _json_safe
 from factorminer.benchmark.runtime import (
+    StatisticalComparisonTests,
+    _cfg_for_runtime_baseline,
+    _json_safe,
     build_benchmark_library,
     build_benchmark_runtime_contract,
     evaluate_frozen_set,
@@ -405,12 +407,27 @@ def test_evaluate_frozen_set_records_cost_and_capacity_stress():
 
 def test_legacy_helix_benchmark_emits_deprecation_warning():
     from factorminer.benchmark.helix_benchmark import HelixBenchmark
+    from factorminer.benchmark.runtime import HelixBenchmark as RuntimeHelixBenchmark
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         _ = HelixBenchmark()
 
+    assert HelixBenchmark is RuntimeHelixBenchmark
     assert any("canonical benchmark path" in str(item.message) for item in caught)
+
+
+def test_phase2_runtime_variants_are_projected_by_the_canonical_runtime():
+    cfg = load_config()
+
+    full = _cfg_for_runtime_baseline(cfg, "helix_phase2")
+    without_causal = _cfg_for_runtime_baseline(cfg, "helix_no_causal")
+    without_canonicalization = _cfg_for_runtime_baseline(cfg, "helix_no_canonicalize")
+
+    assert full.phase2.causal.enabled is True
+    assert full.phase2.helix.enable_canonicalization is True
+    assert without_causal.phase2.causal.enabled is False
+    assert without_canonicalization.phase2.helix.enable_canonicalization is False
 
 
 def test_benchmark_package_lazy_exports_warn_on_legacy_access():

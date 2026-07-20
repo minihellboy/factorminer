@@ -96,6 +96,11 @@ KNOWN_MCP_CONNECTORS = (
         "url": "https://mcp-server.egnyte.com/mcp",
         "best_for": "document repositories and diligence files",
     },
+    {
+        "name": "ccxt",
+        "url": "stdio: npx @mcpfun/mcp-server-ccxt (or any ccxt-backed MCP server)",
+        "best_for": "crypto spot/futures OHLCV, tickers, and order books across 100+ exchanges via ccxt (Binance, OKX, Bybit, Coinbase, Kraken, ...)",
+    },
 )
 
 
@@ -121,6 +126,21 @@ class MCPDataSourceConfig:
             e.g. "data.bars". Empty means the result is already a row list.
         field_mapping: Maps canonical column -> connector field name.
         timeout: Per-call timeout in seconds.
+        columns_order: Connector field names in positional order, for
+            connectors that return array rows (e.g. ccxt's ``[timestamp, open,
+            high, low, close, volume]``) instead of named-field rows. When
+            set, rows are framed with these names before ``field_mapping`` is
+            applied, instead of relying on pandas' default integer columns.
+        constant_columns: Canonical column -> literal value applied to every
+            fetched row. Use this when a value is a call parameter rather than
+            a row field, e.g. injecting the requested symbol as ``asset_id``
+            for single-symbol-per-call tools such as ccxt's ``get-ohlcv``.
+        derive_amount_from_close_volume: When the connector has no dollar-
+            volume field, approximate ``amount`` as ``close * volume`` after
+            mapping instead of requiring it in ``field_mapping``.
+        datetime_unit: Passed to ``pandas.to_datetime(..., unit=...)`` for
+            connectors that return epoch timestamps, e.g. ``"ms"`` or ``"s"``.
+            ``None`` parses ``datetime`` as a normal date/timestamp string.
     """
 
     tool: str
@@ -134,6 +154,10 @@ class MCPDataSourceConfig:
     arguments: dict[str, Any] = field(default_factory=dict)
     records_path: str = ""
     timeout: float = 120.0
+    columns_order: list[str] | None = None
+    constant_columns: dict[str, str] = field(default_factory=dict)
+    derive_amount_from_close_volume: bool = False
+    datetime_unit: str | None = None
 
     def __post_init__(self) -> None:
         self.transport = self.transport.lower()
@@ -145,12 +169,22 @@ class MCPDataSourceConfig:
             raise ValueError("transport='http' requires a 'url'.")
         if self.transport == "stdio" and not self.command:
             raise ValueError("transport='stdio' requires a 'command'.")
-        missing = set(CANONICAL_COLUMNS) - set(self.field_mapping)
+        covered = set(self.field_mapping) | set(self.constant_columns)
+        if self.derive_amount_from_close_volume:
+            covered.add("amount")
+        missing = set(CANONICAL_COLUMNS) - covered
         if missing:
             raise ValueError(
-                "field_mapping must cover FactorMiner's required columns; missing: "
-                + ", ".join(sorted(missing))
+                "field_mapping/constant_columns must cover FactorMiner's required "
+                "columns; missing: " + ", ".join(sorted(missing))
             )
+        if self.columns_order:
+            unknown_targets = set(self.field_mapping.values()) - set(self.columns_order)
+            if unknown_targets:
+                raise ValueError(
+                    "field_mapping targets not present in columns_order: "
+                    + ", ".join(sorted(unknown_targets))
+                )
 
 
 def _expand_env(value: Any) -> Any:
@@ -229,7 +263,11 @@ def _records_to_frame(records: Any, config: MCPDataSourceConfig) -> pd.DataFrame
         # Column-oriented payload: {"close": [...], "open": [...], ...}
         frame = pd.DataFrame(records)
     elif isinstance(records, list):
-        frame = pd.DataFrame(records)
+        if config.columns_order and records and not isinstance(records[0], dict):
+            # Positional array rows (e.g. ccxt's [timestamp, o, h, l, c, v]).
+            frame = pd.DataFrame(records, columns=config.columns_order)
+        else:
+            frame = pd.DataFrame(records)
     else:
         raise ValueError(
             f"Expected a list or dict of rows, got {type(records).__name__}"
@@ -248,9 +286,27 @@ def _records_to_frame(records: Any, config: MCPDataSourceConfig) -> pd.DataFrame
         )
     frame = frame.rename(columns=rename)
 
+    for canonical_col, literal_value in config.constant_columns.items():
+        frame[canonical_col] = literal_value
+
+    if config.derive_amount_from_close_volume and "amount" not in frame.columns:
+        if "close" not in frame.columns or "volume" not in frame.columns:
+            raise ValueError(
+                "derive_amount_from_close_volume=True requires 'close' and "
+                "'volume' to already be present via field_mapping/constant_columns"
+            )
+        close = pd.to_numeric(frame["close"], errors="coerce")
+        volume = pd.to_numeric(frame["volume"], errors="coerce")
+        frame["amount"] = close * volume
+
     keep = [c for c in CANONICAL_COLUMNS if c in frame.columns]
     frame = frame[keep].copy()
-    frame["datetime"] = pd.to_datetime(frame["datetime"], errors="coerce", utc=False)
+    if config.datetime_unit:
+        frame["datetime"] = pd.to_datetime(
+            frame["datetime"], errors="coerce", unit=config.datetime_unit
+        )
+    else:
+        frame["datetime"] = pd.to_datetime(frame["datetime"], errors="coerce", utc=False)
     if frame["datetime"].isna().any():
         raise ValueError("Some 'datetime' values failed to parse from the connector")
     frame["asset_id"] = frame["asset_id"].astype(str)

@@ -7,6 +7,8 @@ Also provides summary table generation for the full factor library.
 
 from __future__ import annotations
 
+from typing import Any
+
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
@@ -400,3 +402,50 @@ class FactorTearSheet:
         positions = list(range(0, T, step))
         ax.set_xticks(positions)
         ax.set_xticklabels([dates[i] for i in positions], rotation=45, ha="right", fontsize=7)
+
+
+def format_sensitivity_panel(result: Any) -> str:
+    """Render a formula-sensitivity result as a plain-text tearsheet panel.
+
+    Accepts a :class:`~factorminer.evaluation.formula_sensitivity.FormulaSensitivityResult`
+    or a mapping with the same keys. Free-text explanation is returned as-is for
+    the caller to HTML-escape when embedding in HTML reports.
+    """
+    if hasattr(result, "to_dict"):
+        payload = result.to_dict()
+    elif isinstance(result, dict):
+        payload = result
+    else:
+        raise TypeError("result must be FormulaSensitivityResult or mapping")
+
+    lines = [
+        "Formula Sensitivity / Ablation",
+        "=" * 40,
+        f"Factor: {payload.get('factor_name', '-')}",
+        f"Formula: {payload.get('formula', '-')}",
+        f"Baseline paper IC: {payload.get('baseline_ic', float('nan')):.4f}",
+        f"Baseline paper ICIR: {payload.get('baseline_icir', float('nan')):.4f}",
+        "",
+        "Top ablations by |ΔIC|:",
+    ]
+    rows: list[dict] = []
+    for key in ("leaf_ablations", "subtree_ablations", "parameter_sensitivity"):
+        for row in payload.get(key, []) or []:
+            if isinstance(row, dict):
+                rows.append(row)
+            elif hasattr(row, "to_dict"):
+                rows.append(row.to_dict())
+    rows.sort(key=lambda r: abs(float(r.get("delta_ic") or 0.0)), reverse=True)
+    if not rows:
+        lines.append("  (none)")
+    else:
+        for row in rows[:12]:
+            lines.append(
+                f"  [{row.get('kind', '?')}] {row.get('target', '?')}: "
+                f"ΔIC={float(row.get('delta_ic') or 0.0):+.4f} "
+                f"({row.get('detail', '')})"
+            )
+    explanation = str(payload.get("explanation", "") or "").strip()
+    if explanation:
+        lines.extend(["", "Plain-English note:", explanation])
+    return "\n".join(lines) + "\n"

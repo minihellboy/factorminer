@@ -40,6 +40,13 @@ from factorminer.evaluation.correlation import (
     batch_spearman_pairwise,
     compute_correlation_batch,
 )
+from factorminer.evaluation.cross_validation import (
+    CombinatorialPurgedCV,
+    CPCVSplit,
+    CrossValidationConfig,
+    PBOResult,
+    ProbabilityOfBacktestOverfitting,
+)
 from factorminer.evaluation.metrics import (
     METRIC_VERSION,
     compute_factor_stats,
@@ -54,6 +61,12 @@ from factorminer.evaluation.metrics import (
     compute_pairwise_correlation,
     compute_quintile_returns,
     compute_turnover,
+)
+from factorminer.evaluation.model_zoo import (
+    FactorContributionSummary,
+    ModelCoOptimizationReport,
+    ModelZooConfig,
+    ModelZooEvaluator,
 )
 from factorminer.evaluation.pipeline import (
     CandidateFactor,
@@ -79,6 +92,14 @@ from factorminer.evaluation.research import (
     compute_factor_geometry,
     passes_research_admission,
     run_research_model_suite,
+)
+from factorminer.evaluation.risk_portfolio import (
+    CVaRPortfolioOptimizer,
+    HRPOptimizer,
+    RiskParityOptimizer,
+    RiskPortfolioConfig,
+    RiskPortfolioResult,
+    construct_portfolio,
 )
 from factorminer.evaluation.selection import FactorSelector
 from factorminer.evaluation.significance import (
@@ -117,6 +138,11 @@ __all__ = [
     "check_replacement",
     "AdmissionDecision",
     "StockThresholds",
+    # model_zoo (RD-Agent(Q)-style factor+model co-optimization)
+    "ModelZooConfig",
+    "ModelZooEvaluator",
+    "ModelCoOptimizationReport",
+    "FactorContributionSummary",
     # pipeline
     "CandidateFactor",
     "EvaluationResult",
@@ -174,4 +200,17 @@ __all__ = [
     "build_score_vector",
     "passes_research_admission",
     "run_research_model_suite",
+    # cross_validation
+    "CombinatorialPurgedCV",
+    "CPCVSplit",
+    "CrossValidationConfig",
+    "PBOResult",
+    "ProbabilityOfBacktestOverfitting",
+    # risk_portfolio
+    "HRPOptimizer",
+    "RiskParityOptimizer",
+    "CVaRPortfolioOptimizer",
+    "RiskPortfolioConfig",
+    "RiskPortfolioResult",
+    "construct_portfolio",
 ]

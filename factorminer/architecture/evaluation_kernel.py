@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
@@ -19,14 +19,31 @@ from factorminer.evaluation.research import (
 )
 from factorminer.evaluation.runtime import SignalComputationError, compute_tree_signals
 
+# Optional reward-hook type. Kept as a loose Callable to avoid a hard import
+# cycle with ``rft_export`` (which itself may call into the kernel). A future
+# external GRPO/RFT training loop registers a hook via
+# :meth:`EvaluationKernel.set_reward_hook`; default behavior is unchanged
+# when no hook is registered.
+RewardHookFn = Callable[..., Any]
+
+
 
 @dataclass
 class EvaluationKernel:
-    """Canonical evaluation engine used by loops and runtime analysis."""
+    """Canonical evaluation engine used by loops and runtime analysis.
+
+    An optional :attr:`reward_hook` may be registered for offline RFT/GRPO
+    dataset construction (see ``architecture/rft_export.py``). The hook is
+    never invoked by default evaluation paths; callers must opt in via
+    :meth:`compute_reward` / :meth:`set_reward_hook`. This preserves every
+    existing evaluation contract.
+    """
 
     protocol: PaperProtocol
     geometry: LibraryGeometry
     research_config: Any = None
+    reward_hook: RewardHookFn | None = field(default=None, repr=False)
+
 
     def build_data_dict(self, data_tensor: Any, features: Iterable[str]) -> dict[str, np.ndarray]:
         if isinstance(data_tensor, dict):
@@ -177,3 +194,37 @@ class EvaluationKernel:
             else:
                 kept.append(signals)
         return results
+
+    # ------------------------------------------------------------------
+    # Optional offline-RFT reward hook (no default behavior change)
+    # ------------------------------------------------------------------
+
+    def set_reward_hook(self, hook: RewardHookFn | None) -> None:
+        """Register or clear a pluggable reward callback.
+
+        The hook is intended for external RFT/GRPO training-data construction
+        (QuantEvolver-style DiCo rewards). It is **not** called by
+        :meth:`compute_quality_score`, admission, or dedup — those paths are
+        unchanged. Pass ``None`` to clear.
+        """
+        self.reward_hook = hook
+
+    def compute_reward(
+        self,
+        predictive_score: float,
+        /,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """Invoke the registered reward hook, or the default DiCo reward.
+
+        Lazy-imports :func:`factorminer.architecture.rft_export.compute_dico_reward`
+        only when no custom hook is set, so ordinary evaluation stays free of
+        the RFT export dependency.
+        """
+        hook = self.reward_hook
+        if hook is None:
+            from factorminer.architecture.rft_export import compute_dico_reward
+
+            return compute_dico_reward(predictive_score, *args, **kwargs)
+        return hook(predictive_score, *args, **kwargs)

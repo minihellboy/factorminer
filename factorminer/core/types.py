@@ -79,8 +79,12 @@ class OperatorSpec:
 # ---------------------------------------------------------------------------
 # Canonical feature names (leaf nodes)
 # ---------------------------------------------------------------------------
+# The eight paper OHLCV leaves are the immutable default set. Extra numeric
+# leaves (fundamentals, futures basis, ...) are registered at runtime via
+# :func:`register_features` so loaders, the parser, and prompt builders share
+# one composable registry instead of hard-coded parallel lists.
 
-FEATURES: list[str] = [
+DEFAULT_FEATURES: list[str] = [
     "$open",
     "$high",
     "$low",
@@ -91,7 +95,161 @@ FEATURES: list[str] = [
     "$returns",
 ]
 
-FEATURE_SET: frozenset = frozenset(FEATURES)
+# Live registry (defaults first). Mutated only through register_features /
+# unregister_features / reset_features — never by assigning FEATURES = ...
+FEATURES: list[str] = list(DEFAULT_FEATURES)
+
+FEATURE_SET: frozenset[str] = frozenset(FEATURES)
+
+#: Human-readable descriptions surfaced in LLM generation prompts.
+FEATURE_DESCRIPTIONS: dict[str, str] = {
+    "$open": "opening price",
+    "$high": "highest price in the bar",
+    "$low": "lowest price in the bar",
+    "$close": "closing price",
+    "$volume": "trading volume (shares/contracts)",
+    "$amt": "trading amount (currency value / notional)",
+    "$vwap": "volume-weighted average price",
+    "$returns": "close-to-close returns",
+    # Fundamentals (EDGAR XBRL) — registered when that lane is active
+    "$eps": "earnings per share (point-in-time, as-filed)",
+    "$revenue": "total revenue (point-in-time, as-filed)",
+    "$book_equity": "book equity / stockholders' equity (point-in-time, as-filed)",
+    "$shares_out": "shares outstanding (point-in-time, as-filed)",
+    # Futures continuous-contract leaves
+    "$basis": "futures basis (futures price minus spot)",
+    "$spot": "underlying spot price aligned to the futures bar",
+    "$premium": "futures premium over spot (futures/spot - 1)",
+    "$roll_yield": "roll yield implied by the continuous-contract adjustment",
+    "$oi": "open interest (contracts outstanding)",
+}
+
+# DataFrame column name special-cases (DSL leaf -> panel column).
+_FEATURE_COLUMN_ALIASES: dict[str, str] = {
+    "$amt": "amount",
+    "amt": "amount",
+    "$amount": "amount",
+}
+_COLUMN_FEATURE_ALIASES: dict[str, str] = {
+    "amount": "$amt",
+    "amt": "$amt",
+}
+
+
+def normalize_feature_name(name: str) -> str:
+    """Return the canonical ``$``-prefixed DSL leaf name for *name*."""
+    raw = str(name).strip()
+    if not raw:
+        raise ValueError("feature name must be non-empty")
+    if raw in _COLUMN_FEATURE_ALIASES:
+        return _COLUMN_FEATURE_ALIASES[raw]
+    if raw.startswith("$"):
+        return raw
+    if raw == "amount":
+        return "$amt"
+    return f"${raw}"
+
+
+def feature_to_column(name: str) -> str:
+    """Map a DSL leaf name (or bare column) to the panel DataFrame column."""
+    raw = str(name).strip()
+    if raw in _FEATURE_COLUMN_ALIASES:
+        return _FEATURE_COLUMN_ALIASES[raw]
+    if raw.startswith("$"):
+        key = raw
+        if key in _FEATURE_COLUMN_ALIASES:
+            return _FEATURE_COLUMN_ALIASES[key]
+        return key[1:]
+    if raw == "amt":
+        return "amount"
+    return raw
+
+
+def column_to_feature(column: str) -> str:
+    """Map a panel DataFrame column name to the DSL leaf name."""
+    raw = str(column).strip()
+    if raw in _COLUMN_FEATURE_ALIASES:
+        return _COLUMN_FEATURE_ALIASES[raw]
+    if raw.startswith("$"):
+        return normalize_feature_name(raw)
+    return f"${raw}"
+
+
+def get_features() -> list[str]:
+    """Return a copy of the currently registered DSL feature leaves."""
+    return list(FEATURES)
+
+
+def get_feature_set() -> frozenset[str]:
+    """Return the currently registered feature set (live view)."""
+    return frozenset(FEATURES)
+
+
+def get_feature_descriptions(
+    features: list[str] | None = None,
+) -> dict[str, str]:
+    """Return descriptions for *features* (default: all registered)."""
+    names = features if features is not None else get_features()
+    return {name: FEATURE_DESCRIPTIONS.get(name, "") for name in names}
+
+
+def register_features(
+    extra_features: list[str] | tuple[str, ...] | None = None,
+    *,
+    descriptions: dict[str, str] | None = None,
+    reset: bool = False,
+) -> list[str]:
+    """Register additional numeric leaf features on the global registry.
+
+    Parameters
+    ----------
+    extra_features :
+        DSL names (``$eps``) or bare column names (``eps``). Order is
+        preserved; duplicates of already-registered names are skipped.
+    descriptions :
+        Optional human-readable descriptions merged into
+        :data:`FEATURE_DESCRIPTIONS` for prompt rendering.
+    reset :
+        When True, restore the default OHLCV set before applying *extra_features*.
+
+    Returns
+    -------
+    list[str]
+        The full active feature list after registration.
+    """
+    global FEATURE_SET
+
+    if reset:
+        FEATURES[:] = list(DEFAULT_FEATURES)
+
+    if descriptions:
+        for key, value in descriptions.items():
+            FEATURE_DESCRIPTIONS[normalize_feature_name(key)] = str(value)
+
+    for raw in extra_features or ():
+        name = normalize_feature_name(raw)
+        if name not in FEATURES:
+            FEATURES.append(name)
+
+    FEATURE_SET = frozenset(FEATURES)
+    return get_features()
+
+
+def unregister_features(
+    features: list[str] | tuple[str, ...] | None = None,
+) -> list[str]:
+    """Remove previously registered extra features (defaults are kept)."""
+    global FEATURE_SET
+    protected = set(DEFAULT_FEATURES)
+    drop = {normalize_feature_name(name) for name in (features or ())}
+    FEATURES[:] = [name for name in FEATURES if name in protected or name not in drop]
+    FEATURE_SET = frozenset(FEATURES)
+    return get_features()
+
+
+def reset_features() -> list[str]:
+    """Restore the registry to the eight default OHLCV leaves."""
+    return register_features(None, reset=True)
 
 
 # ---------------------------------------------------------------------------

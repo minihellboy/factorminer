@@ -203,17 +203,72 @@ def _create_llm_provider(cfg, mock: bool):
 
     if mock:
         click.echo("Using mock LLM provider (no API calls).")
-        return MockProvider()
+        # Caching/cascade toggles are no-ops under mock; accept signature parity.
+        return MockProvider(prompt_cache=bool(getattr(cfg.llm, "prompt_cache", True)))
 
-    llm_config = {
-        "provider": cfg.llm.provider,
-        "model": cfg.llm.model,
+    llm_cfg = cfg.llm
+    llm_config: dict = {
+        "provider": llm_cfg.provider,
+        "model": llm_cfg.model,
+        "prompt_cache": bool(getattr(llm_cfg, "prompt_cache", True)),
+        "timeout_s": float(getattr(llm_cfg, "timeout_s", 120.0)),
     }
-    # Use api_key from config if set
-    if hasattr(cfg, "_raw") and cfg._raw.get("llm", {}).get("api_key"):
-        llm_config["api_key"] = cfg._raw["llm"]["api_key"]
+    # Use api_key from config if set (frontier providers only)
+    raw_llm = {}
+    if hasattr(cfg, "_raw") and isinstance(cfg._raw.get("llm"), dict):
+        raw_llm = cfg._raw["llm"]
+    if raw_llm.get("api_key"):
+        llm_config["api_key"] = raw_llm["api_key"]
 
-    click.echo(f"Using LLM provider: {cfg.llm.provider}/{cfg.llm.model}")
+    # Optional base_url from local YAML only (SSRF-sensitive).
+    base_url = getattr(llm_cfg, "base_url", None) or raw_llm.get("base_url")
+    if base_url:
+        llm_config["base_url"] = base_url
+
+    # Cascade: prefer nested raw llm.cascade block; fall back to flat fields.
+    cascade_raw = raw_llm.get("cascade") if isinstance(raw_llm.get("cascade"), dict) else {}
+    cascade_enabled = bool(
+        cascade_raw.get("enabled", getattr(llm_cfg, "cascade_enabled", False))
+    )
+    if cascade_enabled:
+        llm_config["cascade"] = {
+            "enabled": True,
+            "draft_provider": cascade_raw.get(
+                "draft_provider",
+                getattr(llm_cfg, "cascade_draft_provider", "openai_compatible"),
+            ),
+            "draft_model": cascade_raw.get(
+                "draft_model",
+                getattr(llm_cfg, "cascade_draft_model", "llama3.2"),
+            ),
+            # SECURITY (SSRF): draft_base_url from local YAML/config only.
+            "draft_base_url": cascade_raw.get(
+                "draft_base_url",
+                getattr(
+                    llm_cfg,
+                    "cascade_draft_base_url",
+                    "http://127.0.0.1:11434/v1",
+                ),
+            ),
+            "draft_api_key": cascade_raw.get(
+                "draft_api_key",
+                cascade_raw.get("local_api_key", "local"),
+            ),
+            "timeout_s": cascade_raw.get(
+                "timeout_s",
+                getattr(llm_cfg, "cascade_timeout_s", 60.0),
+            ),
+            "escalate_on_parse_failure": cascade_raw.get(
+                "escalate_on_parse_failure",
+                getattr(llm_cfg, "cascade_escalate_on_parse_failure", True),
+            ),
+        }
+
+    click.echo(
+        f"Using LLM provider: {llm_cfg.provider}/{llm_cfg.model}"
+        f" (prompt_cache={llm_config['prompt_cache']}"
+        f", cascade={cascade_enabled})"
+    )
     try:
         return create_provider(llm_config)
     except MissingAPIKeyError as exc:
@@ -250,6 +305,7 @@ def _build_core_mining_config(cfg, output_dir: Path, mock: bool = False):
         memory_regime_lookback_window=getattr(memory_cfg, "regime_lookback_window", 60),
     )
     mining_cfg.research = getattr(cfg, "research", None)
+    mining_cfg.model_co_optimize = getattr(cfg, "_raw", {}).get("model_co_optimize")
     benchmark_cfg = getattr(cfg, "benchmark", None)
     mining_cfg.benchmark_mode = getattr(benchmark_cfg, "mode", "paper")
     mining_cfg.target_panels = None
@@ -792,6 +848,66 @@ def _read_json(path: Path) -> dict | None:
         return {"_error": str(exc)}
 
 
+def _run_session_sensitivity(output_dir: Path, factor_ref: str) -> dict:
+    """Run offline formula sensitivity for one library factor using mock data."""
+    import numpy as np
+
+    from factorminer.evaluation.formula_sensitivity import analyze_formula_sensitivity
+
+    library = _read_json(output_dir / "factor_library.json") or {}
+    factors = library.get("factors") if isinstance(library, dict) else None
+    if not isinstance(factors, list):
+        return {"error": "factor_library.json missing or has no factors", "factor_ref": factor_ref}
+
+    target = None
+    for factor in factors:
+        if not isinstance(factor, dict):
+            continue
+        if str(factor.get("id", "")) == str(factor_ref) or str(factor.get("name", "")) == str(
+            factor_ref
+        ):
+            target = factor
+            break
+    if target is None:
+        return {"error": f"factor not found: {factor_ref}", "factor_ref": factor_ref}
+
+    formula = str(target.get("formula", "") or "")
+    if not formula:
+        return {"error": "factor has empty formula", "factor_ref": factor_ref}
+
+    # Deterministic offline panel — never hits the network.
+    rng = np.random.default_rng(42)
+    m, t = 20, 60
+    close = 100.0 + np.cumsum(rng.normal(0, 0.5, (m, t)), axis=1)
+    open_ = close + rng.normal(0, 0.1, (m, t))
+    high = np.maximum(close, open_) + np.abs(rng.normal(0, 0.2, (m, t)))
+    low = np.minimum(close, open_) - np.abs(rng.normal(0, 0.2, (m, t)))
+    low = np.maximum(low, 1.0)
+    volume = np.abs(rng.normal(1e6, 1e5, (m, t)))
+    vwap = (high + low + close) / 3.0
+    amt = volume * vwap
+    returns = np.zeros((m, t))
+    returns[:, 1:] = np.diff(close, axis=1) / close[:, :-1]
+    data = {
+        "$open": open_,
+        "$high": high,
+        "$low": low,
+        "$close": close,
+        "$volume": volume,
+        "$amt": amt,
+        "$vwap": vwap,
+        "$returns": returns,
+    }
+    result = analyze_formula_sensitivity(
+        formula,
+        data,
+        returns,
+        factor_name=str(target.get("name", factor_ref)),
+    )
+    return result.to_dict()
+
+
+
 def _inspect_session_dir(output_dir: Path) -> dict:
     """Summarize a FactorMiner output directory."""
     artifacts = {
@@ -884,6 +1000,44 @@ def _print_session_inspection(payload: dict) -> None:
     for name, info in payload["artifacts"].items():
         status = "present" if info["present"] else "missing"
         click.echo(f"  - {name}: {status} ({info['path']})")
+
+
+def _load_lifecycle_telemetry(output_dir: Path) -> dict:
+    """Load factor_lifecycle.jsonl (if present) and summarize mining telemetry."""
+    from factorminer.architecture.lifecycle import FactorLifecycleStore
+
+    store = FactorLifecycleStore.load(output_dir)
+    return store.telemetry_summary()
+
+
+def _print_telemetry_summary(telemetry: dict) -> None:
+    click.echo("\nMining Telemetry")
+    click.echo("=" * 60)
+    click.echo(f"Iterations tracked: {len(telemetry['iterations'])}")
+    click.echo(f"Total candidates:   {telemetry['total_candidates']}")
+    click.echo(f"Total rejected:     {telemetry['total_rejected']}")
+    click.echo(f"Overall rejection rate: {telemetry['overall_rejection_rate'] * 100:.1f}%")
+
+    if telemetry["rejection_reason_totals"]:
+        click.echo("\nRejection reasons:")
+        for reason, count in sorted(
+            telemetry["rejection_reason_totals"].items(), key=lambda item: -item[1]
+        ):
+            click.echo(f"  - {reason:<20} {count:>5}")
+
+    if telemetry["per_iteration"]:
+        click.echo("\nPer-iteration:")
+        click.echo(
+            f"  {'Iter':>5}  {'Cand':>5}  {'Parse':>6}  {'ICScr':>6}  "
+            f"{'Dup':>4}  {'Corr':>5}  {'Admit':>6}  {'Reject%':>8}"
+        )
+        for row in telemetry["per_iteration"]:
+            click.echo(
+                f"  {row['iteration']:>5}  {row['candidates_seen']:>5}  {row['parse_errors']:>6}  "
+                f"{row['ic_screen_rejected']:>6}  {row['duplicate_rejected']:>4}  "
+                f"{row['correlation_rejected']:>5}  {row['admitted']:>6}  "
+                f"{row['rejection_rate'] * 100:>7.1f}%"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1009,13 +1163,53 @@ def session_group() -> None:
 @session_group.command("inspect")
 @click.argument("output_dir", type=click.Path(exists=True, file_okay=False))
 @click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON.")
-def session_inspect(output_dir: str, json_output: bool) -> None:
+@click.option(
+    "--telemetry",
+    is_flag=True,
+    help=(
+        "Include per-round mining telemetry (parse errors, duplicates, "
+        "rejection reasons) parsed from factor_lifecycle.jsonl."
+    ),
+)
+@click.option(
+    "--sensitivity",
+    "sensitivity_factor_id",
+    default=None,
+    help=(
+        "Run formula AST sensitivity/ablation for a factor id or name from the "
+        "session library (uses mock panel data; offline/reproducible)."
+    ),
+)
+def session_inspect(
+    output_dir: str,
+    json_output: bool,
+    telemetry: bool,
+    sensitivity_factor_id: str | None,
+) -> None:
     """Summarize run artifacts in an output directory."""
-    payload = _inspect_session_dir(Path(output_dir))
+    output_path = Path(output_dir)
+    payload = _inspect_session_dir(output_path)
+    telemetry_payload = _load_lifecycle_telemetry(output_path) if telemetry else None
+    if telemetry_payload is not None:
+        payload["telemetry"] = telemetry_payload
+
+    sensitivity_payload = None
+    if sensitivity_factor_id:
+        sensitivity_payload = _run_session_sensitivity(output_path, sensitivity_factor_id)
+        payload["sensitivity"] = sensitivity_payload
+
     if json_output:
         click.echo(json.dumps(_json_safe(payload), indent=2))
     else:
         _print_session_inspection(payload)
+        if telemetry_payload is not None:
+            _print_telemetry_summary(telemetry_payload)
+        if sensitivity_payload is not None:
+            from factorminer.utils.tearsheet import format_sensitivity_panel
+
+            click.echo("")
+            click.echo(format_sensitivity_panel(sensitivity_payload))
+
 
 
 # ---------------------------------------------------------------------------
@@ -1150,28 +1344,79 @@ def resample_data(input_path: str, output_path: str, rule: str, hdf_key: str) ->
     default=None,
     help="Write the report to this path instead of stdout.",
 )
+@click.option(
+    "--mrm-pack/--no-mrm-pack",
+    default=False,
+    show_default=True,
+    help=(
+        "Include an MRM validation pack (model inventory, conceptual soundness, "
+        "outcomes analysis, ongoing monitoring). Evidence for a qualified reviewer "
+        "only — not a compliance determination."
+    ),
+)
+@click.option(
+    "--attest-rationale",
+    "attest_factor_ids",
+    multiple=True,
+    type=str,
+    help=(
+        "Human attestation: mark economic rationale for this factor id/name as "
+        "attested. Repeatable. Never set automatically by generation code."
+    ),
+)
 def report(
     library_path: str,
     session_log: str | None,
     benchmark_paths: tuple[str, ...],
     report_format: str,
     report_output: str | None,
+    mrm_pack: bool,
+    attest_factor_ids: tuple[str, ...],
 ) -> None:
     """Generate a static report from FactorMiner artifacts."""
+    import json
+    from pathlib import Path
+
+    from factorminer.core.provenance import attest_economic_rationale
     from factorminer.evaluation.report_viewer import generate_report
 
+    # Optional human attestation mutates a working copy of the library JSON only
+    # when writing an output report path alongside --attest-rationale.
+    library_source: str | Path | dict = library_path
+    if attest_factor_ids:
+        path = Path(library_path)
+        if path.is_dir():
+            path = path / "factor_library.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        wanted = {str(x) for x in attest_factor_ids}
+        for factor in payload.get("factors", []):
+            fid = str(factor.get("id", ""))
+            name = str(factor.get("name", ""))
+            if fid not in wanted and name not in wanted:
+                continue
+            prov = factor.setdefault("provenance", {})
+            rationale = prov.get("economic_rationale") or factor.get("economic_rationale") or {}
+            prov["economic_rationale"] = attest_economic_rationale(rationale, attestor="cli-human")
+        library_source = payload
+        if report_output:
+            attested_path = Path(report_output).with_suffix(".attested_library.json")
+            attested_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            click.echo(f"Attested library snapshot written to: {attested_path}")
+
     rendered = generate_report(
-        library_path,
+        library_source,
         session_log_source=session_log,
         benchmark_sources=benchmark_paths,
         format=report_format,
         output_path=report_output,
+        include_mrm_pack=mrm_pack,
     )
 
     if report_output is None:
         click.echo(rendered)
     else:
         click.echo(f"Report written to: {report_output}")
+
 
 
 # ---------------------------------------------------------------------------
@@ -1501,9 +1746,21 @@ def evaluate(
 )
 @click.option(
     "--method", "-m",
-    type=click.Choice(["equal-weight", "ic-weighted", "orthogonal", "all"]),
+    type=click.Choice(["equal-weight", "ic-weighted", "orthogonal", "temporal-reweight", "all"]),
     default="all",
     help="Factor combination method.",
+)
+@click.option(
+    "--lookback",
+    type=int,
+    default=60,
+    help="Trailing window size (periods) for --method temporal-reweight.",
+)
+@click.option(
+    "--rebalance-every",
+    type=int,
+    default=20,
+    help="Periods between weight recomputations for --method temporal-reweight.",
 )
 @click.option(
     "--selection", "-s",
@@ -1521,6 +1778,8 @@ def combine(
     fit_period: str,
     eval_period: str,
     method: str,
+    lookback: int,
+    rebalance_every: int,
     selection: str,
     top_k: int | None,
 ) -> None:
@@ -1633,7 +1892,7 @@ def combine(
 
     methods_to_run = []
     if method == "all":
-        methods_to_run = ["equal-weight", "ic-weighted", "orthogonal"]
+        methods_to_run = ["equal-weight", "ic-weighted", "orthogonal", "temporal-reweight"]
     else:
         methods_to_run = [method]
 
@@ -1646,6 +1905,14 @@ def combine(
                 composite = combiner.ic_weighted(eval_factor_signals, ic_values)
             elif m == "orthogonal":
                 composite = combiner.orthogonal(eval_factor_signals)
+            elif m == "temporal-reweight":
+                composite = combiner.temporal_reweight(
+                    eval_factor_signals,
+                    eval_returns_tn,
+                    lookback=lookback,
+                    rebalance_every=rebalance_every,
+                    method="ic_weighted",
+                )
             else:
                 continue
 
@@ -1688,6 +1955,361 @@ def combine(
             logger.exception("Research model suite failed")
 
     click.echo("\n" + "=" * 60)
+
+# ---------------------------------------------------------------------------
+# portfolio-construct
+# ---------------------------------------------------------------------------
+
+@main.command("portfolio-construct")
+@click.argument("library_path", type=click.Path(exists=True))
+@click.option("--data", "data_path", type=click.Path(exists=True), default=None, help="Path to market data file.")
+@click.option("--mock", is_flag=True, help="Use mock data for portfolio construction.")
+@click.option(
+    "--method", "-m",
+    type=click.Choice(["hrp", "risk_parity", "cvar"]),
+    default="hrp",
+    help="Risk-based portfolio construction method.",
+)
+@click.option(
+    "--top-k", type=int, default=None,
+    help="Select top-K factors (by paper IC on the chosen split) before constructing the portfolio.",
+)
+@click.option(
+    "--alpha", type=float, default=0.95,
+    help="CVaR confidence level (only used with --method cvar).",
+)
+@click.option(
+    "--period",
+    type=click.Choice(["train", "test", "both"]),
+    default="test",
+    help="Split used to build per-factor return proxies and construct the portfolio.",
+)
+@click.pass_context
+def portfolio_construct(
+    ctx: click.Context,
+    library_path: str,
+    data_path: str | None,
+    mock: bool,
+    method: str,
+    top_k: int | None,
+    alpha: float,
+    period: str,
+) -> None:
+    """Construct risk-based portfolio weights over a factor library's strategies.
+
+    Each selected factor's own quintile long-short return series is used as
+    an asset-level return proxy; HRP / naive risk parity / CVaR-optimal
+    weights are then computed across those proxies (research artifact only,
+    not a trade recommendation).
+    """
+    cfg = ctx.obj["config"]
+
+    click.echo("=" * 60)
+    click.echo("FactorMiner -- Risk-Based Portfolio Construction")
+    click.echo("=" * 60)
+
+    library = _load_library_from_path(library_path)
+
+    from factorminer.evaluation.runtime import resolve_split_for_fit_eval, select_top_k
+
+    try:
+        dataset = _load_runtime_dataset_for_analysis(cfg, data_path, mock)
+    except Exception as e:
+        click.echo(f"Error loading data: {e}")
+        raise click.Abort()
+
+    artifacts = _recompute_analysis_artifacts(
+        library,
+        dataset,
+        cfg.evaluation.signal_failure_policy,
+    )
+    _report_artifact_failures(artifacts, header="Portfolio construction warnings")
+
+    split = resolve_split_for_fit_eval(period)
+    selected_artifacts = select_top_k(artifacts, split, top_k)
+    if len(selected_artifacts) < 2:
+        click.echo("Need at least 2 successfully recomputed factors for portfolio construction.")
+        raise click.Abort()
+
+    click.echo(f"  Split:   {split}")
+    click.echo(f"  Method:  {method}")
+    click.echo(f"  Assets (factor strategies): {len(selected_artifacts)}")
+    click.echo("-" * 60)
+
+    from factorminer.evaluation.portfolio import PortfolioBacktester
+    from factorminer.evaluation.risk_portfolio import RiskPortfolioConfig, construct_portfolio
+
+    backtester = PortfolioBacktester()
+    split_returns_tn = dataset.get_split(split).returns.T
+
+    asset_ids = []
+    return_series = []
+    for artifact in selected_artifacts:
+        signal_tn = artifact.split_signals[split].T
+        stats = backtester.quintile_backtest(signal_tn, split_returns_tn)
+        asset_ids.append(artifact.factor_id)
+        return_series.append(stats["ls_net_series"])
+
+    returns_matrix = np.column_stack(return_series)
+    valid_mask = np.all(np.isfinite(returns_matrix), axis=1)
+    returns_matrix = returns_matrix[valid_mask]
+    if returns_matrix.shape[0] < 2:
+        click.echo("Not enough overlapping valid periods across selected factors.")
+        raise click.Abort()
+
+    config = RiskPortfolioConfig(cvar_alpha=alpha)
+    try:
+        result = construct_portfolio(
+            returns_matrix, method=method, asset_ids=asset_ids, config=config
+        )
+    except Exception as e:
+        click.echo(f"Portfolio construction failed: {e}")
+        logger.exception("Portfolio construction failed")
+        raise click.Abort()
+
+    click.echo(f"  {'Factor ID':>10s}  {'Weight':>8s}")
+    click.echo("  " + "-" * 22)
+    for factor_id, weight in zip(result.asset_ids, result.weights):
+        click.echo(f"  {factor_id:10d}  {weight:8.4f}")
+
+    click.echo("-" * 60)
+    click.echo(f"  Method:         {result.method}")
+    click.echo(f"  Realized vol:   {result.realized_vol:.6f}")
+    click.echo(f"  Realized CVaR:  {result.realized_cvar:.6f}")
+    click.echo(f"  Effective N:    {result.effective_n:.2f} (of {len(result.asset_ids)} assets)")
+    click.echo("=" * 60)
+
+
+# ---------------------------------------------------------------------------
+# crowding
+# ---------------------------------------------------------------------------
+
+@main.command("crowding")
+@click.argument("library_path", type=click.Path(exists=True))
+@click.option("--data", "data_path", type=click.Path(exists=True), default=None, help="Path to market data file.")
+@click.option("--mock", is_flag=True, help="Use mock data for crowding diagnostics.")
+@click.option(
+    "--fixture",
+    "fixture_path",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="Offline Ken French-format CSV fixture (default: bundled FF3 fixture).",
+)
+@click.option(
+    "--fetch-consensus/--no-fetch-consensus",
+    default=False,
+    show_default=True,
+    help="Fetch live Ken French panel over HTTPS (fail-closed). Default uses fixture.",
+)
+@click.option("--top-k", type=int, default=None, help="Score only the top-K factors by IC.")
+@click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON.")
+@click.option(
+    "--window",
+    type=int,
+    default=63,
+    show_default=True,
+    help="Rolling window for Lou-Polk CoMetric.",
+)
+@click.option(
+    "--cometric-residual-mode",
+    "cometric_residual_mode",
+    type=click.Choice(["cross_sectional", "factor_regression"]),
+    default="cross_sectional",
+    show_default=True,
+    help=(
+        "CoMetric residualization: 'cross_sectional' (fast, no external data) "
+        "or 'factor_regression' (Lou & Polk's actual FF3-regression residuals; "
+        "requires the consensus panel to be non-empty, falls back with a "
+        "warning otherwise)."
+    ),
+)
+@click.pass_context
+def crowding_cmd(
+    ctx: click.Context,
+    library_path: str,
+    data_path: str | None,
+    mock: bool,
+    fixture_path: str | None,
+    fetch_consensus: bool,
+    top_k: int | None,
+    json_output: bool,
+    window: int,
+    cometric_residual_mode: str,
+) -> None:
+    """Score library factors for consensus-overlap / CoMetric crowding risk.
+
+    Research risk annotations only — not a trade timer or mining objective.
+    Composes consensus novelty, Lou-Polk CoMetric, and hyperbolic decay
+    taxonomy from evaluation/decay.py.
+    """
+    from factorminer.evaluation.crowding import (
+        ConsensusFactorPanel,
+        CrowdingConfig,
+        score_factor_crowding,
+    )
+
+    cfg = ctx.obj["config"]
+    signal_failure_policy = cfg.evaluation.signal_failure_policy
+
+    click.echo("=" * 60)
+    click.echo("FactorMiner -- Factor Crowding Diagnostics")
+    click.echo("=" * 60)
+
+    library = _load_library_from_path(library_path)
+
+    try:
+        dataset = _load_runtime_dataset_for_analysis(cfg, data_path, mock)
+    except Exception as e:
+        click.echo(f"Error loading data: {e}")
+        raise click.Abort()
+
+    crowding_cfg = CrowdingConfig(
+        cometric_window=window, cometric_residual_mode=cometric_residual_mode
+    )
+    if fetch_consensus:
+        panel = ConsensusFactorPanel.fetch(config=crowding_cfg)
+        click.echo(f"  Consensus panel: fetch ({panel.source}) factors={panel.factor_names}")
+    else:
+        panel = ConsensusFactorPanel.from_fixture(fixture_path, config=crowding_cfg)
+        click.echo(f"  Consensus panel: fixture factors={panel.factor_names}")
+
+    if panel.empty:
+        click.echo(
+            "  WARNING: consensus panel empty (fail-closed). "
+            "Overlap scores will be unavailable; CoMetric still runs."
+        )
+
+    artifacts = _recompute_analysis_artifacts(library, dataset, signal_failure_policy)
+    failures = _report_artifact_failures(artifacts, header="Crowding warnings")
+    from factorminer.evaluation.runtime import select_top_k
+
+    selected = select_top_k(artifacts, "test", top_k)
+    if not selected:
+        click.echo("No factors successfully recomputed for crowding.")
+        if signal_failure_policy == "reject" and failures:
+            raise click.Abort()
+        raise click.Abort()
+
+    ret_full = np.asarray(dataset.returns, dtype=np.float64)
+
+    rows: list[dict] = []
+    for artifact in selected:
+        signals = artifact.signals_full
+        if signals is None:
+            signals = artifact.split_signals.get("test") or artifact.split_signals.get("full")
+        if signals is None:
+            continue
+
+        sig = np.asarray(signals, dtype=np.float64)
+        ret = ret_full
+        # Align returns time axis to signals when using a split.
+        if sig.shape != ret.shape and sig.ndim == 2 and ret.ndim == 2:
+            if sig.shape[0] == ret.shape[0] and sig.shape[1] < ret.shape[1]:
+                split = dataset.splits.get("test") or dataset.splits.get("full")
+                if split is not None:
+                    ret = np.asarray(split.returns, dtype=np.float64)
+            elif sig.shape == ret.T.shape:
+                ret = ret.T
+
+        score = score_factor_crowding(
+            signals=sig,
+            returns=ret,
+            panel=panel,
+            formula=artifact.formula or "",
+            factor_id=str(artifact.factor_id),
+            config=crowding_cfg,
+        )
+        rows.append(score.to_dict())
+
+    if json_output:
+        click.echo(json.dumps({"crowding": rows}, indent=2, default=str))
+        return
+
+    click.echo("-" * 60)
+    click.echo(
+        f"{'ID':>6s}  {'Label':<28s}  {'max|ρ|':>7s}  {'CoMOM':>6s}  "
+        f"{'NovMod':>6s}  Detail"
+    )
+    click.echo("-" * 100)
+    for row in rows:
+        cons = row.get("consensus") or {}
+        com = row.get("cometric") or {}
+        max_rho = cons.get("max_abs_rho", 0.0) if cons.get("available") else float("nan")
+        comom = com.get("comom", 0.0) if com.get("available") else float("nan")
+        click.echo(
+            f"{str(row.get('factor_id', '')):>6s}  "
+            f"{row.get('composite_label', ''):<28s}  "
+            f"{max_rho:7.3f}  {comom:6.3f}  "
+            f"{row.get('novelty_modulation', 0.0):6.3f}  "
+            f"{(row.get('rationale') or '')[:60]}"
+        )
+    click.echo("=" * 60)
+    click.echo(f"Scored {len(rows)} factor(s). Research risk labels only.")
+
+
+# ---------------------------------------------------------------------------
+# jump-worth (Hypothesis-Redundancy geometric gate)
+# ---------------------------------------------------------------------------
+
+@main.command("jump-worth")
+@click.argument("library_path", type=click.Path(exists=True))
+@click.option(
+    "--threshold",
+    type=float,
+    default=0.45,
+    show_default=True,
+    help="Recommend LLM jump when jump_worth >= threshold.",
+)
+@click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON.")
+@click.pass_context
+def jump_worth_cmd(
+    ctx: click.Context,
+    library_path: str,
+    threshold: float,
+    json_output: bool,
+) -> None:
+    """Assess whether a non-local LLM jump is worth its cost for this library.
+
+    Implements the Hypothesis-Redundancy geometric gate (arXiv:2606.14386)
+    as JumpWorthAssessment: spectral compression × orthogonal escape
+    (× residual alignment when a target is available). Advisory only.
+    """
+    from factorminer.architecture.geometry import (
+        assess_llm_jump_worth,
+        collect_library_span_matrix,
+    )
+
+    library = _load_library_from_path(library_path)
+    span = collect_library_span_matrix(library)
+
+    click.echo("=" * 60)
+    click.echo("FactorMiner -- LLM Jump-Worth Gate")
+    click.echo("=" * 60)
+    click.echo(f"  Library size: {library.size}  span shape: {span.shape}")
+
+    if span.size == 0:
+        # Probe against empty span.
+        probe = np.ones(16, dtype=np.float64)
+    else:
+        # Default probe: a direction partially outside the span (linear trend).
+        probe = np.linspace(-1.0, 1.0, span.shape[0], dtype=np.float64)
+
+    assessment = assess_llm_jump_worth(span, probe, threshold=threshold)
+    payload = assessment.to_dict()
+
+    if json_output:
+        click.echo(json.dumps(payload, indent=2))
+        return
+
+    click.echo(f"  jump_worth:           {assessment.jump_worth:.4f}")
+    click.echo(f"  spectral_compression: {assessment.spectral_compression:.4f}")
+    click.echo(f"  orthogonal_escape:    {assessment.orthogonal_escape:.4f}")
+    click.echo(f"  residual_alignment:   {assessment.residual_alignment:.4f}")
+    click.echo(f"  library_rank:         {assessment.library_rank}/{assessment.library_size}")
+    click.echo(f"  recommend_llm_jump:   {assessment.recommend_llm_jump}")
+    click.echo(f"  rationale:            {assessment.rationale}")
+    click.echo("=" * 60)
+
 
 
 # ---------------------------------------------------------------------------
@@ -1892,13 +2514,20 @@ def visualize(
 @click.argument("library_path", type=click.Path(exists=True))
 @click.option(
     "--format", "fmt",
-    type=click.Choice(["json", "csv", "formulas"]),
+    type=click.Choice(["json", "csv", "formulas", "qlib"]),
     default="json",
     help="Export format.",
 )
 @click.option("--output", "-o", type=click.Path(), default=None, help="Output file path.")
+@click.option(
+    "--anonymize",
+    is_flag=True,
+    help="Emit a redacted factor table (formula replaced by a hash) instead of the raw --format export.",
+)
 @click.pass_context
-def export_cmd(ctx: click.Context, library_path: str, fmt: str, output: str | None) -> None:
+def export_cmd(
+    ctx: click.Context, library_path: str, fmt: str, output: str | None, anonymize: bool,
+) -> None:
     """Export a factor library to various formats."""
     output_dir = ctx.obj["output_dir"]
 
@@ -1912,19 +2541,37 @@ def export_cmd(ctx: click.Context, library_path: str, fmt: str, output: str | No
     # Determine output path
     if output is None:
         output_dir.mkdir(parents=True, exist_ok=True)
-        if fmt == "formulas":
+        if anonymize:
+            anon_ext = "json" if fmt in ("json", "formulas", "qlib") else fmt
+            output = str(output_dir / f"library_anonymized.{anon_ext}")
+        elif fmt == "formulas":
             output = str(output_dir / "library_formulas.txt")
+        elif fmt == "qlib":
+            output = str(output_dir / "library_qlib.json")
         else:
             output = str(output_dir / f"library.{fmt}")
 
-    click.echo(f"  Format:  {fmt}")
+    click.echo(f"  Format:  {fmt}{' (anonymized)' if anonymize else ''}")
     click.echo(f"  Output:  {output}")
     click.echo("-" * 60)
 
     try:
-        from factorminer.core.library_io import export_csv, export_formulas, save_library
+        from factorminer.core.library_io import (
+            export_anonymized,
+            export_csv,
+            export_formulas,
+            export_formulas_qlib,
+            save_library,
+        )
 
-        if fmt == "json":
+        if anonymize:
+            # The redacted export is a fixed row-table shape; --format only
+            # picks its container (csv, or json for the non-tabular formats).
+            anon_fmt = "json" if fmt in ("json", "formulas", "qlib") else fmt
+            export_anonymized(library, output, fmt=anon_fmt)
+            click.echo(f"  Exported {library.size} anonymized factors to {output}")
+
+        elif fmt == "json":
             # save_library expects base path without extension
             out_path = Path(output)
             if out_path.suffix == ".json":
@@ -1942,11 +2589,140 @@ def export_cmd(ctx: click.Context, library_path: str, fmt: str, output: str | No
             export_formulas(library, output)
             click.echo(f"  Exported {library.size} formulas to {output}")
 
+        elif fmt == "qlib":
+            export_formulas_qlib(library, output)
+            click.echo(f"  Exported {library.size} Qlib-translated formulas to {output}")
+
     except Exception as e:
         click.echo(f"Export error: {e}")
         logger.exception("Export failed")
         raise click.Abort()
 
+    click.echo("=" * 60)
+
+
+# ---------------------------------------------------------------------------
+# export-rft-dataset
+# ---------------------------------------------------------------------------
+
+@main.command(name="export-rft-dataset")
+@click.argument(
+    "lifecycle_path",
+    type=click.Path(exists=True),
+    required=False,
+    default=None,
+)
+@click.option(
+    "--output", "-o", "output_path",
+    type=click.Path(),
+    default=None,
+    help="Destination JSONL path (default: <output_dir>/rft_dataset.jsonl).",
+)
+@click.option(
+    "--data", "data_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Optional market data file used only for regime-aware task bucketing.",
+)
+@click.option(
+    "--mock",
+    is_flag=True,
+    help="Use mock returns for regime-aware task bucketing (no network).",
+)
+@click.option(
+    "--include-failed-parses",
+    is_flag=True,
+    help="Keep parse-failed candidates in the exported trajectory.",
+)
+@click.pass_context
+def export_rft_dataset_cmd(
+    ctx: click.Context,
+    lifecycle_path: str | None,
+    output_path: str | None,
+    data_path: str | None,
+    mock: bool,
+    include_failed_parses: bool,
+) -> None:
+    """Export a reward-annotated offline RFT trajectory dataset as JSONL.
+
+    Exports a reward-annotated training dataset for external reinforcement
+    fine-tuning (e.g. GRPO via Verl/vLLM on a GPU host). This command does
+    NOT train a model -- policy-weight training requires external GPU
+    infrastructure not available in this environment.
+
+    Reads ``factor_lifecycle.jsonl`` from a mining session output directory
+    (or a direct path to that file) and writes one JSON object per candidate
+    with the documented ``rft_v1`` schema:
+    ``(state, action/formula, reward, regime_context)``.
+    """
+    from factorminer.architecture.rft_export import (
+        RFT_EXPORT_HONESTY,
+        RFTExportConfig,
+        export_rft_dataset,
+    )
+
+    session_output = ctx.obj["output_dir"]
+    cfg = ctx.obj["config"]
+
+    # Resolve lifecycle source: explicit arg, else the session output dir.
+    source = lifecycle_path or str(session_output)
+    if output_path is None:
+        session_output.mkdir(parents=True, exist_ok=True)
+        output_path = str(Path(session_output) / "rft_dataset.jsonl")
+
+    click.echo("=" * 60)
+    click.echo("FactorMiner -- Export RFT Dataset (offline only)")
+    click.echo("=" * 60)
+    click.echo(RFT_EXPORT_HONESTY)
+    click.echo("-" * 60)
+    click.echo(f"  Lifecycle source: {source}")
+    click.echo(f"  Output JSONL:     {output_path}")
+
+    returns = None
+    if mock or data_path is not None:
+        try:
+            dataset = _load_runtime_dataset_for_analysis(cfg, data_path, mock)
+            returns = dataset.returns
+            click.echo(
+                f"  Regime bucketing: enabled "
+                f"({len(dataset.asset_ids)} assets x {len(dataset.timestamps)} periods)"
+            )
+        except Exception as e:
+            click.echo(f"  Regime bucketing skipped (data load failed: {e})")
+            returns = None
+    else:
+        click.echo("  Regime bucketing: skipped (pass --mock or --data to enable)")
+
+    export_cfg = RFTExportConfig(include_failed_parses=include_failed_parses)
+    try:
+        result = export_rft_dataset(
+            source,
+            output_path,
+            returns=returns,
+            config=export_cfg,
+        )
+    except Exception as e:
+        click.echo(f"RFT export error: {e}")
+        logger.exception("RFT dataset export failed")
+        raise click.Abort()
+
+    click.echo("-" * 60)
+    click.echo(f"  Records:       {result.n_records}")
+    click.echo(f"  Iterations:    {result.n_iterations}")
+    click.echo(f"  Schema:        {result.schema_version}")
+    click.echo(
+        f"  Reward mean/std/min/max: "
+        f"{result.reward_mean:.6f} / {result.reward_std:.6f} / "
+        f"{result.reward_min:.6f} / {result.reward_max:.6f}"
+    )
+    if result.regime_task_counts:
+        mix = ", ".join(f"{k}={v}" for k, v in sorted(result.regime_task_counts.items()))
+        click.echo(f"  Regime tasks:  {mix}")
+    if result.manifest_path:
+        click.echo(f"  Manifest:      {result.manifest_path}")
+    click.echo(f"  Wrote:         {result.path}")
+    click.echo("-" * 60)
+    click.echo("Reminder: this command does NOT train a model.")
     click.echo("=" * 60)
 
 
@@ -2091,6 +2867,30 @@ def benchmark_cost_pressure(
         factor_miner_library_path=factor_miner_library,
     )
     _print_benchmark_summary("FactorMiner -- Cost Pressure", payload)
+
+
+@benchmark.command("cpcv")
+@click.option("--baseline", default="factor_miner", help="Baseline id to evaluate.")
+@_benchmark_common_options
+def benchmark_cpcv(
+    ctx: click.Context,
+    data_path: str | None,
+    mock: bool,
+    factor_miner_library: str | None,
+    factor_miner_no_memory_library: str | None,
+    baseline: str,
+) -> None:
+    """Run Combinatorial Purged CV + Probability of Backtest Overfitting diagnostics."""
+    from factorminer.benchmark.runtime import run_cpcv_benchmark
+
+    cfg = ctx.obj["config"]
+    payload = run_cpcv_benchmark(
+        cfg,
+        data_path=data_path,
+        mock=mock,
+        baseline=baseline,
+    )
+    _print_benchmark_summary("FactorMiner -- CPCV / PBO", payload)
 
 
 @benchmark.command("efficiency")
@@ -2287,24 +3087,118 @@ def helix(
 
 
 # ---------------------------------------------------------------------------
+# retrieval-smoke
+# ---------------------------------------------------------------------------
+
+@main.command("retrieval-smoke")
+@click.option(
+    "--embeddings/--no-embeddings",
+    default=False,
+    help="Include dense embedder ranks (hash/TF-IDF fallback; no forced download).",
+)
+@click.option(
+    "--rerank/--no-rerank",
+    default=False,
+    help="Enable lightweight cross-encoder-style rerank over the fused top pool.",
+)
+@click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON.")
+def retrieval_smoke(embeddings: bool, rerank: bool, json_output: bool) -> None:
+    """Run hybrid BM25+dense retrieval quality smoke on a synthetic labeled set.
+
+    Verifies Reciprocal Rank Fusion prefers historically-successful patterns
+    over weak/forbidden ones. No network I/O; safe under --mock/CI.
+    """
+    from factorminer.memory.retrieval import (
+        HybridRetrievalConfig,
+        retrieval_quality_smoke,
+    )
+
+    embedder = None
+    if embeddings:
+        from factorminer.memory.embeddings import FormulaEmbedder
+
+        embedder = FormulaEmbedder(use_faiss=False)
+
+    cfg = HybridRetrievalConfig(enabled=True, enable_rerank=rerank)
+    result = retrieval_quality_smoke(embedder=embedder, hybrid_config=cfg)
+
+    if json_output:
+        click.echo(json.dumps(result, indent=2, default=str))
+        if not result.get("passed"):
+            raise click.Abort()
+        return
+
+    click.echo("FactorMiner -- Retrieval Quality Smoke")
+    click.echo("=" * 60)
+    click.echo(f"  Passed:            {result.get('passed')}")
+    click.echo(f"  Hybrid ranking:    {result.get('hybrid_ranking')}")
+    click.echo(f"  Heuristic ranking: {result.get('heuristic_ranking')}")
+    click.echo(f"  Criterion:         {result.get('criterion')}")
+    click.echo("=" * 60)
+    if not result.get("passed"):
+        raise click.ClickException("retrieval quality smoke failed")
+
+
+# ---------------------------------------------------------------------------
 # mcp-serve
 # ---------------------------------------------------------------------------
 
 @main.command("mcp-serve")
-def mcp_serve() -> None:
-    """Run the FactorMiner MCP server over stdio.
+@click.option(
+    "--transport",
+    type=click.Choice(["stdio", "http"], case_sensitive=False),
+    default="stdio",
+    show_default=True,
+    help="MCP transport. 'stdio' is process-local (no auth). "
+    "'http' enables streamable-HTTP on --host/--port and requires a bearer token.",
+)
+@click.option(
+    "--host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Bind host for --transport http. Default is loopback only (never 0.0.0.0).",
+)
+@click.option(
+    "--port",
+    type=int,
+    default=8765,
+    show_default=True,
+    help="Bind port for --transport http.",
+)
+@click.option(
+    "--auth-token-env",
+    default="FACTORMINER_MCP_TOKEN",
+    show_default=True,
+    help="Env var holding the bearer token required when --transport http is selected. "
+    "The server refuses to start if the variable is unset/empty under HTTP.",
+)
+def mcp_serve(transport: str, host: str, port: int, auth_token_env: str) -> None:
+    """Run the FactorMiner MCP server (stdio by default, optional HTTP).
 
     Exposes FactorMiner's mining, evaluation, backtesting, benchmark, and
     reporting workflows as Model Context Protocol tools. Register it with a
     Claude client (Claude Code, Cowork, or a Managed Agent) through an
     .mcp.json entry. Nothing is written to stdout besides the MCP protocol
-    stream, so this command must not be combined with other output.
+    stream when using stdio, so this command must not be combined with other
+    output on that transport.
+
+    HTTP mode binds to HOST:PORT (default 127.0.0.1:8765) and requires a
+    non-empty bearer token in the environment variable named by
+    --auth-token-env (default FACTORMINER_MCP_TOKEN).
     """
     try:
-        from factorminer.mcp.server import mcp
+        from factorminer.mcp.server import run_server
     except ModuleNotFoundError as exc:
         raise click.ClickException(str(exc)) from exc
-    mcp.run()
+    try:
+        run_server(
+            transport=transport.lower(),  # type: ignore[arg-type]
+            host=host,
+            port=port,
+            auth_token_env=auth_token_env,
+        )
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -2372,6 +3266,597 @@ def fetch_data_cmd(mcp_config: str, output_path: str) -> None:
     click.echo("=" * 60)
     click.echo(f"Next: uv run factorminer validate-data {written}")
 
+
+# ---------------------------------------------------------------------------
+# attach-edgar
+# ---------------------------------------------------------------------------
+
+@main.command("attach-edgar")
+@click.option(
+    "--data",
+    "data_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="OHLCV market-data file to join fundamentals onto.",
+)
+@click.option(
+    "--cik-map",
+    "cik_map_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="YAML/JSON mapping of asset_id -> CIK.",
+)
+@click.option(
+    "--output",
+    "-o",
+    "output_path",
+    required=True,
+    type=click.Path(dir_okay=False),
+    help="Destination panel with eps/revenue/book_equity/shares_out columns.",
+)
+@click.option(
+    "--cache-dir",
+    default=None,
+    type=click.Path(file_okay=False),
+    help="Local cache directory for companyfacts JSON (keyed by sanitized CIK).",
+)
+@click.option(
+    "--user-agent",
+    default=None,
+    help="SEC-compliant User-Agent (must include contact email). "
+    "Default: 'FactorMiner Research Bot 1.0 (contact@factorminer.local)'.",
+)
+@click.option(
+    "--fixture",
+    "fixture_path",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Offline companyfacts JSON fixture (skips network; for tests/CI).",
+)
+def attach_edgar_cmd(
+    data_path: str,
+    cik_map_path: str,
+    output_path: str,
+    cache_dir: str | None,
+    user_agent: str | None,
+    fixture_path: str | None,
+) -> None:
+    """Join point-in-time SEC EDGAR XBRL fundamentals onto an OHLCV panel."""
+    import json
+    from pathlib import Path as _Path
+
+    import yaml
+
+    from factorminer.data.edgar_source import (
+        DEFAULT_USER_AGENT,
+        EdgarConfig,
+        attach_edgar_to_panel,
+        register_edgar_features,
+    )
+    from factorminer.data.loader import load_market_data
+
+    click.echo("FactorMiner -- Attach EDGAR Fundamentals")
+    click.echo("=" * 60)
+
+    panel = load_market_data(data_path)
+    raw_map = _Path(cik_map_path).read_text(encoding="utf-8")
+    if cik_map_path.endswith((".yaml", ".yml")):
+        cik_map = yaml.safe_load(raw_map) or {}
+    else:
+        cik_map = json.loads(raw_map)
+    if not isinstance(cik_map, dict) or not cik_map:
+        raise click.ClickException("cik-map must be a non-empty asset_id -> CIK mapping")
+
+    offline = None
+    if fixture_path is not None:
+        fixture = json.loads(_Path(fixture_path).read_text(encoding="utf-8"))
+        # Accept either a single payload applied to all assets or asset_id-keyed dict.
+        if isinstance(fixture, dict) and "facts" in fixture:
+            offline = {str(a): fixture for a in cik_map}
+        elif isinstance(fixture, dict):
+            offline = fixture
+        else:
+            raise click.ClickException("fixture must be a companyfacts object or asset-keyed map")
+
+    cfg = EdgarConfig(
+        user_agent=user_agent or DEFAULT_USER_AGENT,
+        cache_dir=cache_dir,
+    )
+    register_edgar_features()
+    joined = attach_edgar_to_panel(
+        panel,
+        {str(k): v for k, v in cik_map.items()},
+        config=cfg,
+        offline_payloads=offline,
+    )
+
+    out = _Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    suffix = out.suffix.lower()
+    if suffix == ".parquet" or suffix == ".pq":
+        joined.to_parquet(out, index=False)
+    elif suffix in {".h5", ".hdf5"}:
+        joined.to_hdf(out, key="data", mode="w")
+    else:
+        joined.to_csv(out, index=False)
+
+    click.echo(f"  Assets: {joined['asset_id'].nunique()}")
+    click.echo(f"  Rows:   {len(joined)}")
+    for col in ("eps", "revenue", "book_equity", "shares_out"):
+        if col in joined.columns:
+            n = int(joined[col].notna().sum())
+            click.echo(f"  {col}: {n} non-null values (point-in-time as-filed)")
+    click.echo(f"  Wrote:  {out}")
+    click.echo("=" * 60)
+    click.echo(
+        "Security: HTTPS data.sec.gov, descriptive User-Agent, "
+        "<=10 req/s rate limit, local CIK cache, fail-closed JSON parse."
+    )
+
+
+# ---------------------------------------------------------------------------
+# build-futures
+# ---------------------------------------------------------------------------
+
+@main.command("build-futures")
+@click.option(
+    "--data",
+    "data_path",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Raw futures panel CSV/Parquet. Omit with --mock.",
+)
+@click.option(
+    "--output",
+    "-o",
+    "output_path",
+    required=True,
+    type=click.Path(dir_okay=False),
+    help="Destination continuous futures panel with basis/spot/premium/oi.",
+)
+@click.option("--mock", is_flag=True, help="Generate a deterministic synthetic futures panel.")
+@click.option(
+    "--multiplier",
+    default=1.0,
+    show_default=True,
+    type=float,
+    help="Contract multiplier used for notional amount.",
+)
+def build_futures_cmd(
+    data_path: str | None,
+    output_path: str,
+    mock: bool,
+    multiplier: float,
+) -> None:
+    """Build a roll-adjusted continuous futures panel with basis leaves."""
+    from pathlib import Path as _Path
+
+    from factorminer.data.futures_source import (
+        FuturesConfig,
+        build_continuous_futures_panel,
+        generate_mock_futures_panel,
+        register_futures_features,
+    )
+    from factorminer.data.loader import load_market_data
+
+    click.echo("FactorMiner -- Build Continuous Futures Panel")
+    click.echo("=" * 60)
+
+    cfg = FuturesConfig(contract_multiplier=float(multiplier))
+    register_futures_features()
+
+    if mock or data_path is None:
+        if data_path is not None and not mock:
+            raise click.ClickException("Pass --mock or provide --data")
+        click.echo("  Generating mock continuous futures panel...")
+        panel = generate_mock_futures_panel(config=cfg)
+    else:
+        raw = load_market_data(data_path)
+        panel = build_continuous_futures_panel(raw, config=cfg)
+
+    out = _Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    suffix = out.suffix.lower()
+    if suffix in {".parquet", ".pq"}:
+        panel.to_parquet(out, index=False)
+    elif suffix in {".h5", ".hdf5"}:
+        panel.to_hdf(out, key="data", mode="w")
+    else:
+        panel.to_csv(out, index=False)
+
+    click.echo(f"  Assets: {panel['asset_id'].nunique()}")
+    click.echo(f"  Rows:   {len(panel)}")
+    for col in ("basis", "spot", "premium", "roll_yield", "oi"):
+        if col in panel.columns:
+            click.echo(f"  leaf ${col}: present")
+    click.echo(f"  Wrote:  {out}")
+    click.echo("=" * 60)
+
+
+# ---------------------------------------------------------------------------
+# ingest-research
+# ---------------------------------------------------------------------------
+
+@main.command("ingest-research")
+@click.argument("note_path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--mock", is_flag=True, help="Use mock LLM provider (no API calls).")
+@click.option(
+    "--eligibility-mode",
+    type=click.Choice(["ohlcv_only", "alt_enabled"]),
+    default="ohlcv_only",
+    show_default=True,
+    help="A-layer gate: ohlcv_only (default) or alt_enabled (keep fragments "
+    "that map onto registered non-OHLCV leaves such as $eps).",
+)
+@click.pass_context
+def ingest_research(
+    ctx: click.Context,
+    note_path: str,
+    mock: bool,
+    eligibility_mode: str,
+) -> None:
+    """Absorb a research report fragment via Report-to-Memory Absorption (RMA).
+
+    Screens the fragment for OHLCV-representability (A-layer); if KEPT,
+    classifies it into a mechanism family and prints reusable research-path
+    hypothesis cues (B/C-layer). See the `research-ingestion` skill.
+    """
+    from factorminer.architecture.research_absorption import (
+        ResearchAbsorptionService,
+        read_research_note,
+    )
+
+    cfg = ctx.obj["config"]
+    provider = _create_llm_provider(cfg, mock)
+    service = ResearchAbsorptionService(
+        llm_provider=provider,
+        eligibility_mode=eligibility_mode,
+    )
+    note = read_research_note(note_path)
+
+    click.echo("FactorMiner -- Research Ingestion (RMA)")
+    click.echo("=" * 60)
+    click.echo(f"Source: {note.source}")
+
+    keep, reason = service.screen_eligibility(note.text)
+    click.echo(f"A-layer verdict: {'KEEP' if keep else 'DROP'}")
+    click.echo(f"Reason:          {reason}")
+
+    if not keep:
+        click.echo("=" * 60)
+        click.echo("Fragment dropped -- not OHLCV-representable.")
+        return
+
+    archetype = service.classify_mechanism(note.text)
+    click.echo(f"Mechanism family: {archetype.mechanism_family}")
+    click.echo(f"Fine family:      {archetype.fine_family}")
+    click.echo(f"Archetype name:   {archetype.name}")
+    click.echo(f"Mechanism role:   {archetype.mechanism_role}")
+    click.echo("Research paths:")
+    for path in archetype.research_paths:
+        click.echo(f"  - {path}")
+    click.echo("=" * 60)
+
+
+
+# ---------------------------------------------------------------------------
+# sealed-search (Agora multi-evaluator research mode)
+# ---------------------------------------------------------------------------
+
+@main.command("sealed-search")
+@click.option(
+    "--agreement-rule",
+    type=click.Choice(["majority", "unanimous", "all_but_one", "threshold"]),
+    default="majority",
+    show_default=True,
+    help="Multi-evaluator agreement rule for promotion eligibility.",
+)
+@click.option(
+    "--min-agree",
+    type=int,
+    default=2,
+    show_default=True,
+    help="Minimum evaluator passes when --agreement-rule=threshold.",
+)
+@click.option(
+    "--no-llm-judge",
+    is_flag=True,
+    help="Disable the optional LLM-as-judge persona (numeric panel only).",
+)
+@click.option(
+    "--demo",
+    is_flag=True,
+    help="Run the built-in synthetic disagreement demo (no library/data needed).",
+)
+@click.option("--mock", is_flag=True, help="Use mock LLM provider if LLM judge is enabled.")
+@click.pass_context
+def sealed_search(
+    ctx: click.Context,
+    agreement_rule: str,
+    min_agree: int,
+    no_llm_judge: bool,
+    demo: bool,
+    mock: bool,
+) -> None:
+    """Opt-in Agora sealed multi-evaluator promotion (research mode).
+
+    Runs differently-biased evaluators with sealed internals, promotes only
+    under multi-evaluator agreement, and reports disagreement diagnostics.
+    Does NOT replace EvaluationKernel default admission. Paper caveat
+    (arXiv:2606.29194): single-seed variance is real — not a proven default.
+    """
+    from factorminer.architecture.sealed_joint_search import (
+        RESEARCH_MODE_CAVEAT,
+        AgreementRule,
+        CandidateObservation,
+        SealedJointSearchConfig,
+        SealedJointSearchEngine,
+    )
+
+    cfg = ctx.obj["config"]
+    provider = None
+    if not no_llm_judge:
+        # Always mock for the research demo unless a future library path needs a real judge.
+        provider = _create_llm_provider(cfg, True)
+
+    engine = SealedJointSearchEngine(
+        SealedJointSearchConfig(
+            enabled=True,
+            agreement_rule=AgreementRule(agreement_rule),
+            min_agree=min_agree,
+            include_llm_judge=not no_llm_judge,
+            retain_internal_scores=True,
+        ),
+        llm_provider=provider,
+    )
+
+    click.echo("=" * 60)
+    click.echo("FactorMiner -- Sealed Joint Search (research mode)")
+    click.echo("=" * 60)
+    click.echo(f"Agreement rule: {agreement_rule}")
+    click.echo(f"Evaluators:     {', '.join(engine.evaluator_ids)}")
+    click.echo(RESEARCH_MODE_CAVEAT)
+    click.echo("-" * 60)
+
+    if not demo:
+        # Default path is the synthetic demo so the command is always runnable
+        # without a library; future library-path wiring stays opt-in.
+        demo = True
+        click.echo("No library input supplied — running built-in synthetic demo.")
+
+    observations = [
+        CandidateObservation(
+            name="high_ic_brittle",
+            formula="CsRank(Delta($close, 1))",
+            ic_paper_mean=0.08,
+            ic_mean=0.08,
+            ic_std=0.12,
+            icir=0.67,
+            ic_win_rate=0.62,
+            intervention_robustness=0.15,
+            cpcv_ic_std=0.10,
+            cpcv_ic_mean=0.08,
+            max_library_dependence=0.25,
+            novelty_score=0.75,
+        ),
+        CandidateObservation(
+            name="high_ic_crowded",
+            formula="CsRank(Delta($close, 5))",
+            ic_paper_mean=0.07,
+            ic_mean=0.07,
+            ic_std=0.03,
+            icir=2.3,
+            ic_win_rate=0.70,
+            intervention_robustness=0.80,
+            cpcv_ic_std=0.015,
+            cpcv_ic_mean=0.07,
+            max_library_dependence=0.92,
+            novelty_score=0.08,
+        ),
+        CandidateObservation(
+            name="balanced_solid",
+            formula="Neg(CsZScore(Div(Sub($close, SMA($close, 20)), SMA($close, 20))))",
+            ic_paper_mean=0.045,
+            ic_mean=0.045,
+            ic_std=0.02,
+            icir=2.25,
+            ic_win_rate=0.60,
+            intervention_robustness=0.75,
+            cpcv_ic_std=0.018,
+            cpcv_ic_mean=0.045,
+            max_library_dependence=0.20,
+            novelty_score=0.80,
+        ),
+        CandidateObservation(
+            name="weak_noise",
+            formula="CsRank($volume)",
+            ic_paper_mean=0.005,
+            ic_mean=0.005,
+            ic_std=0.08,
+            icir=0.06,
+            ic_win_rate=0.48,
+            intervention_robustness=0.20,
+            cpcv_ic_std=0.09,
+            cpcv_ic_mean=0.005,
+            max_library_dependence=0.85,
+            novelty_score=0.15,
+        ),
+    ]
+
+    report = engine.evaluate_batch(observations)
+    click.echo(f"Candidates:     {report.n_candidates}")
+    click.echo(f"Promoted:       {report.promoted_names()}")
+    click.echo(f"Rejected:       {report.rejected_names()}")
+    click.echo(f"Disagreement:   {report.disagreement_rate:.2%}")
+    click.echo(f"Mean agreement: {report.mean_agreement_fraction:.2%}")
+    click.echo("-" * 60)
+    for decision in report.decisions:
+        fb = decision.feedback
+        status = "PROMOTED" if decision.promoted else "held"
+        click.echo(
+            f"  [{status:8s}] {decision.observation.name:18s} "
+            f"passed {decision.n_passed}/{decision.n_evaluators} "
+            f"rank={decision.batch_rank} "
+            f"disagree={decision.disagreement}"
+        )
+        if fb is not None:
+            click.echo(f"             personas+={list(fb.passed_personas)} "
+                       f"personas-={list(fb.failed_personas)}")
+    click.echo("=" * 60)
+    click.echo("Prompt-safe sealed feedback (no raw evaluator scores):")
+    for payload in report.sealed_feedback_batch():
+        click.echo(
+            f"  {payload['candidate_name']}: "
+            f"{payload['n_passed']}/{payload['n_evaluators']} "
+            f"promoted={payload['promoted']}"
+        )
+    click.echo("=" * 60)
+
+
+# ---------------------------------------------------------------------------
+# model-co-optimize (RD-Agent(Q)-style downstream model zoo diagnostic)
+# ---------------------------------------------------------------------------
+
+
+@main.command("model-co-optimize")
+@click.option(
+    "--model-kind",
+    type=click.Choice(["ridge", "lasso", "xgboost", "corr_graphsage"]),
+    default="ridge",
+    show_default=True,
+    help="Downstream model family to fit on the factor library signals.",
+)
+@click.option(
+    "--train-objective",
+    type=click.Choice(["mse", "margin_pairwise", "listnet", "bpr"]),
+    default="mse",
+    show_default=True,
+    help="Training objective. Ranking losses re-fit linear models; xgboost uses rank:pairwise.",
+)
+@click.option("--alpha", type=float, default=1.0, show_default=True, help="L2/L1 strength (linear models).")
+@click.option(
+    "--train-fraction",
+    type=float,
+    default=0.7,
+    show_default=True,
+    help="Fraction of periods used for training (rest held out).",
+)
+@click.option(
+    "--graph-corr-threshold",
+    type=float,
+    default=0.3,
+    show_default=True,
+    help="Absolute return-correlation threshold for corr_graphsage edges.",
+)
+@click.option(
+    "--graph-hidden-dim",
+    type=int,
+    default=8,
+    show_default=True,
+    help="Hidden width of the corr_graphsage encoder.",
+)
+@click.option(
+    "--permutation-repeats",
+    type=int,
+    default=10,
+    show_default=True,
+    help="Repeats for held-out permutation importance.",
+)
+@click.option("--seed", type=int, default=42, show_default=True, help="RNG seed.")
+@click.option("--mock", is_flag=True, help="Run against a built-in synthetic factor panel (no library needed).")
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Emit the co-optimization report as JSON.",
+)
+def model_co_optimize_cmd(
+    model_kind: str,
+    train_objective: str,
+    alpha: float,
+    train_fraction: float,
+    graph_corr_threshold: float,
+    graph_hidden_dim: int,
+    permutation_repeats: int,
+    seed: int,
+    mock: bool,
+    json_output: bool,
+) -> None:
+    """Fit a downstream model on factor signals and rank factor contributions.
+
+    RD-Agent(Q)-style diagnostic: ridge/lasso/xgboost on flattened samples, or
+    corr_graphsage (optional torch) on a per-date asset correlation graph.
+    Defaults to a synthetic mock panel so the command is always runnable.
+    """
+    import json as json_lib
+
+    from factorminer.evaluation.model_zoo import ModelZooConfig, ModelZooEvaluator
+
+    if not mock:
+        mock = True
+        click.echo("No library input supplied — running built-in synthetic mock panel.")
+
+    rng = __import__("numpy").random.default_rng(seed)
+    assets, periods = 20, 80
+    strong = rng.standard_normal((assets, periods))
+    weak = rng.standard_normal((assets, periods))
+    noise_a = rng.standard_normal((assets, periods))
+    noise_b = rng.standard_normal((assets, periods))
+    returns = 0.75 * strong + 0.15 * weak + 0.4 * rng.standard_normal((assets, periods))
+    factor_signals = {1: strong, 2: weak, 3: noise_a, 4: noise_b}
+    factor_names = {1: "alpha_strong", 2: "alpha_weak", 3: "noise_a", 4: "noise_b"}
+
+    config = ModelZooConfig(
+        model_kind=model_kind,
+        train_objective=train_objective,
+        alpha=alpha,
+        train_fraction=train_fraction,
+        graph_corr_threshold=graph_corr_threshold,
+        graph_hidden_dim=graph_hidden_dim,
+        permutation_repeats=permutation_repeats,
+        seed=seed,
+        xgb_n_estimators=40,
+        xgb_max_depth=3,
+    )
+
+    click.echo("=" * 60)
+    click.echo("FactorMiner -- Model Co-Optimize (downstream zoo)")
+    click.echo("=" * 60)
+    click.echo(f"Model kind:       {model_kind}")
+    click.echo(f"Train objective:  {train_objective}")
+    click.echo(f"Train fraction:   {train_fraction}")
+    click.echo(f"Panel:            {assets} assets x {periods} periods (mock)")
+    click.echo("-" * 60)
+
+    try:
+        report = ModelZooEvaluator().evaluate(
+            factor_signals, factor_names, returns, config=config, iteration=0
+        )
+    except RuntimeError as exc:
+        click.echo(f"Error: {exc}")
+        raise click.Abort() from exc
+
+    if json_output:
+        click.echo(json_lib.dumps(report.to_dict(), indent=2, default=str))
+        return
+
+    click.echo(f"Held-out IC:      {report.held_out_ic:.4f}")
+    click.echo(f"Held-out R^2:     {report.held_out_r2:.4f}")
+    click.echo(f"Held-out Sharpe:  {report.held_out_sharpe:.4f}")
+    click.echo(f"Baseline EQ IC:   {report.baseline_equal_weight_ic:.4f}")
+    click.echo(f"Train/test n:     {report.n_train_samples}/{report.n_test_samples}")
+    if report.neighbor_influence_summary:
+        click.echo(f"Neighbors:        {report.neighbor_influence_summary}")
+    click.echo("-" * 60)
+    click.echo(f"{'Rank':>4s}  {'Factor':<20s}  {'PermImp':>10s}  {'Coef':>10s}  {'dIC':>8s}")
+    for c in report.contributions:
+        coef = f"{c.coefficient:.4f}" if c.coefficient is not None else "n/a"
+        click.echo(
+            f"{c.rank:4d}  {c.factor_name:<20s}  "
+            f"{c.permutation_importance_mean:10.4f}  {coef:>10s}  "
+            f"{c.ensemble_marginal_delta_ic:8.4f}"
+        )
+    click.echo("=" * 60)
 
 if __name__ == "__main__":
     main()

@@ -2,6 +2,12 @@
 
 Orchestrates the prompt construction, LLM invocation, output parsing,
 and retry logic for a single batch of factor candidates.
+
+When the LLM backend is a :class:`~factorminer.agent.llm_interface.CascadeProvider`,
+the initial draft uses the cheap local model; the repair path always
+escalates to the frontier provider.  Escalation is driven by FactorMiner's
+deterministic DSL parser — a free routing signal most generic agentic-cost
+papers do not have.
 """
 
 from __future__ import annotations
@@ -10,7 +16,7 @@ import logging
 import time
 from typing import Any
 
-from factorminer.agent.llm_interface import LLMProvider
+from factorminer.agent.llm_interface import CascadeProvider, LLMProvider
 from factorminer.agent.output_parser import CandidateFactor, parse_llm_output
 from factorminer.agent.prompt_builder import PromptBuilder
 
@@ -34,6 +40,10 @@ class FactorGenerator:
         Default sampling temperature.
     max_tokens : int
         Default max response tokens.
+    cacheable_prefix : str or None
+        Optional stable system-prompt prefix shared with peer generators
+        (e.g. debate specialists).  Forwarded to the provider so parallel
+        callers hit the same prompt-cache breakpoint.
     """
 
     def __init__(
@@ -42,12 +52,64 @@ class FactorGenerator:
         prompt_builder: PromptBuilder | None = None,
         temperature: float = 0.8,
         max_tokens: int = 4096,
+        cacheable_prefix: str | None = None,
     ) -> None:
         self.llm_provider = llm_provider
         self.prompt_builder = prompt_builder or PromptBuilder()
         self.temperature = temperature
         self.max_tokens = max_tokens
+        # Prefer an explicit prefix; otherwise use the full system prompt so
+        # a lone FactorGenerator still marks a stable cache breakpoint.
+        self.cacheable_prefix = (
+            cacheable_prefix
+            if cacheable_prefix is not None
+            else self.prompt_builder.system_prompt
+        )
         self._generation_count = 0
+
+    @staticmethod
+    def _unwrap_cascade_provider(provider: LLMProvider) -> CascadeProvider | None:
+        """Walk through known provider wrappers to find an inner CascadeProvider.
+
+        ``PrefixedCacheProvider`` (used by ``DebateGenerator`` so parallel
+        specialists share one cache breakpoint) does not itself expose
+        ``generate_frontier``, so a naive
+        ``isinstance(provider, CascadeProvider)`` check silently fails once
+        the cascade is wrapped -- ``force_frontier`` then becomes a no-op:
+        repair re-enters the cheap local draft instead of forcing the
+        frontier model, exactly when quality-safety repair matters most.
+        """
+        seen: set[int] = set()
+        current: Any = provider
+        while current is not None and id(current) not in seen:
+            if isinstance(current, CascadeProvider):
+                return current
+            seen.add(id(current))
+            current = getattr(current, "inner", None)
+        return None
+
+    def _call_llm(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        temperature: float,
+        max_tokens: int,
+        force_frontier: bool = False,
+    ) -> str:
+        """Invoke the provider, optionally forcing cascade frontier repair."""
+        kwargs = {
+            "system_prompt": system_prompt,
+            "user_prompt": user_prompt,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "cacheable_prefix": self.cacheable_prefix,
+        }
+        if force_frontier:
+            cascade = self._unwrap_cascade_provider(self.llm_provider)
+            if cascade is not None:
+                return cascade.generate_frontier(**kwargs)
+        return self.llm_provider.generate(**kwargs)
 
     def generate_batch(
         self,
@@ -61,7 +123,7 @@ class FactorGenerator:
         1. Build prompt with memory signal injection.
         2. Call LLM to generate candidates.
         3. Parse and validate each candidate.
-        4. Retry failed parses if any.
+        4. Retry failed parses if any (frontier path under cascade).
         5. Return list of valid CandidateFactor objects.
 
         Parameters
@@ -108,18 +170,19 @@ class FactorGenerator:
             batch_size=batch_size,
         )
 
-        # 2. Call LLM
+        # 2. Call LLM (cascade: cheap draft first; parser decides escalate)
         t0 = time.monotonic()
-        raw_output = self.llm_provider.generate(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
+        raw_output = self._call_llm(
+            system_prompt,
+            user_prompt,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
+            force_frontier=False,
         )
         elapsed = time.monotonic() - t0
         logger.info("LLM response received in %.1fs (%d chars)", elapsed, len(raw_output))
 
-        # 3. Parse output
+        # 3. Parse output — free deterministic routing signal for cascade
         candidates, failed_lines = parse_llm_output(raw_output)
 
         valid = [c for c in candidates if c.is_valid]
@@ -133,7 +196,7 @@ class FactorGenerator:
             len(failed_lines),
         )
 
-        # 4. Retry failed parses
+        # 4. Retry failed parses (always frontier under CascadeProvider)
         if failed_lines or invalid:
             retry_input = failed_lines + [c.formula for c in invalid if c.formula]
             retried = self._retry_failed_parses(retry_input, attempts=2)
@@ -171,7 +234,9 @@ class FactorGenerator:
         """Retry parsing failed outputs with a repair prompt.
 
         Asks the LLM to fix malformed formulas by providing the broken
-        expressions and asking for corrected versions.
+        expressions and asking for corrected versions.  Under a cascade
+        provider the repair path always uses the frontier model — the cheap
+        draft already failed the deterministic DSL parse signal.
 
         Parameters
         ----------
@@ -209,11 +274,12 @@ class FactorGenerator:
             )
 
             try:
-                raw = self.llm_provider.generate(
-                    system_prompt=self.prompt_builder.system_prompt,
-                    user_prompt=repair_prompt,
+                raw = self._call_llm(
+                    self.prompt_builder.system_prompt,
+                    repair_prompt,
                     temperature=max(0.3, self.temperature - 0.3),
                     max_tokens=self.max_tokens,
+                    force_frontier=True,
                 )
             except Exception as e:
                 logger.warning("Retry attempt %d failed: %s", attempt, e)

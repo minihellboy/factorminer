@@ -77,6 +77,9 @@ class DataConfig:
     """Parameters for data loading and universes."""
 
     market: str = "a_shares"
+    # Optional multi-asset framing hint for prompts / DatasetContract
+    # (equity | futures | crypto | multi_asset). Defaults from `market` when unset.
+    asset_class: str = "equity"
     universe: str = "CSI500"
     frequency: str = "10min"
     features: list[str] = field(
@@ -156,11 +159,34 @@ class LLMConfig:
     temperature: float = 0.8
     max_tokens: int = 4096
     batch_candidates: int = 40
+    # Prompt caching (Anthropic cache_control / OpenAI prompt_cache_key). Default ON.
+    prompt_cache: bool = True
+    # Request timeout seconds (frontier + local compatible clients).
+    timeout_s: float = 120.0
+    # Optional OpenAI-compatible base URL (local YAML only; SSRF-sensitive).
+    base_url: str | None = None
+    # Cheap-first cascade routing (default OFF). Nested keys under llm.cascade
+    # in YAML are also accepted via create_provider; these top-level fields
+    # cover the simple on/off + draft endpoint case.
+    cascade_enabled: bool = False
+    cascade_draft_provider: str = "openai_compatible"
+    cascade_draft_model: str = "llama3.2"
+    cascade_draft_base_url: str = "http://127.0.0.1:11434/v1"
+    cascade_timeout_s: float = 60.0
+    cascade_escalate_on_parse_failure: bool = True
 
     def validate(self) -> None:
-        if self.provider not in ("google", "openai", "anthropic", "mock"):
+        allowed = (
+            "google",
+            "openai",
+            "anthropic",
+            "mock",
+            "openai_compatible",
+            "local",
+        )
+        if self.provider not in allowed:
             raise ValueError(
-                f"provider must be one of: google, openai, anthropic, mock "
+                f"provider must be one of: {', '.join(allowed)} "
                 f"(got '{self.provider}')"
             )
         if not (0.0 <= self.temperature <= 2.0):
@@ -169,6 +195,10 @@ class LLMConfig:
             raise ValueError("max_tokens must be >= 1")
         if self.batch_candidates < 1:
             raise ValueError("batch_candidates must be >= 1")
+        if self.timeout_s <= 0:
+            raise ValueError("timeout_s must be > 0")
+        if self.cascade_timeout_s <= 0:
+            raise ValueError("cascade_timeout_s must be > 0")
 
 
 @dataclass
@@ -181,6 +211,12 @@ class MemoryConfig:
     max_insights: int = 30
     consolidation_interval: int = 10
     regime_lookback_window: int = 60
+    # Dense embedder for kg policy / hybrid fusion (off by default).
+    enable_embeddings: bool = False
+    # Hybrid BM25+dense+heuristic RRF controls (feature-local; see HybridRetrievalConfig).
+    hybrid_enabled: bool = True
+    hybrid_enable_rerank: bool = False
+    hybrid_rrf_k: int = 60
 
     def validate(self) -> None:
         if self.policy not in (
@@ -193,10 +229,12 @@ class MemoryConfig:
             "family-aware",
             "regime_aware",
             "regime-aware",
+            "edit_aware",
+            "edit-aware",
         ):
             raise ValueError(
                 "memory.policy must be one of: paper, none, no_memory, kg, "
-                "family_aware, regime_aware"
+                "family_aware, regime_aware, edit_aware"
             )
         if self.max_success_patterns < 1:
             raise ValueError("max_success_patterns must be >= 1")
@@ -274,19 +312,28 @@ class CapacityConfig:
 
     enabled: bool = False
     base_capital_usd: float = 1e8
+    capacity_levels: list[float] = field(
+        default_factory=lambda: [1e7, 5e7, 1e8, 5e8, 1e9]
+    )
     ic_degradation_limit: float = 0.20
     net_icir_threshold: float = 0.3
     sigma_annual: float = 0.25
+    participation_limit: float = 0.10
+    top_fraction: float = 0.20
+    trading_days_per_year: float = 252.0
+    bars_per_day: float = 24.0
+    volume_mode: str = "dollar"
+    contract_multiplier: float = 1.0
 
     def validate(self) -> None:
-        if self.base_capital_usd <= 0.0:
-            raise ValueError("base_capital_usd must be > 0")
-        if not (0.0 < self.ic_degradation_limit < 1.0):
-            raise ValueError("ic_degradation_limit must be in (0, 1)")
-        if self.net_icir_threshold < 0.0:
-            raise ValueError("net_icir_threshold must be >= 0")
-        if self.sigma_annual <= 0.0:
+        if self.ic_degradation_limit < 0 or self.ic_degradation_limit > 1:
+            raise ValueError("ic_degradation_limit must be in [0, 1]")
+        if self.sigma_annual <= 0:
             raise ValueError("sigma_annual must be > 0")
+        if self.volume_mode not in {"dollar", "contracts"}:
+            raise ValueError("volume_mode must be 'dollar' or 'contracts'")
+        if self.contract_multiplier <= 0:
+            raise ValueError("contract_multiplier must be > 0")
 
 
 @dataclass

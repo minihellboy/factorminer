@@ -23,12 +23,13 @@ from typing import Any
 import numpy as np
 import pytest
 
+from factorminer.agent.factor_generator import FactorGenerator
 from factorminer.agent.llm_interface import MockProvider
+from factorminer.agent.output_parser import candidate_pairs, parse_llm_output
 from factorminer.core.factor_library import Factor, FactorLibrary
 from factorminer.core.ralph_loop import (
     BudgetTracker,
     EvaluationResult,
-    FactorGenerator,
     MiningReporter,
     RalphLoop,
     ValidationPipeline,
@@ -223,11 +224,12 @@ class TestFactorGenerator:
             batch_size=5,
         )
         assert len(candidates) > 0
-        for name, formula in candidates:
-            assert isinstance(name, str)
-            assert isinstance(formula, str)
-            assert len(name) > 0
-            assert len(formula) > 0
+        for candidate in candidates:
+            assert isinstance(candidate.name, str)
+            assert isinstance(candidate.formula, str)
+            assert candidate.is_valid
+            assert len(candidate.name) > 0
+            assert len(candidate.formula) > 0
 
     def test_parse_response_numbered_format(self):
         raw = (
@@ -235,14 +237,18 @@ class TestFactorGenerator:
             "2. factor_b: CsRank(Mean($close, 10))\n"
             "3. factor_c: Div($high, $low)\n"
         )
-        result = FactorGenerator._parse_response(raw)
+        result, failed = parse_llm_output(raw)
         assert len(result) == 3
-        assert result[0] == ("factor_a", "Neg($close)")
-        assert result[1] == ("factor_b", "CsRank(Mean($close, 10))")
+        assert failed == []
+        assert (result[0].name, result[0].formula) == ("factor_a", "Neg($close)")
+        assert (result[1].name, result[1].formula) == (
+            "factor_b",
+            "CsRank(Mean($close, 10))",
+        )
 
     def test_parse_response_empty(self):
-        assert FactorGenerator._parse_response("") == []
-        assert FactorGenerator._parse_response("\n\n") == []
+        assert parse_llm_output("") == ([], [])
+        assert parse_llm_output("\n\n") == ([], [])
 
     def test_parse_response_ignores_bad_lines(self):
         raw = (
@@ -251,8 +257,16 @@ class TestFactorGenerator:
             "Not a factor line\n"
             "2. another: CsRank($volume)\n"
         )
-        result = FactorGenerator._parse_response(raw)
+        result, failed = parse_llm_output(raw)
         assert len(result) == 2
+        assert failed == []
+
+    def test_candidate_pair_adapter_preserves_custom_generator_contract(self):
+        assert candidate_pairs([("custom", "Neg($close)")]) == [
+            ("custom", "Neg($close)")
+        ]
+        with pytest.raises(TypeError, match="CandidateFactor"):
+            candidate_pairs([object()])
 
     def test_mock_provider_deterministic(self):
         p1 = MockProvider(cycle=False)
@@ -1095,3 +1109,25 @@ class TestCheckpointResume:
 
         assert loop.memory_policy.schema()["policy"] == "none"
         assert loop.library.dependence_metric.name == "pearson"
+
+    def test_loop_uses_shared_generator_and_policy_persistence(
+        self, test_config, synthetic_data, mock_provider, tmp_dir
+    ):
+        """Ralph must not recreate the generator or legacy manager fork."""
+        test_config.output_dir = tmp_dir
+        data_tensor, returns = synthetic_data
+
+        loop = RalphLoop(
+            config=test_config,
+            data_tensor=data_tensor,
+            returns=returns,
+            llm_provider=mock_provider,
+        )
+
+        assert type(loop.generator) is FactorGenerator
+        assert loop.generator.cacheable_prefix == loop.generator.prompt_builder.system_prompt
+        assert not hasattr(loop, "memory_manager")
+
+        checkpoint = Path(loop.save_session())
+        persisted = json.loads((checkpoint / "memory.json").read_text())
+        assert persisted["memory_policy"]["policy"] == "paper"

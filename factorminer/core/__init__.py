@@ -22,13 +22,24 @@ from factorminer.core.library_io import (
 from factorminer.core.parser import parse, try_parse
 from factorminer.core.session import MiningSession
 from factorminer.core.types import (
+    DEFAULT_FEATURES,
+    FEATURE_DESCRIPTIONS,
     FEATURE_SET,
     FEATURES,
     OPERATOR_REGISTRY,
     OperatorSpec,
     OperatorType,
     SignatureType,
+    column_to_feature,
+    feature_to_column,
+    get_feature_descriptions,
+    get_feature_set,
+    get_features,
     get_operator,
+    normalize_feature_name,
+    register_features,
+    reset_features,
+    unregister_features,
 )
 
 _LAZY_EXPORTS = {
@@ -69,14 +80,24 @@ __all__ = [
     "HelixLoop",
     "MiningSession",
     "CoreMiningConfig",
-    # Types
     "OperatorSpec",
     "OperatorType",
     "SignatureType",
+    "DEFAULT_FEATURES",
     "FEATURES",
     "FEATURE_SET",
+    "FEATURE_DESCRIPTIONS",
     "OPERATOR_REGISTRY",
     "get_operator",
+    "get_features",
+    "get_feature_set",
+    "get_feature_descriptions",
+    "normalize_feature_name",
+    "feature_to_column",
+    "column_to_feature",
+    "register_features",
+    "unregister_features",
+    "reset_features",
     # Canonicalizer
     "FormulaCanonicalizer",
 ]

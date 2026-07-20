@@ -33,8 +33,10 @@ import factorminer.core.helix_loop as helix_loop_module
 import factorminer.core.ralph_loop as ralph_loop_module
 from factorminer.agent.debate import DebateConfig as RuntimeDebateConfig
 from factorminer.agent.llm_interface import MockProvider
-from factorminer.benchmark.helix_benchmark import AblationResult, MethodResult
 from factorminer.benchmark.runtime import (
+    AblationResult,
+    MethodResult,
+    _build_mock_data_dict,
     build_benchmark_library,
     evaluate_frozen_set,
     select_frozen_top_k,
@@ -779,8 +781,6 @@ def run_full_ablation_study(
     """Run the full runtime ablation study on mock data."""
     if verbose:
         print("\nGenerating mock data for ablation study...")
-
-    from factorminer.benchmark.helix_benchmark import _build_mock_data_dict
 
     data = _build_mock_data_dict(n_assets=n_assets, n_periods=n_periods, seed=seed)
     T = list(data.values())[0].shape[1]

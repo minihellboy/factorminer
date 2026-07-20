@@ -15,6 +15,7 @@ from factorminer.agent.llm_interface import MockProvider
 from factorminer.core.config import MiningConfig
 from factorminer.core.factor_library import Factor, FactorLibrary
 from factorminer.core.ralph_loop import EvaluationResult
+from factorminer.evaluation.causal import CausalConfig
 
 pytestmark = pytest.mark.skipif(not HAS_HELIX, reason="helix_loop not yet built")
 
@@ -75,6 +76,21 @@ def test_helix_loop_canonicalize_flag(small_tensor):
         canonicalize=True,
     )
     assert loop._canonicalize is True
+
+
+def test_helix_loop_reports_factory_resolved_causal_validation(small_tensor):
+    data, returns = small_tensor
+    loop = HelixLoop(
+        config=MiningConfig(target_library_size=5, max_iterations=1),
+        data_tensor=data,
+        returns=returns,
+        llm_provider=MockProvider(),
+        canonicalize=False,
+        causal_config=CausalConfig(),
+    )
+
+    assert loop._causal_validator is not None
+    assert "causal" in loop._phase2_features()
 
 
 # -----------------------------------------------------------------------

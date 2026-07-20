@@ -47,6 +47,75 @@ def infer_family(formula: str) -> str:
         return "Cross-Sectional"
     return "Other"
 
+# Coarse "mechanism family" taxonomy (XAlpha-style Macro Brain routing, see
+# docs/landscape-and-extensions.md §1 and docs/architecture.md "Family Discovery").
+# Groups the 11 fine-grained `infer_family` categories (plus the `Other` fallback)
+# into 6 broader mechanisms a research cycle can be themed around. This grouping is
+# additive/local to macro-cycle planning; it does not replace or alter `infer_family`.
+#
+# - Trend/Momentum: directional/price-change signals and the moving-average style
+#   smoothers typically used to follow them (Momentum, Smoothing).
+# - Reversal/Mean-Reversion: signals framed around deviation from a local extreme or
+#   a fitted trend, the two standard mean-reversion setups (Extrema, Regression).
+# - Volatility/Risk: dispersion and higher-moment (tail) risk signals (Volatility,
+#   Higher-Moment).
+# - Price-Volume: signals that need volume/amount/VWAP alongside price (VWAP, Amount,
+#   PV-Correlation).
+# - Cross-Sectional/Structural: signals defined relative to the cross-section or a
+#   conditioning/regime split rather than a single series' own history
+#   (Cross-Sectional, Regime-Conditional).
+# - Other/Unclassified: catch-all for `infer_family`'s own `Other` fallback.
+_MECHANISM_FAMILY_MAP: dict[str, str] = {
+    "Momentum": "Trend/Momentum",
+    "Smoothing": "Trend/Momentum",
+    "Extrema": "Reversal/Mean-Reversion",
+    "Regression": "Reversal/Mean-Reversion",
+    "Volatility": "Volatility/Risk",
+    "Higher-Moment": "Volatility/Risk",
+    "VWAP": "Price-Volume",
+    "Amount": "Price-Volume",
+    "PV-Correlation": "Price-Volume",
+    "Cross-Sectional": "Cross-Sectional/Structural",
+    "Regime-Conditional": "Cross-Sectional/Structural",
+    "Other": "Other/Unclassified",
+}
+
+MECHANISM_FAMILIES: tuple[str, ...] = (
+    "Trend/Momentum",
+    "Reversal/Mean-Reversion",
+    "Volatility/Risk",
+    "Price-Volume",
+    "Cross-Sectional/Structural",
+    "Other/Unclassified",
+)
+
+
+def mechanism_family(fine_family: str) -> str:
+    """Map a fine-grained `infer_family` category to a coarse mechanism family.
+
+    This groups the 11 categories `infer_family` can return (plus its `Other`
+    fallback) into the 6 `MECHANISM_FAMILIES` buckets documented above. Any
+    unrecognized input (e.g. a raw formula, or a name that isn't one of
+    `infer_family`'s outputs) safely falls back to ``"Other/Unclassified"`` rather
+    than raising, so callers can pass either a fine family name or an
+    already-coarse mechanism family name through unchanged.
+
+    Parameters
+    ----------
+    fine_family:
+        A category name as returned by `infer_family`, or already one of
+        `MECHANISM_FAMILIES`.
+
+    Returns
+    -------
+    str
+        One of `MECHANISM_FAMILIES`.
+    """
+    if fine_family in MECHANISM_FAMILIES:
+        return fine_family
+    return _MECHANISM_FAMILY_MAP.get(fine_family, "Other/Unclassified")
+
+
 
 @dataclass
 class FactorFamily:

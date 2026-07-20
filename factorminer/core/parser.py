@@ -40,7 +40,7 @@ from factorminer.core.expression_tree import (
     Node,
     OperatorNode,
 )
-from factorminer.core.types import FEATURE_SET, OPERATOR_REGISTRY
+from factorminer.core.types import OPERATOR_REGISTRY, get_feature_set
 
 # ---------------------------------------------------------------------------
 # Tokenizer
@@ -220,10 +220,10 @@ class Parser:
 
     def _parse_feature(self) -> LeafNode:
         tok = self._advance()
-        if tok.value not in FEATURE_SET:
+        if tok.value not in get_feature_set():
             raise SyntaxError(
                 f"Unknown feature '{tok.value}' at position {tok.pos}. "
-                f"Expected one of {sorted(FEATURE_SET)}."
+                f"Expected one of {sorted(get_feature_set())}."
             )
         return LeafNode(tok.value)
 

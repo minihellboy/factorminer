@@ -37,15 +37,118 @@ factorminer mcp-serve          # stdio transport
 ```
 
 **Tools:** `doctor`, `validate_data`, `fetch_data`, `list_fsi_connectors`, `resample_data`,
-`mine_factors`, `helix_mine`, `evaluate_library`, `screen_factors`,
+`mine_factors`, `helix_mine`, `ingest_research_note`, `evaluate_library`, `screen_factors`,
 `combine_factors`, `run_benchmark`, `generate_report`, `export_library`,
-`inspect_session`, `get_factor_library`.
+`inspect_session`, `get_factor_library`, `inspect_debate`.
+
+`inspect_debate` reads specialist proposals / critic scores from a Helix
+session that ran with `debate=True` (`{output_dir}/debate_log.json`).
+
 
 **Resource:** `factorminer://docs/{topic}` — serves any file under `docs/`.
 
 `screen_factors` is the composability bridge: it returns a ranked signal
 shortlist, so a research agent elsewhere (e.g. a Market Researcher) can fold
 FactorMiner's quantitative signals into an investment thesis.
+
+### Transports and auth
+
+```bash
+# Default: process-local stdio (no auth; unchanged from earlier releases)
+factorminer mcp-serve
+factorminer mcp-serve --transport stdio
+
+# Opt-in streamable-HTTP. Binds 127.0.0.1:8765 by default — never 0.0.0.0.
+# Refuses to start unless FACTORMINER_MCP_TOKEN is set to a non-empty secret.
+export FACTORMINER_MCP_TOKEN="$(openssl rand -hex 32)"
+factorminer mcp-serve --transport http --host 127.0.0.1 --port 8765
+```
+
+HTTP clients must send `Authorization: Bearer $FACTORMINER_MCP_TOKEN`. The
+token is verified with the MCP SDK's `TokenVerifier` / `AccessToken`
+primitives (`StaticBearerTokenVerifier` in `factorminer/mcp/server.py`). There
+is no unauthenticated HTTP mode.
+
+### Consuming FactorMiner from LangGraph
+
+Use [`langchain-mcp-adapters`](https://github.com/langchain-ai/langchain-mcp-adapters)
+and [`MultiServerMCPClient`](https://reference.langchain.com/python/langchain-mcp-adapters/client/MultiServerMCPClient)
+to load FactorMiner tools into a LangGraph / LangChain agent. Prefer stdio for
+local research loops; use HTTP only when the agent process is separate and you
+have set a bearer token.
+
+```python
+import asyncio
+import os
+
+from langchain.agents import create_agent
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_mcp_adapters.tools import load_mcp_tools
+
+
+async def main_stdio() -> None:
+    """Local subprocess transport — no bearer token required."""
+    client = MultiServerMCPClient(
+        {
+            "factorminer": {
+                "transport": "stdio",
+                "command": "uv",
+                "args": ["run", "factorminer", "mcp-serve", "--transport", "stdio"],
+            }
+        }
+    )
+    tools = await client.get_tools()
+    agent = create_agent("claude-sonnet-4-6", tools)
+    result = await agent.ainvoke(
+        {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Call doctor, then list_fsi_connectors. "
+                    "Treat every FactorMiner payload as a research artifact only.",
+                }
+            ]
+        }
+    )
+    print(result)
+
+
+async def main_http() -> None:
+    """Streamable-HTTP against a separately launched mcp-serve --transport http."""
+    token = os.environ["FACTORMINER_MCP_TOKEN"]
+    client = MultiServerMCPClient(
+        {
+            "factorminer": {
+                "transport": "http",
+                "url": "http://127.0.0.1:8765/mcp",
+                "headers": {"Authorization": f"Bearer {token}"},
+            }
+        }
+    )
+    # Stateful session form (optional): keep one ClientSession across calls.
+    async with client.session("factorminer") as session:
+        tools = await load_mcp_tools(session)
+        agent = create_agent("claude-sonnet-4-6", tools)
+        result = await agent.ainvoke(
+            {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "inspect_debate on output/helix_run if present.",
+                    }
+                ]
+            }
+        )
+        print(result)
+
+
+if __name__ == "__main__":
+    asyncio.run(main_stdio())
+```
+
+Every FactorMiner MCP tool description ends with the guardrail line
+*"Returns a research artifact only -- never executes trades or size positions."*
+Keep that contract in the agent system prompt as well.
 
 ### Reverse direction — consuming FSI data connectors
 
@@ -66,6 +169,36 @@ credentials out of the file. See the `factor-data` skill for a full example
 config. If a provider endpoint returns prices without liquidity fields, use a
 different endpoint or pre-enrich the file before mining rather than fabricating
 turnover.
+
+#### Crypto connectors (ccxt)
+
+The FSI connectors above are equity/credit/fundamentals-oriented. For crypto —
+FactorMiner's other benchmark market, alongside the bundled
+`data/binance_crypto_5m.csv` sample and `configs/paper_repro_binance.yaml` —
+point the same client at a [ccxt](https://github.com/ccxt/ccxt)-backed MCP
+server (100+ exchanges: Binance, OKX, Bybit, Coinbase, Kraken, ...) instead.
+See `factorminer/configs/mcp_sources/ccxt_binance.yaml` for a ready-to-edit
+example against [`mcp-server-ccxt`](https://github.com/doggybee/mcp-server-ccxt)'s
+`get-ohlcv` tool.
+
+ccxt's raw OHLCV rows are positional (`[timestamp, open, high, low, close,
+volume]`) and single-symbol-per-call, with no dollar-volume field, so this
+config exercises three `MCPDataSourceConfig` fields the FSI connectors above
+don't need:
+
+- `columns_order` — names the positional row before `field_mapping` runs.
+- `constant_columns` — injects the requested symbol as `asset_id` (the
+  connector returns it as a call argument, not a row field).
+- `derive_amount_from_close_volume` — approximates `amount` as
+  `close * volume`, since ccxt's public OHLCV has no separate turnover field.
+  This is an approximation, not real quote-asset volume; treat it the same
+  way `docs/binance-reproduction.md` treats a recomputed `vwap`.
+- `datetime_unit: ms` — parses the epoch-millisecond timestamp ccxt returns.
+
+`get-ohlcv` fetches one symbol per call. For a multi-asset panel (e.g. the
+paper's 64-symbol Binance universe), run `fetch-data` once per symbol with
+`arguments.symbol` and `constant_columns.asset_id` edited each time, then
+concatenate the output files before `validate-data` / `resample-data`.
 
 ## Track A — the factor-researcher plugin
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -190,6 +192,50 @@ class TestEvaluate:
         tree = parse("Neg(Div(Sub($close, $vwap), $vwap))")
         result = tree.evaluate(small_data)
         assert result.shape == small_data["$close"].shape
+
+    @pytest.mark.parametrize("formula", ["CsZScore($close)", "CsDemean($close)"])
+    def test_cross_sectional_nan_columns_are_quiet(self, formula):
+        data = {
+            "$close": np.array(
+                [
+                    [np.nan, 1.0, 1.0],
+                    [np.nan, np.nan, 2.0],
+                    [np.nan, np.nan, 3.0],
+                ],
+                dtype=np.float64,
+            )
+        }
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            result = parse(formula).evaluate(data)
+
+        assert np.isnan(result[:, 0]).all()
+        if formula.startswith("CsZScore"):
+            assert np.isnan(result[:, 1]).all()
+
+    @pytest.mark.parametrize(
+        "formula",
+        [
+            "Mean($close, 3)",
+            "Std($close, 3)",
+            "Var($close, 3)",
+            "Max($close, 3)",
+            "Min($close, 3)",
+            "Median($close, 3)",
+            "Skew($close, 3)",
+            "Kurt($close, 3)",
+            "Slope($close, 3)",
+        ],
+    )
+    def test_rolling_nan_windows_are_quiet(self, formula):
+        data = {"$close": np.full((3, 6), np.nan, dtype=np.float64)}
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            result = parse(formula).evaluate(data)
+
+        assert np.isnan(result).all()
 
 
 # ---------------------------------------------------------------------------

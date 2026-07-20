@@ -6,7 +6,9 @@ import copy
 import hashlib
 import json
 import logging
+import math
 import time
+import warnings
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -51,6 +53,8 @@ RUNTIME_LOOP_BASELINES = {
     "helix_no_significance",
     "helix_no_capacity",
     "helix_no_regime",
+    "helix_no_causal",
+    "helix_no_canonicalize",
 }
 
 
@@ -799,6 +803,7 @@ def _cfg_for_runtime_baseline(cfg, baseline: str):
     runtime_cfg.phase2.helix.enable_knowledge_graph = True
     runtime_cfg.phase2.helix.enable_embeddings = True
     runtime_cfg.phase2.debate.enabled = True
+    runtime_cfg.phase2.causal.enabled = True
     runtime_cfg.phase2.regime.enabled = True
     runtime_cfg.phase2.capacity.enabled = True
     runtime_cfg.phase2.significance.enabled = True
@@ -814,6 +819,10 @@ def _cfg_for_runtime_baseline(cfg, baseline: str):
         runtime_cfg.phase2.capacity.enabled = False
     elif baseline == "helix_no_regime":
         runtime_cfg.phase2.regime.enabled = False
+    elif baseline == "helix_no_causal":
+        runtime_cfg.phase2.causal.enabled = False
+    elif baseline == "helix_no_canonicalize":
+        runtime_cfg.phase2.helix.enable_canonicalization = False
 
     return runtime_cfg
 
@@ -830,6 +839,8 @@ def _real_mining_loop_type(baseline: str, runtime_manifest: dict[str, Any]) -> s
         "helix_no_significance",
         "helix_no_capacity",
         "helix_no_regime",
+        "helix_no_causal",
+        "helix_no_canonicalize",
     }:
         return "helix"
     if baseline in {"factor_miner", "factor_miner_no_memory", "ralph_loop"}:
@@ -1893,6 +1904,169 @@ def run_cost_pressure_benchmark(
     return result
 
 
+def run_cpcv_benchmark(
+    cfg,
+    *,
+    data_path: str | None = None,
+    mock: bool = False,
+    baseline: str = "factor_miner",
+) -> dict:
+    """Run Combinatorial Purged CV + Probability of Backtest Overfitting diagnostics.
+
+    Companion to `run_table1_benchmark`'s Top-K freeze evaluation: rather
+    than one frozen train/test split, every candidate in `baseline`'s
+    catalog is scored on every `CombinatorialPurgedCV` path built from the
+    freeze universe, producing an ``(n_trials, n_paths)`` out-of-sample
+    long-short performance matrix. That matrix drives
+    `ProbabilityOfBacktestOverfitting` (Bailey, Borwein, Lopez de Prado &
+    Zhu, 2017) and, for the best-performing trial's per-path OOS series,
+    `DeflatedSharpeCalculator` -- the same paper's companion statistic,
+    already implemented in `evaluation.significance`. Together they answer
+    "is the *best* candidate's edge real, or an artifact of trying many
+    candidates against a validation scheme that leaks information".
+
+    Parameters
+    ----------
+    cfg
+        Hierarchical benchmark config (see `factorminer.utils.config.Config`).
+    data_path : str, optional
+        Market data path; ignored when `mock=True`.
+    mock : bool
+        Use deterministic mock market data instead of `data_path`.
+    baseline : str
+        Candidate catalog id understood by `_get_baseline_entries`
+        (e.g. ``"factor_miner"``, ``"alpha101_classic"``, ``"gplearn"``).
+
+    Returns
+    -------
+    dict
+        JSON-safe manifest with `cpcv_config`, `cpcv`, `pbo`, and
+        `deflated_sharpe` sections plus best-trial provenance.
+    """
+    from factorminer.evaluation.cross_validation import (
+        CombinatorialPurgedCV,
+        CrossValidationConfig,
+        ProbabilityOfBacktestOverfitting,
+    )
+    from factorminer.evaluation.portfolio import PortfolioBacktester
+    from factorminer.evaluation.significance import (
+        DeflatedSharpeCalculator,
+        SignificanceConfig,
+    )
+
+    freeze_cfg = _cfg_with_overrides(cfg, cfg.benchmark.freeze_universe)
+    dataset, dataset_hash = load_benchmark_dataset(
+        freeze_cfg,
+        data_path=data_path,
+        universe=cfg.benchmark.freeze_universe,
+        mock=mock,
+    )
+
+    entries = _get_baseline_entries(baseline, cfg.benchmark.seed)
+    factors = _factors_from_entries(entries)
+    artifacts = evaluate_factors(factors, dataset, signal_failure_policy="reject")
+    succeeded = [artifact for artifact in artifacts if artifact.succeeded]
+
+    cv_config = CrossValidationConfig()
+    manifest: dict[str, Any] = {
+        "benchmark_name": "cpcv",
+        "baseline": baseline,
+        "freeze_universe": cfg.benchmark.freeze_universe,
+        "dataset_hash": dataset_hash,
+        "candidate_count": len(factors),
+        "succeeded_count": len(succeeded),
+        "cpcv_config": asdict(cv_config),
+        "cpcv": None,
+        "pbo": None,
+        "deflated_sharpe": None,
+        "best_trial": None,
+        "warnings": [],
+    }
+
+    if len(succeeded) < 2:
+        manifest["warnings"].append(
+            "Fewer than 2 factors recomputed successfully; PBO/DSR require multiple trials."
+        )
+        return _json_safe(manifest)
+
+    full_split = dataset.get_split("full")
+    n_samples = int(full_split.returns.shape[1])
+    cv = CombinatorialPurgedCV(cv_config)
+    try:
+        splits = cv.split(n_samples, label_horizon=1)
+    except ValueError as exc:
+        manifest["warnings"].append(f"CPCV split failed: {exc}")
+        return _json_safe(manifest)
+
+    backtester = PortfolioBacktester()
+    returns_panel = full_split.returns.T  # (T, N assets)
+    trial_names = [artifact.name for artifact in succeeded]
+    n_trials = len(succeeded)
+    n_paths = len(splits)
+    is_oos_matrix = np.full((n_trials, n_paths), np.nan, dtype=np.float64)
+
+    for trial_idx, artifact in enumerate(succeeded):
+        stats = backtester.quintile_backtest(artifact.signals_full.T, returns_panel)
+        ls_series = np.asarray(stats["ls_net_series"], dtype=np.float64)
+        for split in splits:
+            test_values = ls_series[split.test_indices]
+            finite = test_values[np.isfinite(test_values)]
+            if finite.size:
+                is_oos_matrix[trial_idx, split.path_id] = float(np.mean(finite))
+
+    valid_path_mask = np.all(np.isfinite(is_oos_matrix), axis=0)
+    clean_matrix = is_oos_matrix[:, valid_path_mask]
+
+    manifest["cpcv"] = {
+        "n_samples": n_samples,
+        "n_paths": n_paths,
+        "n_valid_paths": int(clean_matrix.shape[1]),
+        "label_horizon": 1,
+    }
+
+    if clean_matrix.shape[1] < cv_config.min_paths_for_pbo:
+        manifest["warnings"].append(
+            f"Only {clean_matrix.shape[1]} usable CPCV paths (< "
+            f"min_paths_for_pbo={cv_config.min_paths_for_pbo}); skipping PBO."
+        )
+    else:
+        pbo_result = ProbabilityOfBacktestOverfitting(cv_config).compute(clean_matrix)
+        manifest["pbo"] = {
+            "pbo": pbo_result.pbo,
+            "n_combinations": pbo_result.n_combinations,
+            "passes": pbo_result.passes,
+            "logit_values": [float(value) for value in pbo_result.logit_values],
+        }
+
+    mean_oos = np.nanmean(is_oos_matrix, axis=1)
+    best_idx = int(np.nanargmax(mean_oos))
+    best_name = trial_names[best_idx]
+    best_series = is_oos_matrix[best_idx][np.isfinite(is_oos_matrix[best_idx])]
+
+    # `best_series` is one performance value per CPCV path (a subset of test
+    # groups), not one value per calendar period -- annualization_factor=1.0
+    # keeps the Deflated Sharpe on the same path-level scale as `pbo`
+    # instead of implying a false calendar annualization.
+    dsr_result = DeflatedSharpeCalculator(SignificanceConfig()).compute(
+        best_name, best_series, n_trials=n_trials, annualization_factor=1.0
+    )
+    manifest["deflated_sharpe"] = {
+        "factor_name": dsr_result.factor_name,
+        "raw_sharpe": dsr_result.raw_sharpe,
+        "deflated_sharpe": dsr_result.deflated_sharpe,
+        "haircut": dsr_result.haircut,
+        "p_value": dsr_result.p_value,
+        "n_trials": dsr_result.n_trials,
+        "passes": dsr_result.passes,
+    }
+    manifest["best_trial"] = {
+        "name": best_name,
+        "mean_oos_performance": float(mean_oos[best_idx]),
+    }
+
+    return _json_safe(manifest)
+
+
 def _time_callable(fn, repeats: int = 3) -> float:
     timings: list[float] = []
     for _ in range(repeats):
@@ -2124,3 +2298,800 @@ def run_runtime_mining_benchmark(
         factor_miner_no_memory_library_path=factor_miner_no_memory_library_path,
         runtime_manifests=runtime_manifests,
     )
+
+
+# ---------------------------------------------------------------------------
+# Consolidated Phase-2 reporting compatibility
+# ---------------------------------------------------------------------------
+
+_LEGACY_RUNTIME_MESSAGE = (
+    "factorminer.benchmark.helix_benchmark is legacy; use "
+    "factorminer.benchmark.runtime for the canonical benchmark path"
+)
+
+
+@dataclass
+class MethodResult:
+    """Flattened metrics for one method in a comparison report."""
+
+    method: str
+    library_ic: float = 0.0
+    library_icir: float = 0.0
+    avg_abs_rho: float = 0.0
+    ew_ic: float = 0.0
+    ew_icir: float = 0.0
+    icw_ic: float = 0.0
+    icw_icir: float = 0.0
+    lasso_ic: float = 0.0
+    lasso_icir: float = 0.0
+    xgb_ic: float = 0.0
+    xgb_icir: float = 0.0
+    n_factors: int = 0
+    admission_rate: float = 0.0
+    elapsed_seconds: float = 0.0
+    avg_turnover: float = 0.0
+    ic_series: np.ndarray | None = field(default=None, repr=False)
+    run_id: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload.pop("ic_series", None)
+        return payload
+
+
+@dataclass
+class DMTestResult:
+    """Diebold-Mariano comparison result."""
+
+    dm_statistic: float
+    p_value: float
+    is_significant: bool
+    direction: str
+    n_obs: int
+
+
+@dataclass
+class AblationResult:
+    """Flattened Phase-2 ablation report."""
+
+    configs: list[str]
+    results: dict[str, MethodResult]
+    contributions: pd.DataFrame | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "configs": self.configs,
+            "results": {name: result.to_dict() for name, result in self.results.items()},
+        }
+
+
+@dataclass
+class OperatorSpeedResult:
+    """Compatibility container for operator timing results."""
+
+    operator_timings_ms: dict[str, float]
+    n_assets: int
+    n_periods: int
+    n_repeats: int
+
+
+@dataclass
+class PipelineSpeedResult:
+    """Compatibility container for pipeline timing results."""
+
+    total_seconds: float
+    candidates_per_second: float
+    n_candidates: int
+
+
+@dataclass
+class BenchmarkResult:
+    """Report-oriented projection of canonical runtime benchmark artifacts."""
+
+    methods: list[str]
+    factor_library_metrics: pd.DataFrame
+    combination_metrics: pd.DataFrame
+    selection_metrics: pd.DataFrame
+    speed_metrics: pd.DataFrame
+    statistical_tests: dict[str, Any]
+    ablation_result: AblationResult | None = None
+    raw_method_results: dict[str, list[MethodResult]] = field(default_factory=dict)
+    turnover_metrics: pd.DataFrame = field(default_factory=pd.DataFrame)
+    cost_pressure_metrics: pd.DataFrame = field(default_factory=pd.DataFrame)
+    runtime_artifacts: dict[str, Any] = field(default_factory=dict)
+
+    @staticmethod
+    def _metric(frame: pd.DataFrame, method: str, column: str) -> float:
+        if frame.empty or column not in frame.columns:
+            return 0.0
+        row = frame[frame["method"] == method]
+        if row.empty or pd.isna(row.iloc[0][column]):
+            return 0.0
+        return float(row.iloc[0][column])
+
+    def to_markdown_table(self) -> str:
+        """Render the comparison in the historical GitHub table shape."""
+        lines = [
+            "| Method | IC (%) | ICIR | Avg|rho| | EW IC (%) | EW ICIR | "
+            "ICW IC (%) | ICW ICIR | Las IC (%) | XGB IC (%) |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+        for method in self.methods:
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        method,
+                        f"{self._metric(self.factor_library_metrics, method, 'ic_pct'):.2f}",
+                        f"{self._metric(self.factor_library_metrics, method, 'icir'):.3f}",
+                        f"{self._metric(self.factor_library_metrics, method, 'avg_abs_rho'):.3f}",
+                        f"{self._metric(self.combination_metrics, method, 'ew_ic_pct'):.2f}",
+                        f"{self._metric(self.combination_metrics, method, 'ew_icir'):.3f}",
+                        f"{self._metric(self.combination_metrics, method, 'icw_ic_pct'):.2f}",
+                        f"{self._metric(self.combination_metrics, method, 'icw_icir'):.3f}",
+                        f"{self._metric(self.selection_metrics, method, 'lasso_ic_pct'):.2f}",
+                        f"{self._metric(self.selection_metrics, method, 'xgb_ic_pct'):.2f}",
+                    ]
+                )
+                + " |"
+            )
+        return "\n".join(lines) + "\n"
+
+    def to_latex_table(self) -> str:
+        """Render a compact Table-1-style LaTeX table."""
+        lines = [
+            r"\begin{table}[htbp]",
+            r"\centering",
+            r"\caption{HelixFactor vs FactorMiner Runtime Benchmark}",
+            r"\begin{tabular}{lrrrrrrrr}",
+            r"\toprule",
+            r"Method & IC(\%) & ICIR & Avg$|\rho|$ & EW IC(\%) & EW ICIR & ICW IC(\%) & ICW ICIR & Sel. IC(\%) \\",
+            r"\midrule",
+        ]
+        for method in self.methods:
+            selected = max(
+                self._metric(self.selection_metrics, method, "lasso_ic_pct"),
+                self._metric(self.selection_metrics, method, "xgb_ic_pct"),
+            )
+            lines.append(
+                " & ".join(
+                    [
+                        method.replace("_", r"\_"),
+                        f"{self._metric(self.factor_library_metrics, method, 'ic_pct'):.2f}",
+                        f"{self._metric(self.factor_library_metrics, method, 'icir'):.3f}",
+                        f"{self._metric(self.factor_library_metrics, method, 'avg_abs_rho'):.3f}",
+                        f"{self._metric(self.combination_metrics, method, 'ew_ic_pct'):.2f}",
+                        f"{self._metric(self.combination_metrics, method, 'ew_icir'):.3f}",
+                        f"{self._metric(self.combination_metrics, method, 'icw_ic_pct'):.2f}",
+                        f"{self._metric(self.combination_metrics, method, 'icw_icir'):.3f}",
+                        f"{selected:.2f}",
+                    ]
+                )
+                + r" \\"
+            )
+        lines.extend([r"\bottomrule", r"\end{tabular}", r"\end{table}"])
+        return "\n".join(lines)
+
+    def plot_comparison(self, save_path: str) -> None:
+        """Plot the main comparison metrics."""
+        import matplotlib.pyplot as plt
+
+        columns = [
+            (self.factor_library_metrics, "ic_pct", "IC (%)"),
+            (self.factor_library_metrics, "icir", "ICIR"),
+            (self.combination_metrics, "ew_ic_pct", "EW IC (%)"),
+            (self.combination_metrics, "icw_ic_pct", "ICW IC (%)"),
+        ]
+        fig, axes = plt.subplots(1, len(columns), figsize=(16, 5))
+        for axis, (frame, column, title) in zip(axes, columns, strict=True):
+            values = [self._metric(frame, method, column) for method in self.methods]
+            axis.bar(range(len(values)), values)
+            axis.set_xticks(range(len(values)))
+            axis.set_xticklabels([m.replace("_", "\n") for m in self.methods], fontsize=7)
+            axis.set_title(title)
+            axis.grid(axis="y", alpha=0.3)
+        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+        fig.tight_layout()
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+
+    def generate_full_report(self, save_path: str) -> None:
+        """Write a self-contained HTML report from the canonical result frames."""
+        sections = [
+            ("Factor Library Metrics", self.factor_library_metrics),
+            ("Factor Combination Metrics", self.combination_metrics),
+            ("Factor Selection Metrics", self.selection_metrics),
+            ("Speed Metrics", self.speed_metrics),
+        ]
+        if not self.turnover_metrics.empty:
+            sections.append(("Turnover", self.turnover_metrics))
+        if not self.cost_pressure_metrics.empty:
+            sections.append(("Cost Pressure", self.cost_pressure_metrics))
+        body = "".join(
+            f"<h2>{title}</h2>{frame.to_html(index=False, float_format=lambda x: f'{x:.4f}')}"
+            for title, frame in sections
+        )
+        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(save_path).write_text(
+            "<!doctype html><meta charset='utf-8'><title>FactorMiner Benchmark</title>"
+            "<style>body{font-family:sans-serif;margin:40px}table{border-collapse:collapse}"
+            "th,td{padding:6px 10px;border:1px solid #ddd}</style>"
+            f"<h1>FactorMiner Runtime Benchmark</h1>{body}",
+            encoding="utf-8",
+        )
+
+
+class StatisticalComparisonTests:
+    """Paired statistical comparisons used by Phase-2 reports."""
+
+    def __init__(self, seed: int = 42) -> None:
+        self._rng = np.random.RandomState(seed)
+
+    @staticmethod
+    def _paired_valid_series(
+        series_1: np.ndarray,
+        series_2: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        length = min(len(series_1), len(series_2))
+        left = np.asarray(series_1[:length], dtype=np.float64)
+        right = np.asarray(series_2[:length], dtype=np.float64)
+        valid = np.isfinite(left) & np.isfinite(right)
+        return left[valid], right[valid]
+
+    def diebold_mariano_test(
+        self,
+        ic_series_1: np.ndarray,
+        ic_series_2: np.ndarray,
+        h: int = 1,
+    ) -> DMTestResult:
+        """Compare squared IC loss with a Newey-West variance estimate."""
+        from scipy.stats import norm
+
+        series_1, series_2 = self._paired_valid_series(ic_series_1, ic_series_2)
+        if len(series_1) < 5:
+            return DMTestResult(0.0, 1.0, False, "no_difference", len(series_1))
+        differential = series_1**2 - series_2**2
+        if np.allclose(differential, 0.0):
+            return DMTestResult(0.0, 1.0, False, "no_difference", len(differential))
+        mean = float(np.mean(differential))
+        variance = float(np.var(differential, ddof=0))
+        for lag in range(1, max(h - 1, 0) + 1):
+            covariance = float(
+                np.mean((differential[lag:] - mean) * (differential[:-lag] - mean))
+            )
+            variance += 2.0 * (1.0 - lag / h) * covariance
+        if variance <= 0.0 or not np.isfinite(variance):
+            return DMTestResult(0.0, 1.0, False, "no_difference", len(differential))
+        statistic = mean / math.sqrt(variance / len(differential))
+        p_value = 2.0 * (1.0 - float(norm.cdf(abs(statistic))))
+        direction = "no_difference"
+        if abs(statistic) >= 1.96:
+            direction = "ralph_better" if mean > 0 else "helix_better"
+        return DMTestResult(
+            float(statistic),
+            float(p_value),
+            bool(p_value < 0.05),
+            direction,
+            len(differential),
+        )
+
+    def paired_t_test(self, series_1: np.ndarray, series_2: np.ndarray) -> dict[str, Any]:
+        from scipy.stats import ttest_rel
+
+        left, right = self._paired_valid_series(series_1, series_2)
+        if len(left) < 5:
+            return {"t_stat": 0.0, "p_value": 1.0, "mean_diff": 0.0, "n": len(left)}
+        statistic, p_value = ttest_rel(left, right)
+        if not np.isfinite(statistic) or not np.isfinite(p_value):
+            return {"t_stat": 0.0, "p_value": 1.0, "mean_diff": 0.0, "n": len(left)}
+        return {
+            "t_stat": float(statistic),
+            "p_value": float(p_value),
+            "mean_diff": float(np.mean(left - right)),
+            "n": len(left),
+        }
+
+    def bootstrap_ic_difference_ci(
+        self,
+        series_1: np.ndarray,
+        series_2: np.ndarray,
+        n_bootstrap: int = 1000,
+        block_size: int = 20,
+    ) -> tuple[float, float]:
+        left, right = self._paired_valid_series(series_1, series_2)
+        if len(left) < 5:
+            return 0.0, 0.0
+        difference = left - right
+        block_size = max(1, min(block_size, len(difference) // 2))
+        block_count = math.ceil(len(difference) / block_size)
+        means = np.empty(n_bootstrap)
+        for index in range(n_bootstrap):
+            starts = self._rng.randint(
+                0,
+                len(difference) - block_size + 1,
+                size=block_count,
+            )
+            sampled = np.concatenate(
+                [np.arange(start, start + block_size) for start in starts]
+            )[: len(difference)]
+            means[index] = float(np.mean(difference[sampled]))
+        return float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))
+
+    def wilcoxon_test(self, series_1: np.ndarray, series_2: np.ndarray) -> dict[str, Any]:
+        from scipy.stats import wilcoxon
+
+        left, right = self._paired_valid_series(series_1, series_2)
+        if len(left) < 5:
+            return {"statistic": 0.0, "p_value": 1.0, "n": len(left)}
+        try:
+            statistic, p_value = wilcoxon(left, right, alternative="two-sided")
+        except ValueError:
+            statistic, p_value = 0.0, 1.0
+        return {"statistic": float(statistic), "p_value": float(p_value), "n": len(left)}
+
+    def run_all_tests(self, ic_helix: np.ndarray, ic_ralph: np.ndarray) -> dict[str, Any]:
+        dm = self.diebold_mariano_test(ic_helix, ic_ralph)
+        t_test = self.paired_t_test(ic_helix, ic_ralph)
+        lower, upper = self.bootstrap_ic_difference_ci(ic_helix, ic_ralph)
+        wilcoxon_result = self.wilcoxon_test(ic_helix, ic_ralph)
+        helix, ralph = self._paired_valid_series(ic_helix, ic_ralph)
+        mean_difference = float(np.mean(helix - ralph)) if len(helix) else 0.0
+        return {
+            "diebold_mariano": {
+                "dm_stat": dm.dm_statistic,
+                "p_value": dm.p_value,
+                "significant": dm.is_significant,
+                "direction": dm.direction,
+                "n_obs": dm.n_obs,
+            },
+            "paired_t_test": t_test,
+            "bootstrap_ci_95": {
+                "lower": lower,
+                "upper": upper,
+                "excludes_zero": lower > 0 or upper < 0,
+            },
+            "wilcoxon": wilcoxon_result,
+            "mean_ic_difference": mean_difference,
+            "helix_outperforms": mean_difference > 0,
+        }
+
+
+def _build_mock_data_dict(
+    n_assets: int = 100,
+    n_periods: int = 500,
+    seed: int = 42,
+) -> dict[str, np.ndarray]:
+    """Build the historical matrix dictionary through the shared data pipeline."""
+    from factorminer.data.mock_data import MockConfig, generate_mock_data
+    from factorminer.data.preprocessor import preprocess
+
+    raw = generate_mock_data(
+        MockConfig(
+            num_assets=n_assets,
+            num_periods=n_periods,
+            frequency="10min",
+            plant_alpha=True,
+            alpha_strength=0.04,
+            alpha_assets_frac=0.4,
+            seed=seed,
+        )
+    )
+    processed = preprocess(raw)
+    assets = sorted(processed["asset_id"].unique())
+    period_count = int(processed.groupby("asset_id").size().min())
+    feature_map = {
+        "$open": "open",
+        "$high": "high",
+        "$low": "low",
+        "$close": "close",
+        "$volume": "volume",
+        "$amt": "amount",
+        "$vwap": "vwap",
+        "$returns": "returns",
+    }
+    data: dict[str, np.ndarray] = {}
+    for feature, column in feature_map.items():
+        if column not in processed.columns:
+            continue
+        pivot = processed.pivot(index="asset_id", columns="datetime", values=column)
+        data[feature] = pivot.loc[assets].iloc[:, :period_count].values.astype(np.float64)
+    close = data["$close"]
+    forward_returns = np.roll(close, -1, axis=1) / close - 1.0
+    forward_returns[:, -1] = np.nan
+    data["forward_returns"] = forward_returns
+    return data
+
+
+class SpeedBenchmark:
+    """Compatibility adapter over the canonical operator runtime."""
+
+    def __init__(self, seed: int = 42) -> None:
+        self.seed = seed
+
+    def run_operator_benchmark(
+        self,
+        n_assets: int = 500,
+        n_periods: int = 2000,
+        n_repeats: int = 5,
+    ) -> OperatorSpeedResult:
+        from factorminer.operators.registry import execute_operator
+
+        assets = min(n_assets, 50)
+        periods = min(n_periods, 100)
+        left = np.random.RandomState(self.seed).randn(assets, periods)
+        right = np.random.RandomState(self.seed + 1).randn(assets, periods)
+        runners = {
+            "Add": lambda: execute_operator("Add", left, right, backend="numpy"),
+            "Mean": lambda: execute_operator(
+                "Mean", left, params={"window": 20}, backend="numpy"
+            ),
+            "Corr": lambda: execute_operator(
+                "Corr", left, right, params={"window": 20}, backend="numpy"
+            ),
+            "CsRank": lambda: execute_operator("CsRank", left, backend="numpy"),
+        }
+        timings = {
+            name: _time_callable(runner, repeats=n_repeats) for name, runner in runners.items()
+        }
+        return OperatorSpeedResult(timings, n_assets, n_periods, n_repeats)
+
+    def run_full_pipeline_benchmark(
+        self,
+        n_candidates: int = 200,
+        data: dict[str, np.ndarray] | None = None,
+    ) -> PipelineSpeedResult:
+        from factorminer.core.parser import try_parse
+        from factorminer.evaluation.metrics import compute_ic, compute_ic_mean
+
+        inputs = data or _build_mock_data_dict(n_assets=100, n_periods=200, seed=self.seed)
+        returns = inputs.get("forward_returns", inputs["$close"])
+        entries = build_random_exploration(seed=self.seed, count=n_candidates)
+        start = time.perf_counter()
+        succeeded = 0
+        for entry in entries[:n_candidates]:
+            tree = try_parse(entry.formula)
+            if tree is None:
+                continue
+            try:
+                compute_ic_mean(compute_ic(tree.evaluate(inputs), returns))
+            except Exception:
+                continue
+            succeeded += 1
+        elapsed = time.perf_counter() - start
+        return PipelineSpeedResult(
+            elapsed,
+            succeeded / max(elapsed, 1e-6),
+            n_candidates,
+        )
+
+    def generate_speed_table(
+        self,
+        op_result: OperatorSpeedResult,
+        pipeline_result: PipelineSpeedResult,
+    ) -> str:
+        rows = [
+            r"\begin{tabular}{lrr}",
+            r"\toprule",
+            "Task & Time (ms) & Type \\\\",
+        ]
+        rows.extend(
+            f"{name} & {milliseconds:.2f} & operator \\\\"
+            for name, milliseconds in op_result.operator_timings_ms.items()
+        )
+        rows.append(
+            f"Pipeline & {pipeline_result.total_seconds * 1000:.2f} & pipeline \\\\"
+        )
+        rows.extend([r"\bottomrule", r"\end{tabular}"])
+        return "\n".join(rows)
+
+
+def _reported_universe(payload: dict[str, Any], cfg) -> dict[str, Any]:
+    universes = payload.get("universes", {})
+    for name in getattr(cfg.benchmark, "report_universes", []):
+        if name in universes:
+            return universes[name]
+    return next(iter(universes.values()), {})
+
+
+def _method_result_from_runtime_payload(
+    method: str,
+    payload: dict[str, Any],
+    cfg,
+) -> MethodResult:
+    evaluation = _reported_universe(payload, cfg)
+    library = evaluation.get("library", {})
+    combinations = evaluation.get("combinations", {})
+    selections = evaluation.get("selections", {})
+    equal_weight = combinations.get("equal_weight", {})
+    ic_weighted = combinations.get("ic_weighted", {})
+    lasso = selections.get("lasso", {})
+    xgboost = selections.get("xgboost", {})
+    freeze_stats = payload.get("freeze_stats", {})
+    succeeded = max(int(freeze_stats.get("succeeded", 0)), 1)
+    ic_series = np.asarray(equal_weight.get("ic_series", []), dtype=np.float64)
+    return MethodResult(
+        method=method,
+        library_ic=float(library.get("ic", 0.0) or 0.0),
+        library_icir=float(library.get("icir", 0.0) or 0.0),
+        avg_abs_rho=float(library.get("avg_abs_rho", 0.0) or 0.0),
+        ew_ic=float(equal_weight.get("ic", 0.0) or 0.0),
+        ew_icir=float(equal_weight.get("icir", 0.0) or 0.0),
+        icw_ic=float(ic_weighted.get("ic", 0.0) or 0.0),
+        icw_icir=float(ic_weighted.get("icir", 0.0) or 0.0),
+        lasso_ic=float(lasso.get("ic", 0.0) or 0.0),
+        lasso_icir=float(lasso.get("icir", 0.0) or 0.0),
+        xgb_ic=float(xgboost.get("ic", 0.0) or 0.0),
+        xgb_icir=float(xgboost.get("icir", 0.0) or 0.0),
+        n_factors=int(evaluation.get("factor_count", 0) or 0),
+        admission_rate=float(freeze_stats.get("admitted", 0)) / succeeded,
+        avg_turnover=float(equal_weight.get("turnover", 0.0) or 0.0),
+        ic_series=ic_series if ic_series.size else None,
+    )
+
+
+def _comparison_frames(
+    methods: list[str],
+    results: dict[str, MethodResult],
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    library = pd.DataFrame(
+        [
+            {
+                "method": method,
+                "ic_pct": results[method].library_ic * 100.0,
+                "icir": results[method].library_icir,
+                "avg_abs_rho": results[method].avg_abs_rho,
+                "n_factors": results[method].n_factors,
+                "avg_turnover": results[method].avg_turnover,
+            }
+            for method in methods
+        ]
+    )
+    combinations = pd.DataFrame(
+        [
+            {
+                "method": method,
+                "ew_ic_pct": results[method].ew_ic * 100.0,
+                "ew_icir": results[method].ew_icir,
+                "icw_ic_pct": results[method].icw_ic * 100.0,
+                "icw_icir": results[method].icw_icir,
+            }
+            for method in methods
+        ]
+    )
+    selections = pd.DataFrame(
+        [
+            {
+                "method": method,
+                "lasso_ic_pct": results[method].lasso_ic * 100.0,
+                "lasso_icir": results[method].lasso_icir,
+                "xgb_ic_pct": results[method].xgb_ic * 100.0,
+                "xgb_icir": results[method].xgb_icir,
+                "best_ic_pct": max(results[method].lasso_ic, results[method].xgb_ic)
+                * 100.0,
+            }
+            for method in methods
+        ]
+    )
+    return library, combinations, selections
+
+
+def run_phase2_comparison(
+    cfg,
+    output_dir: Path,
+    *,
+    data_path: str | None = None,
+    raw_df: pd.DataFrame | None = None,
+    mock: bool = False,
+    baseline_methods: list[str] | None = None,
+    n_target_factors: int = 40,
+    n_runs: int = 1,
+) -> tuple[BenchmarkResult, dict[str, Any]]:
+    """Build the Phase-2 report entirely from canonical Table-1 artifacts."""
+    if n_runs != 1:
+        warnings.warn(
+            "run_phase2_comparison now executes one provenance-complete runtime run per method",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    runtime_cfg = _clone_cfg(cfg)
+    runtime_cfg.mining.target_library_size = n_target_factors
+    methods = baseline_methods or [
+        "random_exploration",
+        "alpha101_classic",
+        "alpha101_adapted",
+        "ralph_loop",
+        "helix_phase2",
+    ]
+    table1 = run_table1_benchmark(
+        runtime_cfg,
+        output_dir,
+        data_path=data_path,
+        raw_df=raw_df,
+        mock=mock,
+        baseline_names=methods,
+        use_runtime_loops=True,
+    )
+    method_results = {
+        method: _method_result_from_runtime_payload(method, table1[method], runtime_cfg)
+        for method in methods
+    }
+    library_frame, combination_frame, selection_frame = _comparison_frames(
+        methods,
+        method_results,
+    )
+    efficiency = run_efficiency_benchmark(runtime_cfg, output_dir)
+    speed_rows: list[dict[str, Any]] = []
+    for backend, timings in efficiency.get("operator_level_ms", {}).items():
+        for name, milliseconds in timings.items():
+            if milliseconds is not None:
+                speed_rows.append(
+                    {"name": name, "time_ms": milliseconds, "type": f"operator/{backend}"}
+                )
+    speed_frame = pd.DataFrame(speed_rows)
+
+    runtime_payloads: dict[str, list[dict[str, Any]]] = {}
+    turnover_rows: list[dict[str, Any]] = []
+    cost_rows: list[dict[str, Any]] = []
+    for method in methods:
+        payload = table1[method]
+        evaluation = _reported_universe(payload, runtime_cfg)
+        combinations = evaluation.get("combinations", {})
+        projected = {
+            "method": method,
+            "run_id": 0,
+            "frozen_top_k": payload.get("frozen_top_k", []),
+            "library": evaluation.get("library", {}),
+            "combinations": combinations,
+            "selections": evaluation.get("selections", {}),
+            "provenance": payload.get("provenance", {}),
+        }
+        runtime_payloads[method] = [projected]
+        turnover_rows.append(
+            {
+                "method": method,
+                "run_id": 0,
+                **{
+                    f"{name}_turnover": float(metrics.get("turnover", 0.0) or 0.0)
+                    for name, metrics in combinations.items()
+                },
+            }
+        )
+        for combination, metrics in combinations.items():
+            for cost_bps, cost_metrics in metrics.get("cost_pressure", {}).items():
+                cost_rows.append(
+                    {
+                        "method": method,
+                        "run_id": 0,
+                        "combination": combination,
+                        "cost_bps": float(cost_bps),
+                        **{
+                            key: cost_metrics.get(key, 0.0)
+                            for key in ("ic", "icir", "turnover", "long_short", "monotonicity")
+                        },
+                    }
+                )
+
+    statistical_tests: dict[str, Any] = {}
+    helix = method_results.get("helix_phase2")
+    ralph = method_results.get("ralph_loop")
+    if helix is not None and ralph is not None and helix.ic_series is not None and ralph.ic_series is not None:
+        statistical_tests = StatisticalComparisonTests(runtime_cfg.benchmark.seed).run_all_tests(
+            helix.ic_series,
+            ralph.ic_series,
+        )
+
+    artifacts = {
+        "runtime_root": str((output_dir / "benchmark").resolve()),
+        "runtime_payloads": runtime_payloads,
+        "table1": table1,
+        "efficiency": efficiency,
+    }
+    result = BenchmarkResult(
+        methods=methods,
+        factor_library_metrics=library_frame,
+        combination_metrics=combination_frame,
+        selection_metrics=selection_frame,
+        speed_metrics=speed_frame,
+        statistical_tests=statistical_tests,
+        raw_method_results={method: [result] for method, result in method_results.items()},
+        turnover_metrics=pd.DataFrame(turnover_rows),
+        cost_pressure_metrics=pd.DataFrame(cost_rows),
+        runtime_artifacts=artifacts,
+    )
+    return result, artifacts
+
+
+def run_phase2_ablation_study(
+    cfg,
+    output_dir: Path,
+    *,
+    data_path: str | None = None,
+    raw_df: pd.DataFrame | None = None,
+    mock: bool = False,
+    configs_to_run: list[str] | None = None,
+    n_target_factors: int = 40,
+    n_runs: int = 1,
+) -> AblationResult:
+    """Run Phase-2 variants through the canonical runtime-loop benchmark."""
+    if n_runs != 1:
+        warnings.warn("Phase-2 ablations now run once per variant", RuntimeWarning, stacklevel=2)
+    runtime_cfg = _clone_cfg(cfg)
+    runtime_cfg.mining.target_library_size = n_target_factors
+    configs = configs_to_run or [
+        "full",
+        "no_debate",
+        "no_causal",
+        "no_canonicalize",
+        "no_regime",
+        "no_capacity",
+        "no_significance",
+        "no_memory",
+    ]
+    baselines = {
+        "full": "helix_phase2",
+        "no_debate": "helix_no_debate",
+        "no_causal": "helix_no_causal",
+        "no_canonicalize": "helix_no_canonicalize",
+        "no_regime": "helix_no_regime",
+        "no_capacity": "helix_no_capacity",
+        "no_significance": "helix_no_significance",
+        "no_memory": "helix_no_memory",
+    }
+    results: dict[str, MethodResult] = {}
+    for config_name in configs:
+        if config_name not in baselines:
+            logger.warning("Unknown runtime ablation config: %s", config_name)
+            continue
+        baseline = baselines[config_name]
+        payload = run_table1_benchmark(
+            runtime_cfg,
+            output_dir / "runtime_ablation" / config_name,
+            data_path=data_path,
+            raw_df=raw_df,
+            mock=mock,
+            baseline_names=[baseline],
+            use_runtime_loops=True,
+        )[baseline]
+        result = _method_result_from_runtime_payload(config_name, payload, runtime_cfg)
+        results[config_name] = result
+
+    rows: list[dict[str, Any]] = []
+    full = results.get("full")
+    if full is not None:
+        for config_name, result in results.items():
+            if config_name == "full":
+                continue
+            rows.append(
+                {
+                    "config": config_name,
+                    "method": result.method,
+                    "delta_library_ic": result.library_ic - full.library_ic,
+                    "delta_library_icir": result.library_icir - full.library_icir,
+                    "delta_ew_ic": result.ew_ic - full.ew_ic,
+                    "delta_icw_ic": result.icw_ic - full.icw_ic,
+                    "delta_lasso_ic": result.lasso_ic - full.lasso_ic,
+                    "delta_xgb_ic": result.xgb_ic - full.xgb_ic,
+                    "delta_turnover": result.avg_turnover - full.avg_turnover,
+                }
+            )
+    return AblationResult(configs=configs, results=results, contributions=pd.DataFrame(rows))
+
+
+class HelixBenchmark:
+    """Deprecated facade that delegates all execution to this runtime module."""
+
+    def __init__(self, seed: int = 42) -> None:
+        warnings.warn(_LEGACY_RUNTIME_MESSAGE, DeprecationWarning, stacklevel=2)
+        self.seed = seed
+
+    def run_runtime_comparison(self, cfg, output_dir: Path, **kwargs):
+        return run_phase2_comparison(cfg, output_dir, **kwargs)
+
+    def run_runtime_ablation_study(self, cfg, output_dir: Path, **kwargs):
+        return run_phase2_ablation_study(cfg, output_dir, **kwargs)
+
+    def run_comparison(self, *args, **kwargs):
+        raise RuntimeError(
+            "The dictionary-only legacy comparison was removed; use "
+            "run_table1_benchmark or run_phase2_comparison with a runtime config."
+        )

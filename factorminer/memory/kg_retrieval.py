@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from factorminer.memory.memory_store import ExperienceMemory
-from factorminer.memory.retrieval import retrieve_memory
+from factorminer.memory.retrieval import HybridRetrievalConfig, retrieve_memory
 
 # Optional imports -- presence checked at call time
 try:
@@ -27,12 +27,13 @@ def retrieve_memory_enhanced(
     max_insights: int = 10,
     kg: FactorKnowledgeGraph | None = None,  # type: ignore[type-arg]
     embedder: FormulaEmbedder | None = None,  # type: ignore[type-arg]
+    hybrid_config: HybridRetrievalConfig | None = None,
 ) -> dict[str, Any]:
     """Enhanced memory retrieval operator R+(M, L, KG, E).
 
-    Calls the base :func:`retrieve_memory` first, then augments the
-    returned dict with additional prompt-oriented keys derived from the
-    knowledge graph and embedder.
+    Calls the base :func:`retrieve_memory` first (hybrid BM25+dense+heuristic
+    RRF when enabled), then augments the returned dict with additional
+    prompt-oriented keys derived from the knowledge graph and embedder.
 
     Parameters
     ----------
@@ -45,20 +46,25 @@ def retrieve_memory_enhanced(
     kg : FactorKnowledgeGraph, optional
         Knowledge graph instance.
     embedder : FormulaEmbedder, optional
-        Formula embedder instance.
+        Formula embedder instance. When provided, seeds semantic-neighbor
+        context *and* feeds the dense rank list inside hybrid fusion.
+    hybrid_config : HybridRetrievalConfig, optional
+        Controls BM25/dense/heuristic RRF fusion and optional rerank.
 
     Returns
     -------
     dict
         Base memory signal plus the four additional keys above.
     """
-    # Base retrieval
+    # Base retrieval -- pass embedder so hybrid fusion can use dense ranks.
     result = retrieve_memory(
         memory,
         library_state=library_state,
         max_success=max_success,
         max_forbidden=max_forbidden,
         max_insights=max_insights,
+        embedder=embedder,
+        hybrid_config=hybrid_config,
     )
 
     # Default augmented keys
@@ -136,7 +142,7 @@ def retrieve_memory_enhanced(
             "avoid generating variants:"
         )
         for cluster in result["conflict_warnings"][:5]:
-            extra_sections.append(f"  Cluster: {', '.join(cluster[:6])}")
+            extra_sections.append(f"  Cluster: {cluster}")
         extra_sections.append("")
 
     if result["semantic_gaps"]:
@@ -206,18 +212,25 @@ def _find_semantic_gaps(
             for match in op_pattern.finditer(pat.template):
                 uncovered_ops.add(match.group(1))
 
-    if not uncovered_ops and kg is None:
-        return sorted(template_ops)
+    if uncovered_ops:
+        return sorted(uncovered_ops)
 
-    if not uncovered_ops:
-        # Fall back to the operators that are entirely absent from the admitted set.
-        used_ops: set[str] = set()
-        if kg is not None:
-            for node in kg.list_factor_nodes(admitted_only=True):
-                used_ops.update(node.operators)
-        uncovered_ops = template_ops - used_ops
+    # No gap found by the anchor-similarity check above. That is a
+    # genuine "well covered" result, not a signal to fall back to
+    # reporting every operator as a gap -- an empty set is falsy in
+    # Python, so `uncovered_ops or template_ops` previously collapsed
+    # any real "no gaps" answer (from either this branch or the KG
+    # fallback below) into a false-positive "everything is a gap".
+    if kg is None:
+        return []
 
-    return sorted(uncovered_ops or template_ops)
+    # Secondary, KG-admission-based coverage check: operators entirely
+    # absent from the admitted set are still worth surfacing even when
+    # the anchor-similarity check above found no gap.
+    used_ops: set[str] = set()
+    for node in kg.list_factor_nodes(admitted_only=True):
+        used_ops.update(node.operators)
+    return sorted(template_ops - used_ops)
 
 
 def _seed_embedder_from_memory(

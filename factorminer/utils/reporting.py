@@ -10,11 +10,16 @@ from __future__ import annotations
 import json
 import time
 from collections import defaultdict
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from factorminer.evaluation.decay import DecayCurveResult
 
 # ---------------------------------------------------------------------------
 # Data classes for structured logging
@@ -494,3 +499,119 @@ class MiningReporter:
             "final_library_size": self.batches[-1].library_size if self.batches else 0,
             "total_elapsed_seconds": time.time() - self._session_start,
         }
+
+# ---------------------------------------------------------------------------
+# Decay / telemetry section renderers
+#
+# These are standalone functions (not MiningReporter methods) because their
+# inputs -- DecayCurveResult rows and a FactorLifecycleStore.telemetry_summary()
+# payload -- are computed post-hoc from persisted artifacts, not accumulated
+# live during a session the way BatchRecord/FactorAdmissionRecord are. They
+# mirror the banner + fixed-width table style of generate_session_report().
+# ---------------------------------------------------------------------------
+
+def render_decay_report(decay_results: Sequence[DecayCurveResult]) -> str:
+    """Render a factor IC decay / half-life table as plain text.
+
+    Parameters
+    ----------
+    decay_results : Sequence[DecayCurveResult]
+        Rows produced by ``factorminer.evaluation.decay.compute_factor_decay_curve``
+        (or ``build_decay_report``), one per factor.
+
+    Returns
+    -------
+    str
+        Formatted text report.
+    """
+    lines = [
+        f"{'=' * 60}",
+        "  FACTOR DECAY REPORT",
+        f"{'=' * 60}",
+    ]
+
+    if not decay_results:
+        lines.append("")
+        lines.append("  No decay observations recorded.")
+        lines.append(f"\n{'=' * 60}")
+        return "\n".join(lines)
+
+    lines.append("")
+    lines.append(
+        f"  {'Factor':<20}  {'IC@Adm':>8}  {'IC now':>8}  {'HalfLife':>9}  {'Slope':>10}  Classification"
+    )
+    lines.append(f"  {'-'*20}  {'-'*8}  {'-'*8}  {'-'*9}  {'-'*10}  {'-'*16}")
+    for row in decay_results:
+        half_life = (
+            f"{row.half_life_iterations:.1f}" if row.half_life_iterations is not None else "-"
+        )
+        lines.append(
+            f"  {row.factor_id[:20]:<20}  {row.ic_at_admission:>8.4f}  {row.ic_current:>8.4f}  "
+            f"{half_life:>9}  {row.trend_slope:>10.5f}  {row.classification}"
+        )
+
+    classification_counts: dict[str, int] = defaultdict(int)
+    for row in decay_results:
+        classification_counts[row.classification] += 1
+    lines.append("")
+    lines.append("  Classification Breakdown:")
+    for classification, count in sorted(classification_counts.items(), key=lambda kv: -kv[1]):
+        lines.append(f"    {classification:<20} {count:>5}")
+
+    lines.append(f"\n{'=' * 60}")
+    return "\n".join(lines)
+
+
+def render_telemetry_report(telemetry: Mapping[str, Any]) -> str:
+    """Render per-round mining telemetry as plain text.
+
+    Parameters
+    ----------
+    telemetry : Mapping[str, Any]
+        Payload produced by
+        ``factorminer.architecture.lifecycle.FactorLifecycleStore.telemetry_summary()``.
+
+    Returns
+    -------
+    str
+        Formatted text report covering per-round parse-error / duplicate /
+        rejection-reason breakdowns and a rejection-rate trend.
+    """
+    lines = [
+        f"{'#' * 60}",
+        "  MINING TELEMETRY REPORT",
+        f"{'#' * 60}",
+        "",
+        f"  Iterations tracked:      {len(telemetry.get('iterations', [])):>6}",
+        f"  Total candidates:        {telemetry.get('total_candidates', 0):>6}",
+        f"  Total rejected:          {telemetry.get('total_rejected', 0):>6}",
+        f"  Overall rejection rate:  {telemetry.get('overall_rejection_rate', 0.0):>6.1%}",
+    ]
+
+    reason_totals = telemetry.get("rejection_reason_totals", {})
+    if reason_totals:
+        lines.append("")
+        lines.append("  --- Rejection Reason Breakdown ---")
+        for reason, count in sorted(reason_totals.items(), key=lambda kv: -kv[1]):
+            lines.append(f"    {reason:<20} {count:>5}")
+
+    per_iteration = telemetry.get("per_iteration", [])
+    if per_iteration:
+        lines.append("")
+        lines.append("  --- Per-Iteration Breakdown ---")
+        lines.append(
+            f"  {'Iter':>5}  {'Cand':>5}  {'Parse':>6}  {'ICScr':>6}  {'Dup':>4}  "
+            f"{'Corr':>5}  {'Admit':>6}  {'Reject%':>8}"
+        )
+        lines.append(
+            f"  {'-'*5}  {'-'*5}  {'-'*6}  {'-'*6}  {'-'*4}  {'-'*5}  {'-'*6}  {'-'*8}"
+        )
+        for row in per_iteration:
+            lines.append(
+                f"  {row['iteration']:>5}  {row['candidates_seen']:>5}  {row['parse_errors']:>6}  "
+                f"{row['ic_screen_rejected']:>6}  {row['duplicate_rejected']:>4}  "
+                f"{row['correlation_rejected']:>5}  {row['admitted']:>6}  {row['rejection_rate']:>7.1%}"
+            )
+
+    lines.append(f"\n{'#' * 60}")
+    return "\n".join(lines)

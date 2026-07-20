@@ -229,7 +229,12 @@ def _default_insights() -> list[StrategicInsight]:
 # ---------------------------------------------------------------------------
 
 class ExperienceMemoryManager:
-    """High-level manager for the experience memory system.
+    """Frozen compatibility facade for the pre-policy memory lifecycle.
+
+    Production mining loops use :mod:`factorminer.architecture.memory_policy`
+    for retrieval, formation, evolution, serialization, and restoration. This
+    class remains importable for older callers and checkpoint tooling, but new
+    loop code must depend on ``MemoryPolicy`` instead.
 
     Orchestrates formation, evolution, retrieval, and persistence of the
     experience memory M across mining sessions.

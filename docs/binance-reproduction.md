@@ -6,6 +6,13 @@ klines do not include a native `10m` interval in the
 so use 1-minute or 5-minute source data and resample it to 10 minutes before
 mining or benchmarking.
 
+## Fetching Live Data Via MCP
+
+For a live source instead of the bundled sample, see "Crypto connectors
+(ccxt)" in [Claude for Financial Services integration](financial-services-integration.md)
+and `factorminer/configs/mcp_sources/ccxt_binance.yaml`. `fetch-data` pulls one
+symbol per call; run it once per symbol and concatenate before resampling.
+
 ## Bundled Sample Data
 
 `data/binance_crypto_5m.csv` is a small public sample for data validation and

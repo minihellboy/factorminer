@@ -1,6 +1,7 @@
 # FactorMiner Repo Audit
 
-This document is a technical audit of the current repository state after the architecture and runtime benchmark refactors.
+This document is a technical audit of the current repository state after the
+architecture, research-extension, correctness, and consolidation passes.
 
 ## Snapshot
 
@@ -24,20 +25,26 @@ Stable paper-facing inventory:
 - canonical paper-style and research mining lanes
 - runtime recomputation for analysis and benchmark reporting
 
-Package inventory:
+Package inventory (verified fresh for this pass — `architecture`, `data`,
+`evaluation`, `memory`, `tests` grew further since the previous audit
+update; see [Landscape Review & Extension Roadmap](landscape-and-extensions.md)
+§10 for the 17-item round that drove most of this growth, and the chat
+history of the subsequent deep-audit + research pass for the 12 bug fixes
+and 4 methodology closures layered on top):
 
 | Package | Python files | Role |
 | --- | ---: | --- |
-| `agent` | 8 | providers, prompting, debate |
-| `architecture` | 14 | canonical contracts, policies, stages, services |
-| `benchmark` | 5 | runtime benchmark suite and legacy benchmark helpers |
+| `agent` | 8 | providers, prompting, debate, prompt caching, cascade routing |
+| `architecture` | 21 | canonical contracts, policies, stages, services, sealed search, island model |
+| `benchmark` | 5 | canonical runtime benchmark suite (`runtime.py`, 3,097 lines including report contracts) plus a 46-line deprecated import shim |
 | `configs` | 1 | packaged YAML profile resources |
-| `core` | 13 | loops, factor library, parser, expression tree, I/O |
-| `data` | 6 | loading, preprocessing, tensorization, mock generation |
-| `evaluation` | 17 | metrics, recomputation, validation, portfolio analysis |
-| `memory` | 10 | memory store, retrieval, KG, embeddings |
+| `core` | 13 | loops, factor library, parser, expression tree, I/O, provenance |
+| `data` | 10 | loading, preprocessing, tensorization, mock generation, Qlib/MCP/EDGAR/futures sources |
+| `evaluation` | 24 | metrics, recomputation, validation, portfolio/risk/capacity/crowding analysis, model zoo |
+| `mcp` | 2 | FactorMiner-as-MCP-server surface (authenticated HTTP + stdio) |
+| `memory` | 10 | memory store, retrieval (BM25+dense hybrid), KG, embeddings, and a frozen `ExperienceMemoryManager` compatibility facade; loops use policy persistence |
 | `operators` | 15 | operator implementations, backends, and sandboxing |
-| `tests` | 33 | regression coverage |
+| `tests` | 63 | regression coverage (855 collected tests) |
 | `utils` | 6 | config, reporting, plotting |
 
 ## What Is Structurally Strong
@@ -72,7 +79,9 @@ That is a substantial improvement over the earlier state where semantics were sp
 - manifest and provenance capture
 - runtime ablations
 
-This is the correct direction. The old benchmark layer still exists, but it is no longer the best architectural path.
+The old `helix_benchmark` implementation no longer exists as an execution
+path. Its module is a 46-line compatibility shim whose symbols resolve to
+`benchmark.runtime`.
 
 ### The test surface is strong
 
@@ -144,7 +153,7 @@ Main remaining gap:
 
 ### 2. `core/`
 
-Status: improved but still the largest debt surface.
+Status: improved, still the largest debt surface.
 
 `RalphLoop` is better than before because it now composes stages and delegates more work. `HelixLoop` is still structurally heavy. It still owns many optional features and phase-specific concerns in one file.
 
@@ -162,12 +171,13 @@ What improved:
 
 What still needs work:
 
-- more Helix feature logic should move into policies/services
-- expression-tree warning behavior should be made explicit and quieter
+- more Helix validation, auto-invention, and checkpoint logic should move into
+  policies/services
+- `HelixLoop` is smaller (1,490 to 1,270 lines) but remains large
 
 ### 3. `benchmark/`
 
-Status: good direction, not fully cleaned.
+Status: consolidated.
 
 `benchmark/runtime.py` is clearly the canonical path now. It supports:
 
@@ -177,13 +187,13 @@ Status: good direction, not fully cleaned.
 - cost-pressure analysis
 - efficiency benchmarking
 
-Remaining issue:
+Current state:
 
-- `benchmark/helix_benchmark.py` and `run_phase2_benchmark.py` still exist as legacy-facing surfaces
-
-Recommendation:
-
-- either fully document them as legacy analysis/reporting tools or continue collapsing their useful pieces into `benchmark/runtime.py`
+- `benchmark/helix_benchmark.py` is import-only and emits a deprecation warning
+- `run_phase2_benchmark.py` delegates comparison and ablation execution to
+  `benchmark.runtime`
+- causal and canonicalization ablation variants are projected by the same
+  canonical runtime configuration path as other Phase-2 variants
 
 ### 4. `memory/`
 
@@ -203,7 +213,8 @@ Current state:
 Most valuable next steps:
 
 - learned family discovery instead of heuristic family inference
-- tighter integration between policy-level persistence and any legacy memory-manager path
+- remove the frozen `ExperienceMemoryManager` compatibility facade after its
+  deprecation window; production loops already use policy serialization
 
 ### 5. `evaluation/`
 
@@ -271,34 +282,77 @@ This audit pass updates:
 
 ## Repository Health Risks
 
-### Medium-risk structural issues
+### Branch integration remains external coordination
 
-- `HelixLoop` still concentrates many optional concerns in one file
-- legacy benchmark/reporting surfaces still coexist with the canonical path
+The original 107-file working tree is committed and pushed as `5fd351d`,
+followed by bounded consolidation commits for generation/memory
+(`2f509aa`), benchmark execution (`673a024`), Helix component construction
+(`af5f22d`), and NaN handling (`751c027`). Local verification covers Ruff,
+manifest/plugin checks, package artifacts, and the full pytest surface. The
+final integrated run reports `855 passed, 10 warnings`; none of those warnings
+come from the expression-tree surface addressed by this roadmap.
+
+The remaining integration step is to merge the tracked feature branch,
+observe hosted CI, and close issue #5. This is no longer a source-loss risk,
+but main-branch health still depends on that repository workflow completing.
+
+### Resolved structural risks
+
+- `RalphLoop` has no private generator class; both loops use
+  `agent.factor_generator.FactorGenerator` and the shared validated parser,
+  so caching, cascade routing, and repair apply to both
+- both loops serialize and restore memory through `MemoryPolicy`;
+  `ExperienceMemoryManager` is explicitly frozen and has no production-loop
+  call site
+- `helix_benchmark.py` is a 46-line import shim, not a second benchmark
+  engine; Phase-2 comparison/ablation execution is runtime-owned
+- all-NaN rolling/cross-sectional reductions are guarded explicitly, and the
+  expression/Ralph/island focused suite emits no project RuntimeWarnings
+
+### Remaining medium-risk structural issues
+
+- `HelixLoop` remains 1,270 lines after a 220-line reduction; validation,
+  auto-invention, and Phase-2 checkpoint persistence are the next coherent
+  extraction seams
+- compatibility shims (`helix_benchmark.py`, `ExperienceMemoryManager`) need
+  a deprecation window plus downstream call-site audit before deletion
 - some config projection logic still exists in multiple places
 - full-repo mypy debt is visible but not yet suitable as a blocking CI gate
 
 ### Medium-risk product issues
 
-- documentation can drift again if architecture changes are not reflected in the docs layer
+- documentation can drift again if architecture changes are not reflected
+  in the docs layer (this pass re-synced `README.md`, `docs/architecture.md`,
+  `docs/landscape-and-extensions.md`, and added `docs/security.md`)
 - heuristic family inference is useful but not yet a robust research surface
 
 ### Low-risk but noisy issues
 
-- NaN-window runtime warnings in expression-tree execution
+- `evaluation/portfolio.py` emits empty-quintile `nanmean` warnings in one
+  tiny benchmark fixture; these are now visible after the expression-tree
+  warning surface was removed
 - style debt in some older loop code
 
 ## Recommended Next Implementation Order
 
 If continuing from the current state, the best next order is:
 
-1. Land the trust/onboarding release and GitHub issue replies.
-2. Continue shrinking `core/helix_loop.py` into policies and services.
-3. Resolve the legacy benchmark split by moving more reporting concerns to the runtime suite.
-4. Add learned or cluster-based factor-family discovery.
-5. Make policy-level experiment manifests richer and easier to compare across runs.
-6. Address the expression-tree warning surface explicitly.
-7. Expand scoped mypy cleanup before considering a blocking type gate.
+1. Merge the pushed consolidation branch, confirm hosted CI, and close issue
+   #5 with the financial-services integration document linked.
+2. Continue shrinking `core/helix_loop.py`, beginning with validation or
+   checkpoint persistence rather than another mixed extraction.
+3. Quiet the remaining portfolio empty-quintile warnings.
+4. Remove compatibility shims after the deprecation window.
+5. Add learned or cluster-based factor-family discovery.
+6. Expand scoped mypy cleanup, anchored on round-2's already-typed
+   `@dataclass(frozen=True)` contracts, before considering a blocking type
+   gate.
+
+Deliberately **not** next: another landscape/feature-extension round. Round
+2 alone introduced 12 real bugs found by one dedicated audit pass; the
+newest surfaces (crowding, sealed search, capacity/risk modeling) should
+accumulate real usage and test coverage before a round 3 adds a further
+layer on top.
 
 ## Recommended GitHub Docs Surface
 
@@ -309,6 +363,11 @@ The best public-facing docs structure for the repo now is:
 - `docs/faq.md`: answers to setup, data, model, and API-key confusion
 - `docs/reproducibility.md`: mock versus private-data reproduction paths
 - `docs/architecture.md`: technical architecture and runtime contract
+- `docs/security.md`: threat model for every externally-facing surface
+  (data connectors, MCP transport, local-LLM providers, LLM-authored report
+  content)
+- `docs/landscape-and-extensions.md`: full extension roadmap and
+  implementation-status evidence for every landscape item
 - `docs/repo-audit.md`: implementation inventory, strengths, debt, roadmap
 
 That is enough structure for a serious GitHub repo without overbuilding a docs system too early.
@@ -318,10 +377,19 @@ That is enough structure for a serious GitHub repo without overbuilding a docs s
 The repo is no longer just a paper prototype. It now has:
 
 - a canonical architecture layer
-- a canonical benchmark-runtime surface
-- stage-composed loops
-- policy-based memory
+- one canonical benchmark execution surface; the old module is import-only
+- stage-composed loops sharing one validated factor generator
+- policy-based memory persistence on both Ralph and Helix
+- service-owned optional Phase-2 component construction
 - pluggable dependence metrics
 - stronger reproducibility and artifact semantics
+- a materially expanded, audited research surface: crowding/risk/portfolio
+  evaluation, MCP-server hardening, prompt caching and cascade routing,
+  sealed multi-evaluator search, EDGAR/futures data connectors — see
+  [Landscape Review & Extension Roadmap](landscape-and-extensions.md)
 
-The next challenge is not invention of more surfaces. It is disciplined consolidation of the remaining heavy modules around the architecture layer that now exists.
+The next challenge is still not invention of more surfaces. It is, in
+order: getting the existing work committed and reviewable at all, then
+disciplined consolidation of the remaining heavy modules — most urgently
+the `RalphLoop`/`HelixLoop` infrastructure fork — around the architecture
+layer that now exists.
