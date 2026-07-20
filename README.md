@@ -59,6 +59,7 @@ Primary execution surfaces:
 - [Bundled Data Notes](data/README.md)
 - [Repo Audit](docs/repo-audit.md)
 - [Landscape Review & Extension Roadmap](docs/landscape-and-extensions.md)
+- [July 2026 Research & Business Outlook](docs/july-2026-research-and-business-outlook.md)
 - [Security Considerations](docs/security.md)
 - [Contributing](CONTRIBUTING.md)
 - [Roadmap](ROADMAP.md)

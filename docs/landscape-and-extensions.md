@@ -19,6 +19,13 @@ from secondary sources (forums, career sites) are marked as self-reported/undisc
 > multi-asset expansion, memory-retrieval technique, and a fresh scan for papers
 > published since round 1). **All 17 Round 2 items (§10) are now also implemented,
 > tested, and merged** — see the implementation-status note in §10.
+>
+> **Round 3 update (20 July 2026):** the newer paper, general-agent, finance,
+> business, regulatory, and valuation scan is maintained separately in
+> [July 2026 Research and Business Outlook](july-2026-research-and-business-outlook.md).
+> Its conclusion is deliberately narrower than another feature round: prioritize
+> a reproducible evidence/novelty gate, trajectory-policy replay, and—only after
+> customer pull—a governed general-agent control plane.
 
 ## Method
 
