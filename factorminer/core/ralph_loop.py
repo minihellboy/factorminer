@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import time
 from collections.abc import Callable, Mapping
 from concurrent.futures import as_completed
@@ -31,6 +30,7 @@ from typing import Any
 
 import numpy as np
 
+from factorminer.agent.factor_generator import FactorGenerator
 from factorminer.agent.llm_interface import LLMProvider, MockProvider
 from factorminer.agent.prompt_builder import PromptBuilder
 from factorminer.architecture import (
@@ -64,7 +64,6 @@ from factorminer.evaluation.metrics import (
     compute_factor_stats,
 )
 from factorminer.evaluation.runtime import SignalComputationError, compute_tree_signals
-from factorminer.memory.experience_memory import ExperienceMemoryManager
 from factorminer.memory.memory_store import ExperienceMemory
 from factorminer.utils.logging import MiningSessionLogger
 
@@ -171,67 +170,6 @@ class EvaluationResult:
     edit_type: str = ""
     edit_motif: str = ""
     secondary_parent_formula: str = ""
-
-# ---------------------------------------------------------------------------
-# Factor Generator: wraps LLM + prompt builder + output parser
-# ---------------------------------------------------------------------------
-
-
-class FactorGenerator:
-    """Generates candidate factors using LLM guided by memory priors."""
-
-    def __init__(
-        self,
-        llm_provider: LLMProvider | None = None,
-        prompt_builder: PromptBuilder | None = None,
-    ) -> None:
-        self.llm = llm_provider or MockProvider()
-        self.prompt_builder = prompt_builder or PromptBuilder()
-
-    def generate_batch(
-        self,
-        memory_signal: dict[str, Any],
-        library_state: dict[str, Any],
-        batch_size: int = 40,
-    ) -> list[tuple[str, str]]:
-        """Generate a batch of candidate factors.
-
-        Returns
-        -------
-        list of (name, formula) tuples
-        """
-        user_prompt = self.prompt_builder.build_user_prompt(
-            memory_signal, library_state, batch_size
-        )
-        raw_response = self.llm.generate(
-            system_prompt=self.prompt_builder.system_prompt,
-            user_prompt=user_prompt,
-        )
-        return self._parse_response(raw_response)
-
-    @staticmethod
-    def _parse_response(raw: str) -> list[tuple[str, str]]:
-        """Parse LLM output into (name, formula) pairs.
-
-        Expected format per line:
-            <number>. <name>: <formula>
-        """
-        candidates: list[tuple[str, str]] = []
-        for line in raw.strip().splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            # Match patterns like "1. factor_name: Formula(...)"
-            m = re.match(
-                r"^\d+\.\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(.+)$",
-                line,
-            )
-            if m:
-                name = m.group(1).strip()
-                formula = m.group(2).strip()
-                candidates.append((name, formula))
-        return candidates
-
 
 # ---------------------------------------------------------------------------
 # Validation Pipeline (lightweight orchestrator)
@@ -751,9 +689,8 @@ class RalphLoop:
             family_discovery=self.family_discovery,
         )
         self.lifecycle_store = FactorLifecycleStore(getattr(config, "output_dir", "./output"))
-        self.memory_manager: ExperienceMemoryManager | None = None
         self.generator = FactorGenerator(
-            llm_provider=llm_provider,
+            llm_provider=llm_provider or MockProvider(),
             prompt_builder=PromptBuilder(),
         )
         self.evaluation_kernel = EvaluationKernel(
@@ -1023,11 +960,12 @@ class RalphLoop:
             batch_size=payload.batch_size,
             extras={"dataset_contract": self.dataset_contract.to_dict()},
         )
-        return self.generator.generate_batch(
+        candidates = self.generator.generate_batch(
             memory_signal=payload.prompt_context,
             library_state=payload.library_state,
             batch_size=payload.batch_size,
         )
+        return [(candidate.name, candidate.formula) for candidate in candidates]
 
     def _stage_evaluate(
         self,
@@ -1276,14 +1214,10 @@ class RalphLoop:
         lib_base = str(checkpoint_dir / "library")
         save_library(self.library, lib_base, save_signals=True)
 
-        # Save memory using ExperienceMemoryManager if available,
-        # otherwise fall back to raw ExperienceMemory serialization
+        # Policy serialization is the canonical persistence path for all loops.
         mem_path = str(checkpoint_dir / "memory.json")
-        if self.memory_manager is not None:
-            self.memory_manager.save(mem_path)
-        else:
-            with open(mem_path, "w") as f:
-                json.dump(self.memory_policy.serialize(self.memory), f, indent=2, default=str)
+        with open(mem_path, "w") as f:
+            json.dump(self.memory_policy.serialize(self.memory), f, indent=2, default=str)
 
         # Save session metadata
         if self._session:
@@ -1372,13 +1306,9 @@ class RalphLoop:
         # Load memory
         mem_path = checkpoint_dir / "memory.json"
         if mem_path.exists():
-            if self.memory_manager is not None:
-                self.memory_manager.load(mem_path)
-                self.memory = self.memory_manager.memory
-            else:
-                with open(mem_path) as f:
-                    mem_data = json.load(f)
-                self.memory = self.memory_policy.restore(mem_data)
+            with open(mem_path) as f:
+                mem_data = json.load(f)
+            self.memory = self.memory_policy.restore(mem_data)
             logger.info(
                 "Loaded memory (version=%d, %d success, %d forbidden, %d insights)",
                 self.memory.version,

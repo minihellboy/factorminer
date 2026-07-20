@@ -641,12 +641,13 @@ class HelixLoop(RalphLoop):
             except Exception as exc:
                 logger.warning("Helix: debate generation failed, falling back: %s", exc)
 
-        # Standard generation
-        return self.generator.generate_batch(
+        # Standard generation uses the same validated generator as RalphLoop.
+        candidates = self.generator.generate_batch(
             memory_signal=memory_signal,
             library_state=library_state,
             batch_size=batch_size,
         )
+        return [(candidate.name, candidate.formula) for candidate in candidates]
 
     def _record_debate_round(self) -> None:
         """Serialize the latest debate/critic result into the run directory.
