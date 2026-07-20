@@ -8,8 +8,10 @@ routing, sealed multi-evaluator search), and a deep math/logic audit +
 primary-source research pass that fixed 12 real bugs and closed 4
 previously-deferred methodology gaps. See
 [Landscape Review & Extension Roadmap](docs/landscape-and-extensions.md) for
-the full extension inventory and [Repo Audit](docs/repo-audit.md) for the
-technical audit this file summarizes into action items.
+the full extension inventory,
+[July 2026 Research & Business Outlook](docs/july-2026-research-and-business-outlook.md)
+for the newer paper/agent/business scan, and [Repo Audit](docs/repo-audit.md)
+for the technical audit this file summarizes into action items.
 
 ## Current State
 
@@ -100,35 +102,58 @@ repository checks clean.
 
 ## Research Priorities
 
-### 1. Let the round-2 research surfaces mature before scanning for round 3
+The explicitly requested Round 3 scan is complete. It did not justify a broad
+new feature round. The strongest evidence instead moves validation,
+reproducibility, and measured harness selection ahead of more generation
+surface; see the [July 2026 outlook](docs/july-2026-research-and-business-outlook.md)
+for sources, commercial positioning, proof gates, and rejected directions.
 
-Round 2 added substantial new research surface: factor crowding (now with
-two residualization modes), risk/portfolio construction, capacity/impact
-modeling, sealed multi-evaluator search, GraphSAGE model co-optimization,
-RFT dataset export. **Recommendation: do not run another landscape-scan
-round yet.** Each of these is genuinely new surface area with its own
-failure modes (the deep audit found 12 real bugs in round 2's own work
-within one pass); let them accumulate real mining-run usage and test
-coverage before adding a fourth layer on top. This mirrors this repo's own
-stated principle (`ROADMAP.md`, `docs/repo-audit.md`): "the next challenge
-is not invention of more surfaces, it is disciplined consolidation."
+### 0. One credible, reproducible evidence baseline
 
-### 2. Learned factor-family discovery
+Complete a paper-comparable Qlib/FactorMiner reproduction with a versioned
+dataset contract, typed random and canonical-factor controls, explicit costs,
+and an immutable result bundle. This remains the prerequisite for interpreting
+any new search, memory, or agent result.
 
-Still heuristic (unchanged across all three passes). The next step is
-learned or clustered family structure over admitted and rejected formulas.
+### 1. Asset-pricing evidence and novelty gate
 
-### 3. Library-utility optimization
+Make a reproducible evidence pack—not another generator—the next major research
+surface. It should combine point-in-time EDGAR/accounting provenance,
+multivariate horse races, factor/library spanning, multiple-testing controls,
+novelty against a versioned anomaly catalog, liquidity/capacity filters, held-out
+evaluation, and explicit falsification criteria. The highest-value new source
+screened 280 hypotheses down to only a small final set after these filters.
 
-Move beyond single-factor admission toward marginal contribution to
-composite or portfolio utility. `evaluation/model_zoo.py`'s
-`EnsembleMarginalUtilityService` (landed in round 2) is a starting point for
-this, not yet the finished feature.
+### 2. Trajectory and harness laboratory
 
-### 4. Regime-conditioned memory beyond prompt text
+Replay the existing prompts, six memory policies, retrieval modes, providers,
+cascade choices, and bounded agent topologies on identical historical tasks and
+budgets. `architecture/lifecycle.py`, policy schemas, provenance, sealed
+evaluation, and RFT export already provide the substrate. Add no seventh fixed
+memory policy until a held-out comparison proves a gap.
 
-Current regime-aware retrieval changes ranking/context. The next step is
-deeper regime-conditioned evolution and persistence.
+### 3. General-agent gateway, conditional on customer pull
+
+Keep FactorMiner a governed laboratory that general agents call. With three to
+five design partners, extend the existing MCP/API boundary with durable jobs,
+an artifact registry, RBAC/SSO, data entitlements, signed manifests, provider
+failover, budgets, approval gates, and audit exports. Do not build this control
+plane before the evidence artifact itself is valuable.
+
+### 4. Typed trajectory evolution
+
+Experiment with QuantaAlpha-style weak-step mutation and compatible trajectory
+crossover while preserving the typed AST, complexity bounds, and provenance.
+Separate structural LLM edits from cheaper numeric-window optimization. Promote
+the approach only if it improves accepted-candidate yield per dollar and OOS
+survival on the common baseline.
+
+### 5. Later research bets
+
+Learned factor families, portfolio/library marginal utility, a falsification
+critic, and a separately sandboxed code/program-factor lane remain justified
+experiments. They stay behind the evidence baseline and trajectory laboratory;
+arbitrary Python must not become the default factor language.
 
 ## Engineering Priorities
 
@@ -159,19 +184,25 @@ have had a deprecation window.
 ## Suggested Next Build Order
 
 1. Merge the pushed consolidation branch and close issue #5 after hosted CI
-2. Continue extracting Helix validation/auto-invention/checkpoint services
-3. Remove compatibility shims after their deprecation window
-4. Quiet `evaluation/portfolio.py`'s empty-quintile warnings
-5. Build learned family discovery
-6. Expand scoped mypy coverage, anchored on round-2's already-typed
+2. Complete one paper-comparable, immutable evidence baseline
+3. Build the asset-pricing evidence and novelty gate
+4. Build offline trajectory/harness replay and compare existing memory policies
+5. Continue extracting Helix validation/auto-invention/checkpoint services
+6. Remove compatibility shims after their deprecation window
+7. Quiet `evaluation/portfolio.py`'s empty-quintile warnings
+8. Add the general-agent enterprise control plane only with design-partner pull
+9. Expand scoped mypy coverage, anchored on round-2's already-typed
    dataclasses, before making any type gate blocking
 
 ## Not A Priority Right Now
 
 These are intentionally lower priority than the structural items above:
 
-- a round-3 landscape/feature scan (explicitly deferred — see Research
-  Priorities #1)
+- general finance chat/search, Excel/pitchbook automation, or terminal replacement
+- live trading/execution or an alpha marketplace
+- a multi-agent rewrite or another hand-designed memory policy without replay evidence
+- arbitrary Python as the default factor representation
+- proprietary data acquisition before design-partner traction
 - frontend/demo polish
 - broad style cleanup in untouched modules
 - large new benchmark families before the runtime surface is fully
