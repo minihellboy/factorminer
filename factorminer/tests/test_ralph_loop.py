@@ -25,7 +25,7 @@ import pytest
 
 from factorminer.agent.factor_generator import FactorGenerator
 from factorminer.agent.llm_interface import MockProvider
-from factorminer.agent.output_parser import parse_llm_output
+from factorminer.agent.output_parser import candidate_pairs, parse_llm_output
 from factorminer.core.factor_library import Factor, FactorLibrary
 from factorminer.core.ralph_loop import (
     BudgetTracker,
@@ -260,6 +260,13 @@ class TestFactorGenerator:
         result, failed = parse_llm_output(raw)
         assert len(result) == 2
         assert failed == []
+
+    def test_candidate_pair_adapter_preserves_custom_generator_contract(self):
+        assert candidate_pairs([("custom", "Neg($close)")]) == [
+            ("custom", "Neg($close)")
+        ]
+        with pytest.raises(TypeError, match="CandidateFactor"):
+            candidate_pairs([object()])
 
     def test_mock_provider_deterministic(self):
         p1 = MockProvider(cycle=False)

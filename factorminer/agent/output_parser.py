@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any
 
 from factorminer.core.expression_tree import ExpressionTree
 from factorminer.core.parser import parse, try_parse
@@ -44,6 +46,27 @@ class CandidateFactor:
     @property
     def is_valid(self) -> bool:
         return self.expression_tree is not None
+
+
+def candidate_pairs(candidates: Iterable[Any]) -> list[tuple[str, str]]:
+    """Project validated candidates or legacy tuple generators to loop pairs.
+
+    ``CandidateFactor`` is the canonical generator result. The tuple fallback
+    preserves the documented duck-typed generator extension point for custom
+    callers without reintroducing a second parser.
+    """
+    pairs: list[tuple[str, str]] = []
+    for candidate in candidates:
+        if hasattr(candidate, "name") and hasattr(candidate, "formula"):
+            pairs.append((str(candidate.name), str(candidate.formula)))
+            continue
+        if isinstance(candidate, (tuple, list)) and len(candidate) == 2:
+            pairs.append((str(candidate[0]), str(candidate[1])))
+            continue
+        raise TypeError(
+            "factor generators must return CandidateFactor objects or (name, formula) pairs"
+        )
+    return pairs
 
 
 def _infer_category(formula: str) -> str:

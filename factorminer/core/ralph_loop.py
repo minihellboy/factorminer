@@ -32,6 +32,7 @@ import numpy as np
 
 from factorminer.agent.factor_generator import FactorGenerator
 from factorminer.agent.llm_interface import LLMProvider, MockProvider
+from factorminer.agent.output_parser import candidate_pairs
 from factorminer.agent.prompt_builder import PromptBuilder
 from factorminer.architecture import (
     DatasetContract,
@@ -965,7 +966,7 @@ class RalphLoop:
             library_state=payload.library_state,
             batch_size=payload.batch_size,
         )
-        return [(candidate.name, candidate.formula) for candidate in candidates]
+        return candidate_pairs(candidates)
 
     def _stage_evaluate(
         self,

@@ -23,6 +23,7 @@ from typing import Any
 import numpy as np
 
 from factorminer.agent.llm_interface import LLMProvider
+from factorminer.agent.output_parser import candidate_pairs
 from factorminer.architecture import (
     DistillStage,
     EvaluateStage,
@@ -403,10 +404,7 @@ class HelixLoop(RalphLoop):
                     batch_size=batch_size,
                 )
                 self._record_debate_round()
-                # Convert CandidateFactor objects to (name, formula) tuples
-                tuples: list[tuple[str, str]] = []
-                for c in debate_candidates:
-                    tuples.append((c.name, c.formula))
+                tuples = candidate_pairs(debate_candidates)
                 if tuples:
                     logger.info(
                         "Helix: debate generator produced %d candidates",
@@ -426,7 +424,7 @@ class HelixLoop(RalphLoop):
             library_state=library_state,
             batch_size=batch_size,
         )
-        return [(candidate.name, candidate.formula) for candidate in candidates]
+        return candidate_pairs(candidates)
 
     def _record_debate_round(self) -> None:
         """Serialize the latest debate/critic result into the run directory.
