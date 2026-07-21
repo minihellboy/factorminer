@@ -351,6 +351,34 @@ class TestSmoothingOps:
         result = execute_operator("EMA", x_simple, params={"window": 5})
         assert result.shape == x_simple.shape
 
+    def test_kama_matches_reference_on_nan_panel(self):
+        """Shipped KAMA must match the classic O(T·W) reference (equal_nan)."""
+        from factorminer.operators.smoothing import kama_np
+
+        rng = np.random.default_rng(42)
+        x = rng.normal(size=(25, 80))
+        x[rng.random(x.shape) < 0.08] = np.nan
+        window = 7
+        got = kama_np(x, window)
+
+        # Reference implementation (pre-optimization semantics).
+        fast_sc = 2.0 / 3.0
+        slow_sc = 2.0 / 31.0
+        ref = np.copy(x).astype(np.float64)
+        for t in range(window, x.shape[1]):
+            direction = np.abs(x[:, t] - x[:, t - window])
+            volatility = np.nansum(
+                np.abs(np.diff(x[:, t - window : t + 1], axis=1)), axis=1
+            )
+            with np.errstate(invalid="ignore", divide="ignore"):
+                er = np.where(volatility > 1e-10, direction / volatility, 0.0)
+            sc = (er * (fast_sc - slow_sc) + slow_sc) ** 2
+            prev = ref[:, t - 1]
+            curr = x[:, t]
+            valid = ~np.isnan(prev) & ~np.isnan(curr)
+            ref[valid, t] = prev[valid] + sc[valid] * (curr[valid] - prev[valid])
+        np.testing.assert_allclose(got, ref, equal_nan=True, rtol=1e-12, atol=1e-12)
+
 
 # ---------------------------------------------------------------------------
 # Regression operators
@@ -533,6 +561,30 @@ class TestGPUCPUEquivalence:
             np.testing.assert_array_almost_equal(
                 np_result[valid], torch_result.numpy()[valid], decimal=4
             )
+
+    @pytest.mark.parametrize("op_name", ["EMA", "KAMA"])
+    def test_smoothing_equivalence(self, torch_available, op_name):
+        import torch as th
+
+        rng = np.random.default_rng(17)
+        panel = rng.normal(size=(12, 50))
+        panel[rng.random(panel.shape) < 0.1] = np.nan
+        np_result = execute_operator(
+            op_name, panel, params={"window": 7}, backend="numpy"
+        )
+        torch_result = execute_operator(
+            op_name,
+            th.tensor(panel, dtype=th.float64),
+            params={"window": 7},
+            backend="torch",
+        )
+        np.testing.assert_allclose(
+            np_result,
+            torch_result.numpy(),
+            equal_nan=True,
+            rtol=1e-12,
+            atol=1e-12,
+        )
 
     @pytest.mark.parametrize("op_name,min_obs", [("Skew", 3), ("Kurt", 4)])
     def test_higher_moment_equivalence_and_nan_guards(

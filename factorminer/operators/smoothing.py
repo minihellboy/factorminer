@@ -47,10 +47,16 @@ def ema_np(x: np.ndarray, window: int = 10) -> np.ndarray:
     for t in range(1, T):
         prev = out[:, t - 1]
         curr = x[:, t]
-        both_valid = ~np.isnan(prev) & ~np.isnan(curr)
-        only_prev = ~np.isnan(prev) & np.isnan(curr)
-        out[both_valid, t] = alpha * curr[both_valid] + (1 - alpha) * prev[both_valid]
-        out[only_prev, t] = prev[only_prev]
+        prev_valid = ~np.isnan(prev)
+        curr_valid = ~np.isnan(curr)
+        both_valid = prev_valid & curr_valid
+        only_prev = prev_valid & ~curr_valid
+        # Full-column where avoids boolean advanced-index allocations each step.
+        out[:, t] = np.where(
+            both_valid,
+            alpha * curr + (1.0 - alpha) * prev,
+            np.where(only_prev, prev, out[:, t]),
+        )
     return out
 
 
@@ -62,23 +68,44 @@ def dema_np(x: np.ndarray, window: int = 10) -> np.ndarray:
 
 
 def kama_np(x: np.ndarray, window: int = 10) -> np.ndarray:
-    """Kaufman Adaptive Moving Average."""
+    """Kaufman Adaptive Moving Average.
+
+    Efficiency: rolling absolute-change sums are precomputed with a prefix
+    sum so each time step is O(1) instead of O(window).  The sequential
+    adaptive update remains O(T) because it depends on the prior KAMA value.
+    """
     window = int(window)
     fast_sc = 2.0 / (2.0 + 1.0)
     slow_sc = 2.0 / (30.0 + 1.0)
     M, T = x.shape
     out = np.copy(x).astype(np.float64)
+    if T <= window:
+        return out
+
+    # abs step changes; nansum(window) ≡ sum of nan_to_num over the same span
+    step_abs = np.zeros((M, T), dtype=np.float64)
+    step_abs[:, 1:] = np.abs(np.diff(x, axis=1))
+    step_abs = np.nan_to_num(step_abs, nan=0.0)
+    # padded prefix: pref[:, t+1] = sum(step_abs[:, :t+1])
+    pref = np.empty((M, T + 1), dtype=np.float64)
+    pref[:, 0] = 0.0
+    np.cumsum(step_abs, axis=1, out=pref[:, 1:])
 
     for t in range(window, T):
         direction = np.abs(x[:, t] - x[:, t - window])
-        volatility = np.nansum(np.abs(np.diff(x[:, t - window:t + 1], axis=1)), axis=1)
-        with np.errstate(invalid="ignore", divide="ignore"):
-            er = np.where(volatility > 1e-10, direction / volatility, 0.0)
+        # sum of abs diffs over x[t-window:t+1] consecutive pairs
+        volatility = pref[:, t + 1] - pref[:, t - window + 1]
+        er = np.divide(
+            direction,
+            volatility,
+            out=np.zeros_like(direction, dtype=np.float64),
+            where=volatility > 1e-10,
+        )
         sc = (er * (fast_sc - slow_sc) + slow_sc) ** 2
         prev = out[:, t - 1]
         curr = x[:, t]
         valid = ~np.isnan(prev) & ~np.isnan(curr)
-        out[valid, t] = prev[valid] + sc[valid] * (curr[valid] - prev[valid])
+        out[:, t] = np.where(valid, prev + sc * (curr - prev), out[:, t])
     return out
 
 
@@ -118,10 +145,15 @@ def ema_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     for t in range(1, T):
         prev = out[:, t - 1]
         curr = x[:, t]
-        both = ~torch.isnan(prev) & ~torch.isnan(curr)
-        only_prev = ~torch.isnan(prev) & torch.isnan(curr)
-        out[both, t] = alpha * curr[both] + (1 - alpha) * prev[both]
-        out[only_prev, t] = prev[only_prev]
+        prev_valid = ~torch.isnan(prev)
+        curr_valid = ~torch.isnan(curr)
+        both_valid = prev_valid & curr_valid
+        only_prev = prev_valid & ~curr_valid
+        out[:, t] = torch.where(
+            both_valid,
+            alpha * curr + (1.0 - alpha) * prev,
+            torch.where(only_prev, prev, out[:, t]),
+        )
     return out
 
 
@@ -137,15 +169,24 @@ def kama_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     slow_sc = 2.0 / (30.0 + 1.0)
     M, T = x.shape
     out = x.clone()
+    if T <= window:
+        return out
+
+    step_abs = torch.zeros_like(x)
+    step_abs[:, 1:] = x.diff(dim=1).abs()
+    step_abs = torch.nan_to_num(step_abs, nan=0.0)
+    pref = torch.zeros(M, T + 1, dtype=x.dtype, device=x.device)
+    pref[:, 1:] = step_abs.cumsum(dim=1)
+
     for t in range(window, T):
         direction = (x[:, t] - x[:, t - window]).abs()
-        vol = x[:, t - window:t + 1].diff(dim=1).abs().nansum(dim=1)
+        vol = pref[:, t + 1] - pref[:, t - window + 1]
         er = torch.where(vol > 1e-10, direction / vol, torch.zeros_like(direction))
         sc = (er * (fast_sc - slow_sc) + slow_sc) ** 2
         prev = out[:, t - 1]
         curr = x[:, t]
         valid = ~torch.isnan(prev) & ~torch.isnan(curr)
-        out[valid, t] = prev[valid] + sc[valid] * (curr[valid] - prev[valid])
+        out[:, t] = torch.where(valid, prev + sc * (curr - prev), out[:, t])
     return out
 
 
