@@ -16,14 +16,15 @@ from __future__ import annotations
 import json
 import logging
 import re
-import time
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from factorminer.agent.llm_interface import LLMProvider
-from factorminer.agent.output_parser import candidate_pairs
+from factorminer.application.helix_generation import HelixGenerationService
+from factorminer.application.helix_validation import HelixValidationService
+from factorminer.application.runtime_context import MiningRunContext
 from factorminer.architecture import (
     DistillStage,
     EvaluateStage,
@@ -38,14 +39,11 @@ from factorminer.architecture import (
 from factorminer.architecture.model_stage import ModelCoOptimizeStage
 from factorminer.core.factor_library import FactorLibrary
 from factorminer.core.loop_services import LoopExecutionService
-from factorminer.core.parser import try_parse
 from factorminer.core.ralph_loop import (
     EvaluationResult,
     RalphLoop,
 )
-from factorminer.evaluation.metrics import compute_ic
 from factorminer.memory.memory_store import ExperienceMemory
-from factorminer.memory.retrieval import retrieve_memory
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +128,8 @@ class HelixLoop(RalphLoop):
         capacity_config: Any | None = None,
         significance_config: Any | None = None,
         volume: np.ndarray | None = None,
+        checkpoint_interval: int = 1,
+        run_context: MiningRunContext | None = None,
     ) -> None:
         # Initialize base RalphLoop
         super().__init__(
@@ -139,6 +139,8 @@ class HelixLoop(RalphLoop):
             llm_provider=llm_provider,
             memory=memory,
             library=library,
+            checkpoint_interval=checkpoint_interval,
+            run_context=run_context,
         )
 
         # Store Phase 2 configuration
@@ -157,6 +159,8 @@ class HelixLoop(RalphLoop):
         self._kg_service = KnowledgeGraphService()
         self._forgetting_service = OnlineForgettingService(forgetting_lambda=forgetting_lambda)
         self._loop_services = LoopExecutionService(self)
+        self._generation_capabilities = HelixGenerationService(self)
+        self._phase2_validation = HelixValidationService(self)
 
         # Track iterations without admissions for forgetting
         self._no_admission_streak: int = 0
@@ -186,7 +190,7 @@ class HelixLoop(RalphLoop):
                 "evaluate": EvaluateStage(self._stage_evaluate_helix),
                 "library_update": LibraryUpdateStage(self._stage_library_update_helix),
                 "distill": DistillStage(self._stage_distill_helix),
-                "model_co_optimize": ModelCoOptimizeStage.from_mining_config(config),
+                "model_co_optimize": ModelCoOptimizeStage.from_mining_config(self.settings),
             }
         )
 
@@ -201,7 +205,7 @@ class HelixLoop(RalphLoop):
             llm_provider=llm_provider or self.generator.llm_provider,
             data_tensor=self.data_tensor,
             returns=self.returns,
-            output_dir=getattr(self.config, "output_dir", "./output"),
+            output_dir=self.settings.output_dir,
             debate_config=self._debate_config,
             canonicalize=self._canonicalize,
             causal_config=self._causal_config,
@@ -233,67 +237,12 @@ class HelixLoop(RalphLoop):
     # ------------------------------------------------------------------
 
     def _run_iteration(self, batch_size: int) -> dict[str, Any]:
-        """Execute one iteration of the 5-stage Helix Loop.
-
-        Stages:
-          1. RETRIEVE  -- enhanced memory retrieval (KG + embeddings + flat)
-          2. PROPOSE   -- debate or standard factor generation
-          3. SYNTHESIZE -- canonicalize and deduplicate candidates
-          4. VALIDATE  -- standard pipeline + causal + regime + capacity + significance
-          5. DISTILL   -- memory evolution + KG update + forgetting
-
-        Returns
-        -------
-        dict
-            Iteration statistics.
-        """
-        t0 = time.time()
-        payload = self._loop_services.new_payload(batch_size)
-        self._loop_services.run_stage_chain(payload, ("retrieve", "generate"))
-        self.budget.record_llm_call()
-
-        if not payload.candidates:
-            logger.warning(
-                "Helix iteration %d: %s",
-                self.iteration,
-                self._loop_services.describe_empty_generation(payload),
-            )
-            return self._loop_services.empty_stats()
-
-        self._loop_services.run_stage_chain(payload, ("evaluate", "library_update"))
-
-        provenance_library_state = {
-            **payload.library_state,
-            "diagnostics": self.library.get_diagnostics(),
-        }
-
-        self._attach_factor_provenance(
-            payload.admitted_results,
-            library_state=provenance_library_state,
-            memory_signal=payload.memory_signal,
-            phase2_summary={
-                "enabled_features": self._phase2_features(),
-                "phase2_rejections": payload.stage_metrics.get("phase2_rejections", 0),
-            },
-            generator_family=self._generator_family(),
+        """Execute the canonical sequence with the Helix stage composition."""
+        return self._loop_services.execute_iteration(
+            batch_size,
+            trailing_stages=("model_co_optimize",),
+            phase2_summary={"enabled_features": self._phase2_features()},
         )
-
-        self._loop_services.run_stage_chain(payload, ("distill",))
-        self.stages["model_co_optimize"].run(self, payload)
-
-        # Build stats
-        elapsed = time.time() - t0
-        self.budget.record_compute(elapsed)
-        stats = self._loop_services.build_stats(payload, elapsed)
-        telemetry = self._loop_services.build_telemetry(
-            payload,
-            stats,
-            elapsed,
-            candidates_generated=self._loop_services.candidate_count(payload),
-        )
-        self._loop_services.log_telemetry(telemetry)
-
-        return stats
 
     def _stage_retrieve_helix(
         self,
@@ -312,6 +261,7 @@ class HelixLoop(RalphLoop):
             payload.library_state,
             batch_size=payload.batch_size,
             extras={"dataset_contract": self.dataset_contract.to_dict()},
+            research_archetypes=payload.memory_signal.get("research_archetypes"),
         )
         proposed = self._helix_propose(
             payload.prompt_context, payload.library_state, payload.batch_size
@@ -357,33 +307,7 @@ class HelixLoop(RalphLoop):
     # ------------------------------------------------------------------
 
     def _helix_retrieve(self, library_state: dict[str, Any]) -> dict[str, Any]:
-        """Stage 1 RETRIEVE: KG + embeddings + flat memory hybrid retrieval.
-
-        Falls back to standard retrieve_memory if no KG/embedder is available.
-        """
-        (retrieve_enhanced_fn,) = self._component_factory.resolve(
-            "factorminer.memory.kg_retrieval",
-            "retrieve_memory_enhanced",
-        )
-
-        if retrieve_enhanced_fn is not None and (
-            self._kg is not None or self._embedder is not None
-        ):
-            try:
-                return retrieve_enhanced_fn(
-                    memory=self.memory,
-                    library_state=library_state,
-                    kg=self._kg,
-                    embedder=self._embedder,
-                )
-            except Exception as exc:
-                logger.warning("Helix: enhanced retrieval failed, falling back: %s", exc)
-
-        return retrieve_memory(self.memory, library_state=library_state)
-
-    # ------------------------------------------------------------------
-    # Stage 2: Debate or standard proposal
-    # ------------------------------------------------------------------
+        return self._generation_capabilities._helix_retrieve(library_state)
 
     def _helix_propose(
         self,
@@ -391,185 +315,18 @@ class HelixLoop(RalphLoop):
         library_state: dict[str, Any],
         batch_size: int,
     ) -> list[tuple[str, str]]:
-        """Stage 2 PROPOSE: Use debate generator or standard generator.
-
-        Returns list of (name, formula) tuples compatible with the
-        validation pipeline.
-        """
-        if self._debate_generator is not None:
-            try:
-                debate_candidates = self._debate_generator.generate_batch(
-                    memory_signal=memory_signal,
-                    library_state=library_state,
-                    batch_size=batch_size,
-                )
-                self._record_debate_round()
-                tuples = candidate_pairs(debate_candidates)
-                if tuples:
-                    logger.info(
-                        "Helix: debate generator produced %d candidates",
-                        len(tuples),
-                    )
-                    return tuples
-                logger.warning(
-                    "Helix: debate generator returned 0 candidates, "
-                    "falling back to standard generator"
-                )
-            except Exception as exc:
-                logger.warning("Helix: debate generation failed, falling back: %s", exc)
-
-        # Standard generation uses the same validated generator as RalphLoop.
-        candidates = self.generator.generate_batch(
-            memory_signal=memory_signal,
-            library_state=library_state,
-            batch_size=batch_size,
+        return self._generation_capabilities._helix_propose(
+            memory_signal,
+            library_state,
+            batch_size,
         )
-        return candidate_pairs(candidates)
-
-    def _record_debate_round(self) -> None:
-        """Serialize the latest debate/critic result into the run directory.
-
-        Writes ``debate_log.json`` under the configured output directory so an
-        external planner (MCP ``inspect_debate``) can inspect specialist
-        proposals, critic scores, and shortlist reasoning after the process
-        exits. Failures are swallowed -- debate telemetry must never abort mining.
-        """
-        generator = self._debate_generator
-        if generator is None:
-            return
-        result = getattr(generator, "last_debate_result", None)
-        if result is None:
-            return
-
-        critic_scores: list[dict[str, Any]] = []
-        for score in getattr(result, "critic_scores", None) or []:
-            critic_scores.append(
-                {
-                    "factor_name": getattr(score, "factor_name", ""),
-                    "formula": getattr(score, "formula", ""),
-                    "source_specialist": getattr(score, "source_specialist", ""),
-                    "scores": dict(getattr(score, "scores", {}) or {}),
-                    "composite_score": float(getattr(score, "composite_score", 0.0) or 0.0),
-                    "keep": bool(getattr(score, "keep", False)),
-                    "critique": getattr(score, "critique", "") or "",
-                }
-            )
-
-        round_payload: dict[str, Any] = {
-            "iteration": int(getattr(self, "iteration", 0) or 0),
-            "all_proposals": list(getattr(result, "all_proposals", None) or []),
-            "after_dedup": list(getattr(result, "after_dedup", None) or []),
-            "after_critic": list(getattr(result, "after_critic", None) or []),
-            "specialist_proposals": {
-                str(name): list(formulas)
-                for name, formulas in (getattr(result, "specialist_proposals", None) or {}).items()
-            },
-            "specialist_success_rates": {
-                str(name): float(rate)
-                for name, rate in (getattr(result, "specialist_success_rates", None) or {}).items()
-            },
-            "critic_scores": critic_scores,
-            "debate_stats": dict(getattr(result, "debate_stats", None) or {}),
-        }
-
-        leaderboard = None
-        get_leaderboard = getattr(generator, "get_specialist_leaderboard", None)
-        if callable(get_leaderboard):
-            try:
-                leaderboard = get_leaderboard()
-            except Exception:  # pragma: no cover - defensive
-                leaderboard = None
-        if leaderboard is not None:
-            round_payload["specialist_leaderboard"] = leaderboard
-
-        self._debate_rounds.append(round_payload)
-
-        output_dir = Path(getattr(self.config, "output_dir", "./output"))
-        try:
-            output_dir.mkdir(parents=True, exist_ok=True)
-            path = output_dir / "debate_log.json"
-            payload = {
-                "ok": True,
-                "research_artifact_only": True,
-                "n_rounds": len(self._debate_rounds),
-                "rounds": self._debate_rounds,
-            }
-            path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
-        except OSError as exc:  # pragma: no cover - disk errors should not kill the loop
-            logger.warning("Helix: failed to persist debate_log.json: %s", exc)
-
-    # ------------------------------------------------------------------
-    # Stage 3: Canonicalization + deduplication
-    # ------------------------------------------------------------------
 
     def _canonicalize_and_dedup(
-        self, candidates: list[tuple[str, str]]
+        self,
+        candidates: list[tuple[str, str]],
     ) -> tuple[list[tuple[str, str]], int, int]:
-        """Stage 3 SYNTHESIZE: Remove mathematically equivalent candidates.
+        return self._generation_capabilities._canonicalize_and_dedup(candidates)
 
-        Uses SymPy-based canonicalization to detect algebraic duplicates
-        before evaluation, saving compute.
-
-        Returns
-        -------
-        tuple of (deduplicated_candidates, n_canonical_duplicates_removed,
-        n_semantic_duplicates_removed)
-        """
-        if self._canonicalizer is None and self._embedder is None:
-            return candidates, 0, 0
-
-        seen_hashes: dict[str, str] = {}  # hash -> first factor name
-        unique: list[tuple[str, str]] = []
-        n_canon_dupes = 0
-        n_semantic_dupes = 0
-
-        for name, formula in candidates:
-            tree = try_parse(formula)
-            if tree is not None and self._canonicalizer is not None:
-                try:
-                    canon_hash = self._canonicalizer.canonicalize(tree)
-                except Exception as exc:
-                    logger.debug("Helix: canonicalization failed for '%s': %s", name, exc)
-                else:
-                    if canon_hash in seen_hashes:
-                        n_canon_dupes += 1
-                        logger.debug(
-                            "Helix: canonical duplicate '%s' matches '%s'",
-                            name,
-                            seen_hashes[canon_hash],
-                        )
-                        continue
-                    seen_hashes[canon_hash] = name
-
-            semantic_match = self._semantic_duplicate_target(formula)
-            if semantic_match is not None:
-                n_semantic_dupes += 1
-                logger.debug(
-                    "Helix: semantic duplicate '%s' matches library factor '%s'",
-                    name,
-                    semantic_match,
-                )
-                continue
-
-            unique.append((name, formula))
-
-        if n_canon_dupes > 0:
-            logger.info(
-                "Helix: canonicalization removed %d/%d duplicate candidates",
-                n_canon_dupes,
-                len(candidates),
-            )
-
-        if n_semantic_dupes > 0:
-            logger.info(
-                "Helix: embedding screen removed %d/%d library-adjacent candidates",
-                n_semantic_dupes,
-                len(candidates),
-            )
-
-        return unique, n_canon_dupes, n_semantic_dupes
-
-    # ------------------------------------------------------------------
     # Stage 4: Extended validation
     # ------------------------------------------------------------------
 
@@ -578,245 +335,7 @@ class HelixLoop(RalphLoop):
         results: list[EvaluationResult],
         admitted_results: list[EvaluationResult],
     ) -> int:
-        """Stage 4 extended VALIDATE: causal + regime + capacity + significance.
-
-        Runs Phase 2 validation on admitted candidates and revokes admission
-        for those that fail. Returns the number of Phase 2 rejections.
-        """
-        if not admitted_results:
-            self._no_admission_streak += 1
-            return 0
-
-        rejected = 0
-
-        # Collect admitted results that still have signals for extended checks
-        to_check = [r for r in admitted_results if r.signals is not None]
-        if not to_check:
-            self._no_admission_streak = (
-                0 if any(r.admitted for r in admitted_results) else self._no_admission_streak + 1
-            )
-            return 0
-
-        # -- Causal validation --
-        if self._causal_config is not None:
-            rejected += self._validate_causal(to_check, results)
-
-        # -- Regime validation --
-        if self._regime_evaluator is not None:
-            rejected += self._validate_regime(to_check, results)
-
-        # -- Capacity validation --
-        if self._capacity_estimator is not None:
-            rejected += self._validate_capacity(to_check, results)
-
-        # -- Significance testing (batch-level FDR) --
-        if self._bootstrap_tester is not None and self._fdr_controller is not None:
-            rejected += self._validate_significance(to_check, results)
-
-        if rejected > 0:
-            logger.info(
-                "Helix: Phase 2 validation rejected %d/%d admitted candidates",
-                rejected,
-                len(admitted_results),
-            )
-
-        if any(r.admitted for r in admitted_results):
-            self._no_admission_streak = 0
-        else:
-            self._no_admission_streak += 1
-
-        return rejected
-
-    def _validate_causal(
-        self,
-        to_check: list[EvaluationResult],
-        all_results: list[EvaluationResult],
-    ) -> int:
-        """Run causal validation (Granger + intervention) on admitted candidates."""
-        CausalValidatorCls = self._causal_validator
-        if CausalValidatorCls is None:
-            return 0
-
-        # Collect library signals for controls
-        library_signals: dict[str, np.ndarray] = {}
-        for f in self.library.list_factors():
-            if f.signals is not None:
-                library_signals[f.name] = f.signals
-
-        try:
-            validator = CausalValidatorCls(
-                returns=self.returns,
-                data_tensor=self.data_tensor,
-                library_signals=library_signals,
-                config=self._causal_config,
-            )
-        except Exception as exc:
-            logger.warning("Helix: causal validator creation failed: %s", exc)
-            return 0
-
-        rejected = 0
-        threshold = getattr(self._causal_config, "robustness_threshold", 0.4)
-
-        for r in to_check:
-            if not r.admitted or r.signals is None:
-                continue
-            try:
-                result = validator.validate(r.factor_name, r.signals)
-                if not result.passes:
-                    self._revoke_admission(
-                        r,
-                        all_results,
-                        f"Causal: robustness_score={result.robustness_score:.3f} < {threshold}",
-                    )
-                    rejected += 1
-                    logger.debug(
-                        "Helix: causal rejection for '%s' (score=%.3f)",
-                        r.factor_name,
-                        result.robustness_score,
-                    )
-            except Exception as exc:
-                logger.warning(
-                    "Helix: causal validation error for '%s': %s",
-                    r.factor_name,
-                    exc,
-                )
-
-        return rejected
-
-    def _validate_regime(
-        self,
-        to_check: list[EvaluationResult],
-        all_results: list[EvaluationResult],
-    ) -> int:
-        """Run regime-aware IC evaluation on admitted candidates."""
-        if self._regime_evaluator is None:
-            return 0
-
-        rejected = 0
-        for r in to_check:
-            if not r.admitted or r.signals is None:
-                continue
-            try:
-                result = self._regime_evaluator.evaluate(r.factor_name, r.signals)
-                if not result.passes:
-                    self._revoke_admission(
-                        r,
-                        all_results,
-                        f"Regime: only {result.n_regimes_passing} regimes passing "
-                        f"(need {getattr(self._regime_config, 'min_regimes_passing', 2)})",
-                    )
-                    rejected += 1
-                    logger.debug(
-                        "Helix: regime rejection for '%s' (%d regimes passing)",
-                        r.factor_name,
-                        result.n_regimes_passing,
-                    )
-            except Exception as exc:
-                logger.warning(
-                    "Helix: regime validation error for '%s': %s",
-                    r.factor_name,
-                    exc,
-                )
-
-        return rejected
-
-    def _validate_capacity(
-        self,
-        to_check: list[EvaluationResult],
-        all_results: list[EvaluationResult],
-    ) -> int:
-        """Run capacity-aware cost evaluation on admitted candidates."""
-        if self._capacity_estimator is None:
-            return 0
-
-        rejected = 0
-        net_icir_threshold = getattr(self._capacity_config, "net_icir_threshold", 0.3)
-
-        for r in to_check:
-            if not r.admitted or r.signals is None:
-                continue
-            try:
-                result = self._capacity_estimator.net_cost_evaluation(
-                    factor_name=r.factor_name,
-                    signals=r.signals,
-                )
-                if not result.passes_net_threshold:
-                    self._revoke_admission(
-                        r,
-                        all_results,
-                        f"Capacity: net_icir={result.net_icir:.3f} < {net_icir_threshold}",
-                    )
-                    rejected += 1
-                    logger.debug(
-                        "Helix: capacity rejection for '%s' (net_icir=%.3f)",
-                        r.factor_name,
-                        result.net_icir,
-                    )
-            except Exception as exc:
-                logger.warning(
-                    "Helix: capacity validation error for '%s': %s",
-                    r.factor_name,
-                    exc,
-                )
-
-        return rejected
-
-    def _validate_significance(
-        self,
-        to_check: list[EvaluationResult],
-        all_results: list[EvaluationResult],
-    ) -> int:
-        """Run bootstrap CI + batch-level FDR correction on admitted candidates."""
-        if self._bootstrap_tester is None or self._fdr_controller is None:
-            return 0
-
-        # Compute IC series for each admitted candidate and gather p-values
-        ic_series_map: dict[str, np.ndarray] = {}
-        result_map: dict[str, EvaluationResult] = {}
-
-        for r in to_check:
-            if not r.admitted or r.signals is None:
-                continue
-            try:
-                ic_series = compute_ic(r.signals, self.returns)
-                ic_series_map[r.factor_name] = ic_series
-                result_map[r.factor_name] = r
-            except Exception as exc:
-                logger.warning(
-                    "Helix: IC computation error for '%s': %s",
-                    r.factor_name,
-                    exc,
-                )
-
-        if not ic_series_map:
-            return 0
-
-        try:
-            fdr_result = self._fdr_controller.batch_evaluate(ic_series_map, self._bootstrap_tester)
-        except Exception as exc:
-            logger.warning("Helix: FDR batch evaluation failed: %s", exc)
-            return 0
-
-        rejected = 0
-        for name, is_sig in fdr_result.significant.items():
-            if not is_sig:
-                r = result_map.get(name)
-                if r is not None and r.admitted:
-                    adj_p = fdr_result.adjusted_p_values.get(name, 1.0)
-                    self._revoke_admission(
-                        r,
-                        all_results,
-                        f"Significance: FDR-adjusted p={adj_p:.4f} > "
-                        f"{getattr(self._significance_config, 'fdr_level', 0.05)}",
-                    )
-                    rejected += 1
-                    logger.debug(
-                        "Helix: significance rejection for '%s' (adj_p=%.4f)",
-                        name,
-                        adj_p,
-                    )
-
-        return rejected
+        return self._phase2_validation.validate(results, admitted_results)
 
     def _revoke_admission(
         self,
@@ -824,36 +343,8 @@ class HelixLoop(RalphLoop):
         all_results: list[EvaluationResult],
         reason: str,
     ) -> None:
-        """Revoke a previously admitted candidate from the library.
+        self._phase2_validation.revoke(result, all_results, reason)
 
-        Updates the EvaluationResult and removes the factor from the library.
-        """
-        result.admitted = False
-        result.rejection_reason = reason
-
-        # Find and remove from library by name+formula match
-        try:
-            for factor in self.library.list_factors():
-                if factor.name == result.factor_name and factor.formula == result.formula:
-                    self.library.remove_factor(factor.id)
-                    self._remove_semantic_artifacts(result.factor_name)
-                    logger.debug(
-                        "Helix: revoked factor '%s' (id=%d): %s",
-                        result.factor_name,
-                        factor.id,
-                        reason,
-                    )
-                    return
-        except Exception as exc:
-            logger.warning(
-                "Helix: failed to revoke factor '%s': %s",
-                result.factor_name,
-                exc,
-            )
-
-        self._remove_semantic_artifacts(result.factor_name)
-
-    # ------------------------------------------------------------------
     # Stage 5: Enhanced distillation
     # ------------------------------------------------------------------
 
@@ -1257,14 +748,3 @@ class HelixLoop(RalphLoop):
                     factor.name,
                     exc,
                 )
-
-    def _semantic_duplicate_target(self, formula: str) -> str | None:
-        """Return the matched library factor if embeddings flag a near-duplicate."""
-        if self._embedder is None or self.library.size == 0:
-            return None
-
-        try:
-            return self._embedder.is_semantic_duplicate(formula)
-        except Exception as exc:
-            logger.debug("Helix: semantic duplicate check failed: %s", exc)
-            return None

@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import json
-import warnings
 from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 from click.testing import CliRunner
 
+from factorminer.benchmark.phase2_reporting import (
+    _build_phase2_manifest,
+    _collect_runtime_manifest_refs,
+    _generate_markdown_report,
+    _write_markdown_table,
+)
 from factorminer.benchmark.runtime import (
     StatisticalComparisonTests,
     _cfg_for_runtime_baseline,
@@ -27,12 +32,6 @@ from factorminer.core.library_io import save_library
 from factorminer.core.session import MiningSession
 from factorminer.evaluation.runtime import DatasetSplit, EvaluationDataset, FactorEvaluationArtifact
 from factorminer.utils.config import load_config
-from scripts.run_phase2_benchmark import (
-    _build_phase2_manifest,
-    _collect_runtime_manifest_refs,
-    _generate_markdown_report,
-    _write_markdown_table,
-)
 
 
 def _artifact(
@@ -405,18 +404,6 @@ def test_evaluate_frozen_set_records_cost_and_capacity_stress():
     assert combo["capacity_pressure"]["capacity_curve"]
 
 
-def test_legacy_helix_benchmark_emits_deprecation_warning():
-    from factorminer.benchmark.helix_benchmark import HelixBenchmark
-    from factorminer.benchmark.runtime import HelixBenchmark as RuntimeHelixBenchmark
-
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        _ = HelixBenchmark()
-
-    assert HelixBenchmark is RuntimeHelixBenchmark
-    assert any("canonical benchmark path" in str(item.message) for item in caught)
-
-
 def test_phase2_runtime_variants_are_projected_by_the_canonical_runtime():
     cfg = load_config()
 
@@ -430,15 +417,11 @@ def test_phase2_runtime_variants_are_projected_by_the_canonical_runtime():
     assert without_canonicalization.phase2.helix.enable_canonicalization is False
 
 
-def test_benchmark_package_lazy_exports_warn_on_legacy_access():
+def test_benchmark_package_lazy_exports_canonical_statistics():
     import factorminer.benchmark as benchmark_pkg
 
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        klass = benchmark_pkg.HelixBenchmark
-
-    assert klass.__name__ == "HelixBenchmark"
-    assert any("legacy" in str(item.message).lower() for item in caught)
+    assert benchmark_pkg.BenchmarkResult.__module__ == "factorminer.benchmark.statistics"
+    assert "HelixBenchmark" not in dir(benchmark_pkg)
 
 
 def test_phase2_manifest_references_runtime_manifest_and_sanitizes_stats(tmp_path):

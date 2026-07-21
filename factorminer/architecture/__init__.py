@@ -69,14 +69,23 @@ __all__ = [
     "export_rft_dataset",
     "build_regime_task_bank",
     "RFT_EXPORT_HONESTY",
+    "ExternalResearchReceipt",
+    "EvidenceTier",
+    "RunStatus",
+    "DatasetCommitment",
+    "ReviewerState",
+    "SourceManifestRef",
+    "RESEARCH_RECEIPT_LIMITATIONS",
+    "derive_release_id",
+    "attest_research_receipt",
 ]
 
 _ATTRIBUTE_MAP = {
     "DatasetContract": ("factorminer.architecture.dataset_contract", "DatasetContract"),
-    "DependenceMetric": ("factorminer.architecture.dependence", "DependenceMetric"),
+    "DependenceMetric": ("factorminer.domain.dependence", "DependenceMetric"),
     "DistillStage": ("factorminer.architecture.stages", "DistillStage"),
     "DistanceCorrelationMetric": (
-        "factorminer.architecture.dependence",
+        "factorminer.domain.dependence",
         "DistanceCorrelationMetric",
     ),
     "EvaluateStage": ("factorminer.architecture.stages", "EvaluateStage"),
@@ -105,7 +114,7 @@ _ATTRIBUTE_MAP = {
     "NoMemoryPolicy": ("factorminer.architecture.memory_policy", "NoMemoryPolicy"),
     "PaperMemoryPolicy": ("factorminer.architecture.memory_policy", "PaperMemoryPolicy"),
     "PaperProtocol": ("factorminer.architecture.paper_protocol", "PaperProtocol"),
-    "PearsonDependenceMetric": ("factorminer.architecture.dependence", "PearsonDependenceMetric"),
+    "PearsonDependenceMetric": ("factorminer.domain.dependence", "PearsonDependenceMetric"),
     "PromptContextBuilder": ("factorminer.architecture.prompt_context", "PromptContextBuilder"),
     "ResearchExtensionService": (
         "factorminer.architecture.research_extensions",
@@ -161,8 +170,8 @@ _ATTRIBUTE_MAP = {
         "RegimeAwareMemoryPolicy",
     ),
     "RetrieveStage": ("factorminer.architecture.stages", "RetrieveStage"),
-    "SpearmanDependenceMetric": ("factorminer.architecture.dependence", "SpearmanDependenceMetric"),
-    "build_dependence_metric": ("factorminer.architecture.dependence", "build_dependence_metric"),
+    "SpearmanDependenceMetric": ("factorminer.domain.dependence", "SpearmanDependenceMetric"),
+    "build_dependence_metric": ("factorminer.domain.dependence", "build_dependence_metric"),
     "build_memory_policy": ("factorminer.architecture.memory_policy", "build_memory_policy"),
     "CycleThemePlan": ("factorminer.architecture.research_planner", "CycleThemePlan"),
     "MECHANISM_FAMILIES": ("factorminer.architecture.families", "MECHANISM_FAMILIES"),
@@ -196,6 +205,24 @@ _ATTRIBUTE_MAP = {
     "export_rft_dataset": ("factorminer.architecture.rft_export", "export_rft_dataset"),
     "build_regime_task_bank": ("factorminer.architecture.rft_export", "build_regime_task_bank"),
     "RFT_EXPORT_HONESTY": ("factorminer.architecture.rft_export", "RFT_EXPORT_HONESTY"),
+    "ExternalResearchReceipt": (
+        "factorminer.architecture.research_receipt",
+        "ExternalResearchReceipt",
+    ),
+    "EvidenceTier": ("factorminer.architecture.research_receipt", "EvidenceTier"),
+    "RunStatus": ("factorminer.architecture.research_receipt", "RunStatus"),
+    "DatasetCommitment": ("factorminer.architecture.research_receipt", "DatasetCommitment"),
+    "ReviewerState": ("factorminer.architecture.research_receipt", "ReviewerState"),
+    "SourceManifestRef": ("factorminer.architecture.research_receipt", "SourceManifestRef"),
+    "RESEARCH_RECEIPT_LIMITATIONS": (
+        "factorminer.architecture.research_receipt",
+        "RESEARCH_RECEIPT_LIMITATIONS",
+    ),
+    "derive_release_id": ("factorminer.architecture.research_receipt", "derive_release_id"),
+    "attest_research_receipt": (
+        "factorminer.architecture.research_receipt",
+        "attest_research_receipt",
+    ),
 }
 
 

@@ -416,6 +416,7 @@ def build_report_payload(
     lifecycle_source: JSONSource | None = None,
     include_mrm_pack: bool = False,
     mrm_pack: Mapping[str, Any] | None = None,
+    receipt: Mapping[str, Any] | None = None,
     significance_summary: Mapping[str, Any] | None = None,
     pbo_summary: Mapping[str, Any] | None = None,
     cpcv_summary: Mapping[str, Any] | None = None,
@@ -492,6 +493,7 @@ def build_report_payload(
         "decay": decay_rows,
         "telemetry": telemetry,
         "mrm_pack": mrm_payload,
+        "receipt": dict(receipt) if receipt else None,
         "benchmarks": [
             {
                 "label": section.label,
@@ -635,6 +637,13 @@ def render_markdown_report(payload: Mapping[str, Any]) -> str:
     lines: list[str] = []
     lines.append("# FactorMiner Static Report")
     lines.append(f"Generated at: {payload.get('generated_at', '-')}")
+    receipt = payload.get("receipt")
+    if receipt:
+        lines.append(
+            f"Evidence: release `{receipt.get('release_id', 'unknown')}` "
+            f"({receipt.get('evidence_tier', 'unknown')}) — verify offline with "
+            "`factorminer verify-receipt <release-dir>`."
+        )
     lines.append("")
 
     library = payload.get("library", {})
@@ -995,6 +1004,18 @@ def render_html_report(payload: Mapping[str, Any]) -> str:
         "<body>",
         "<h1>FactorMiner Static Report</h1>",
         f'<p class="meta">Generated at {html.escape(str(payload.get("generated_at", "-")))}</p>',
+        *(
+            [
+                '<p class="meta">Evidence: release '
+                f'<code>{html.escape(str(payload["receipt"].get("release_id", "unknown")))}</code> '
+                "("
+                f'{html.escape(str(payload["receipt"].get("evidence_tier", "unknown")))}) '
+                "— verify offline with "
+                "<code>factorminer verify-receipt &lt;release-dir&gt;</code>.</p>"
+            ]
+            if payload.get("receipt")
+            else []
+        ),
         "<section>",
         "<h2>Library Summary</h2>",
         '<div class="cards">',
@@ -1346,6 +1367,7 @@ def generate_report(
     lifecycle_source: JSONSource | None = None,
     include_mrm_pack: bool = False,
     mrm_pack: Mapping[str, Any] | None = None,
+    receipt: Mapping[str, Any] | None = None,
     format: str = "markdown",
     output_path: str | Path | None = None,
 ) -> str:
@@ -1358,6 +1380,7 @@ def generate_report(
         lifecycle_source=lifecycle_source,
         include_mrm_pack=include_mrm_pack,
         mrm_pack=mrm_pack,
+        receipt=receipt,
     )
     if format == "markdown":
         report = render_markdown_report(payload)
@@ -1383,6 +1406,7 @@ def write_report(
     lifecycle_source: JSONSource | None = None,
     include_mrm_pack: bool = False,
     mrm_pack: Mapping[str, Any] | None = None,
+    receipt: Mapping[str, Any] | None = None,
     format: str = "markdown",
 ) -> Path:
     """Generate a report and save it to ``output_path``."""
@@ -1394,6 +1418,7 @@ def write_report(
         lifecycle_source=lifecycle_source,
         include_mrm_pack=include_mrm_pack,
         mrm_pack=mrm_pack,
+        receipt=receipt,
         format=format,
         output_path=output_path,
     )

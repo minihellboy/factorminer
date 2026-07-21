@@ -611,6 +611,7 @@ class ResearchConfig:
     """Research-first multi-horizon scoring configuration."""
 
     enabled: bool = False
+    knowledge_retrieval_limit: int = 4
     primary_objective: str = "weighted_multi_horizon"
     target_aggregation: str = "weighted"
     horizon_weights: dict[str, float] = field(default_factory=dict)
@@ -621,6 +622,8 @@ class ResearchConfig:
     execution: ResearchExecutionConfig = field(default_factory=ResearchExecutionConfig)
 
     def validate(self) -> None:
+        if self.knowledge_retrieval_limit < 0:
+            raise ValueError("research.knowledge_retrieval_limit must be >= 0")
         if self.primary_objective not in (
             "single_horizon",
             "weighted_multi_horizon",

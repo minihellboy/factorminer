@@ -50,21 +50,16 @@ def _tiny_raw_panel() -> pd.DataFrame:
 
 
 def test_cli_mine_then_evaluate_golden_path(tmp_path, monkeypatch):
-    cfg = load_config()
+    cfg = _relaxed_config(load_config())
     dataset = load_runtime_dataset(_tiny_raw_panel(), cfg)
-    original_build_core_mining_config = __import__(
-        "factorminer.cli", fromlist=["_build_core_mining_config"]
-    )._build_core_mining_config
 
     monkeypatch.setattr(
-        "factorminer.cli._load_runtime_dataset_for_analysis",
+        "factorminer.cli.app._load_runtime_dataset_for_analysis",
         lambda cfg_arg, data_path, mock: dataset,
     )
     monkeypatch.setattr(
-        "factorminer.cli._build_core_mining_config",
-        lambda cfg_arg, output_dir, mock=False: _relaxed_config(
-            original_build_core_mining_config(cfg_arg, output_dir, mock=mock)
-        ),
+        "factorminer.cli.context.load_config",
+        lambda config_path=None, overrides=None: cfg,
     )
 
     output_dir = tmp_path / "golden-output"
@@ -115,8 +110,9 @@ def test_cli_mine_then_evaluate_golden_path(tmp_path, monkeypatch):
     assert "Split: test" in eval_result.output
 
 
-def _relaxed_config(mining_config):
-    mining_config.ic_threshold = 0.0
-    mining_config.icir_threshold = -1.0
-    mining_config.correlation_threshold = 1.1
-    return mining_config
+def _relaxed_config(config):
+    config.mining.ic_threshold = 0.0
+    config.mining.icir_threshold = -1.0
+    config.mining.correlation_threshold = 1.1
+    config.validate = lambda: None
+    return config

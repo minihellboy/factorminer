@@ -2,11 +2,93 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import numpy as np
 import pytest
 
 from factorminer.core.factor_library import Factor, FactorLibrary
-from factorminer.memory.experience_memory import ExperienceMemoryManager
+from factorminer.memory.defaults import create_default_memory
+from factorminer.memory.evolution import evolve_memory
+from factorminer.memory.formation import form_memory
+from factorminer.memory.retrieval import retrieve_memory
+
+
+class _MemoryPolicyHarness:
+    """Test harness over the canonical memory functions, not a runtime facade."""
+
+    def __init__(
+        self,
+        max_success_patterns: int = 20,
+        max_failure_patterns: int = 30,
+        max_insights: int = 15,
+    ) -> None:
+        self.max_success_patterns = max_success_patterns
+        self.max_failure_patterns = max_failure_patterns
+        self.max_insights = max_insights
+        self._batch_counter = 0
+        self.memory = create_default_memory()
+
+    @property
+    def version(self) -> int:
+        return self.memory.version
+
+    def retrieve(self, library_state=None, max_success=8, max_forbidden=10, max_insights=10):
+        return retrieve_memory(
+            self.memory,
+            library_state=library_state,
+            max_success=max_success,
+            max_forbidden=max_forbidden,
+            max_insights=max_insights,
+        )
+
+    def update(self, trajectory):
+        self._batch_counter += 1
+        formed = form_memory(self.memory, trajectory, self._batch_counter)
+        self.memory = evolve_memory(
+            self.memory,
+            formed,
+            max_success_patterns=self.max_success_patterns,
+            max_failure_patterns=self.max_failure_patterns,
+            max_insights=self.max_insights,
+        )
+        admitted = sum(1 for item in trajectory if item.get("admitted", False))
+        return {
+            "batch": self._batch_counter,
+            "admitted_count": admitted,
+            "rejected_count": len(trajectory) - admitted,
+            "version": self.memory.version,
+        }
+
+    def save(self, path) -> None:
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = self.memory.to_dict()
+        payload["_batch_counter"] = self._batch_counter
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    def load(self, path) -> None:
+        from factorminer.memory.memory_store import ExperienceMemory
+
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        self.memory = ExperienceMemory.from_dict(payload)
+        self._batch_counter = int(payload.get("_batch_counter", 0))
+
+    def reset(self) -> None:
+        self._batch_counter = 0
+        self.memory = create_default_memory()
+
+    def get_stats(self) -> dict:
+        return {
+            "version": self.memory.version,
+            "batch_counter": self._batch_counter,
+            "library_size": self.memory.state.library_size,
+            "success_patterns": len(self.memory.success_patterns),
+            "forbidden_directions": len(self.memory.forbidden_directions),
+            "insights": len(self.memory.insights),
+            "domain_saturation": dict(self.memory.state.domain_saturation),
+        }
 
 # ---------------------------------------------------------------------------
 # Mock data fixtures
@@ -107,8 +189,8 @@ def mock_library(rng):
 
 @pytest.fixture
 def mock_memory():
-    """ExperienceMemoryManager with default patterns initialized."""
-    return ExperienceMemoryManager(
+    """Canonical policy memory with the paper seed knowledge initialized."""
+    return _MemoryPolicyHarness(
         max_success_patterns=20,
         max_failure_patterns=30,
         max_insights=15,

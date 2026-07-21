@@ -7,6 +7,10 @@ import json
 import numpy as np
 
 from factorminer.agent.llm_interface import MockProvider
+from factorminer.architecture.research_absorption import (
+    ResearchAbsorptionService,
+    ResearchNote,
+)
 from factorminer.core.config import MiningConfig
 from factorminer.core.factor_library import Factor
 from factorminer.core.helix_loop import HelixLoop
@@ -72,6 +76,14 @@ def test_helix_run_writes_manifest_and_factor_provenance(tmp_path, small_data, m
         enable_embeddings=False,
         enable_auto_inventor=False,
     )
+    source, hypothesis = loop.research_knowledge.ingest(
+        ResearchNote(
+            "Heavy selling volume near a price low can precede a daily reversal.",
+            "provenance-test",
+        ),
+        ResearchAbsorptionService(provider),
+    )
+    assert hypothesis is not None
 
     monkeypatch.setattr(
         loop.generator,
@@ -128,4 +140,17 @@ def test_helix_run_writes_manifest_and_factor_provenance(tmp_path, small_data, m
     assert factor.provenance["loop_type"] == "helix"
     assert factor.provenance["admission"]["admitted"] is True
     assert factor.provenance["evaluation"]["ic_mean"] == 0.12
+    assert factor.provenance["memory_summary"]["source_ids"] == [source.source_id]
+    assert factor.provenance["memory_summary"]["hypothesis_ids"] == [
+        hypothesis.hypothesis_id
+    ]
+    assert len(factor.evidence_ids) == 1
+    evidence_path = output_dir / "evidence" / f"{factor.evidence_ids[0]}.json"
+    assert evidence_path.exists()
+    evidence = json.loads(evidence_path.read_text())
+    assert evidence["formula"] == factor.formula
+    assert evidence["admission_decision"]["admitted"] is True
+    assert evidence["source_ids"] == [source.source_id]
+    assert evidence["hypothesis_ids"] == [hypothesis.hypothesis_id]
+    assert len(list((output_dir / "research_knowledge" / "outcomes").glob("*.json"))) == 1
     assert library.size == 1

@@ -25,13 +25,14 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Sync dependencies
-        run: uv sync --group dev --extra llm --extra mcp
+        run: uv sync --group dev --all-extras
 
       - name: Run Ruff lint report
         run: uv run ruff check . --output-format=github
 
       - name: Check import boundaries
         run: |
+          uv run python scripts/check_architecture.py
           uv run python -c "import factorminer.evaluation.runtime as runtime; print(runtime.SignalComputationError.__name__)"
           uv run python -c "from factorminer.mcp import build_server; print(type(build_server()).__name__)"
           uv run factorminer --help
@@ -132,3 +133,10 @@ jobs:
           uv run factorminer --config /tmp/factorminer-ci-benchmark.yaml \
             -o /tmp/factorminer-ci-benchmark \
             benchmark table1 --mock --baseline factor_miner
+
+      - name: Optional receipt smoke
+        continue-on-error: true
+        run: |
+          uv run python scripts/run_phase2_benchmark.py --mock --output /tmp/factorminer-ci-receipt --n-factors 4
+          RELEASE_ID=$(cat /tmp/factorminer-ci-receipt/releases/LATEST)
+          uv run factorminer verify-receipt "/tmp/factorminer-ci-receipt/releases/$RELEASE_ID"

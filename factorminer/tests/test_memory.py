@@ -9,7 +9,6 @@ from pathlib import Path
 from factorminer.evaluation.regime import MeanRevRegime, RegimeState, TrendRegime, VolRegime
 from factorminer.memory.embeddings import FormulaEmbedder
 from factorminer.memory.evolution import bump_pattern_confidence, evolve_memory
-from factorminer.memory.experience_memory import ExperienceMemoryManager
 from factorminer.memory.formation import form_memory
 from factorminer.memory.kg_retrieval import retrieve_memory_enhanced
 from factorminer.memory.knowledge_graph import FactorKnowledgeGraph, FactorNode
@@ -359,7 +358,7 @@ class TestPersistence:
             assert "success_patterns" in data
 
             # Load into new manager
-            new_manager = ExperienceMemoryManager()
+            new_manager = mock_memory.__class__()
             new_manager.load(path)
 
             assert new_manager.version == mock_memory.version

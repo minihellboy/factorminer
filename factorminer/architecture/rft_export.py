@@ -37,12 +37,12 @@ from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
-from factorminer.architecture.dependence import (
+from factorminer.architecture.lifecycle import FactorLifecycleStore
+from factorminer.domain.dependence import (
     DependenceMetric,
     SpearmanDependenceMetric,
     build_dependence_metric,
 )
-from factorminer.architecture.lifecycle import FactorLifecycleStore
 from factorminer.evaluation.regime import (
     MarketRegime,
     RegimeClassification,
@@ -332,7 +332,7 @@ def compute_dico_reward(
     Either supply ``max_dependence`` directly (cheap path used when exporting
     from lifecycle logs that already recorded ``max_correlation``), *or*
     supply ``candidate_signals`` + ``library_signals`` so dependence is
-    measured with :mod:`factorminer.architecture.dependence`.
+    measured with :mod:`factorminer.domain.dependence`.
     """
     cfg = config or DiCoRewardConfig()
     if metric is None:

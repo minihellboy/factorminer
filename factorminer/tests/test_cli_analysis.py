@@ -162,11 +162,11 @@ def test_evaluate_recomputes_and_selects_top_k_by_train_split(tmp_path, monkeypa
     ]
 
     monkeypatch.setattr(
-        "factorminer.cli._load_runtime_dataset_for_analysis",
+        "factorminer.cli.app._load_runtime_dataset_for_analysis",
         lambda cfg, data_path, mock: dataset,
     )
     monkeypatch.setattr(
-        "factorminer.cli._recompute_analysis_artifacts",
+        "factorminer.cli.app._recompute_analysis_artifacts",
         lambda library, dataset_arg, signal_failure_policy: artifacts,
     )
 
@@ -207,11 +207,11 @@ def test_combine_uses_fit_split_for_factor_preselection(tmp_path, monkeypatch):
     captured_factor_ids: list[int] = []
 
     monkeypatch.setattr(
-        "factorminer.cli._load_runtime_dataset_for_analysis",
+        "factorminer.cli.app._load_runtime_dataset_for_analysis",
         lambda cfg, data_path, mock: dataset,
     )
     monkeypatch.setattr(
-        "factorminer.cli._recompute_analysis_artifacts",
+        "factorminer.cli.app._recompute_analysis_artifacts",
         lambda library, dataset_arg, signal_failure_policy: artifacts,
     )
 
@@ -274,11 +274,11 @@ def test_visualize_defaults_factor_specific_plots_to_split_top_factor(tmp_path, 
     quintile_paths: list[str] = []
 
     monkeypatch.setattr(
-        "factorminer.cli._load_runtime_dataset_for_analysis",
+        "factorminer.cli.app._load_runtime_dataset_for_analysis",
         lambda cfg, data_path, mock: dataset,
     )
     monkeypatch.setattr(
-        "factorminer.cli._recompute_analysis_artifacts",
+        "factorminer.cli.app._recompute_analysis_artifacts",
         lambda library, dataset_arg, signal_failure_policy: artifacts,
     )
     monkeypatch.setattr(

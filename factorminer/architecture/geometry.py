@@ -14,12 +14,12 @@ from typing import Any
 
 import numpy as np
 
-from factorminer.architecture.dependence import (
+from factorminer.core.factor_library import FactorLibrary
+from factorminer.domain.dependence import (
     library_span_basis,
     residual_alignment_score,
     spectral_compression_score,
 )
-from factorminer.core.factor_library import FactorLibrary
 
 
 @dataclass(frozen=True)

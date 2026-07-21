@@ -15,8 +15,9 @@ import pandas as pd
 import pytest
 
 from factorminer.core.factor_library import Factor, FactorLibrary
-from factorminer.core.library_io import export_anonymized, export_formulas_qlib
+from factorminer.core.library_io import export_anonymized
 from factorminer.data.loader import REQUIRED_COLUMNS
+from factorminer.data.qlib_library import export_formulas_qlib
 from factorminer.data.qlib_source import load_qlib_dump
 
 # ---------------------------------------------------------------------------

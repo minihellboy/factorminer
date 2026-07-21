@@ -1,100 +1,85 @@
-"""Canonical benchmark runtime surface.
-
-`factorminer.benchmark.runtime` is the primary benchmark API.
-Legacy Helix benchmarking helpers are preserved behind lazy, deprecated
-exports so older scripts keep working while the runtime path stays canonical.
-"""
+"""Canonical benchmark API without eager runtime initialization."""
 
 from __future__ import annotations
 
-import warnings
-from importlib import import_module
+from factorminer._lazy_exports import public_dir, resolve_export
 
-from factorminer.benchmark.runtime import (
-    BenchmarkManifest,
-    BenchmarkRuntimeContract,
-    StrategyGridBenchmarkContract,
-    StressBenchmarkContract,
-    WalkForwardBenchmarkContract,
-    build_benchmark_library,
-    build_benchmark_runtime_contract,
-    evaluate_frozen_set,
-    load_benchmark_dataset,
-    run_ablation_memory_benchmark,
-    run_ablation_strategy_benchmark,
-    run_benchmark_suite,
-    run_cost_pressure_benchmark,
-    run_cpcv_benchmark,
-    run_efficiency_benchmark,
-    run_runtime_mining_benchmark,
-    run_table1_benchmark,
-    select_frozen_top_k,
-)
-
-_LEGACY_EXPORTS = {
-    "HelixBenchmark": ("factorminer.benchmark.runtime", "HelixBenchmark"),
-    "BenchmarkResult": ("factorminer.benchmark.runtime", "BenchmarkResult"),
-    "MethodResult": ("factorminer.benchmark.runtime", "MethodResult"),
-    "DMTestResult": ("factorminer.benchmark.runtime", "DMTestResult"),
-    "StatisticalComparisonTests": (
-        "factorminer.benchmark.runtime",
+_RUNTIME_MODULE = "factorminer.benchmark.runtime"
+_CANONICAL_EXPORTS = {
+    name: _RUNTIME_MODULE
+    for name in (
+        "BenchmarkManifest",
+        "BenchmarkRuntimeContract",
+        "StrategyGridBenchmarkContract",
+        "StressBenchmarkContract",
+        "WalkForwardBenchmarkContract",
+        "build_benchmark_library",
+        "build_benchmark_runtime_contract",
+        "evaluate_frozen_set",
+        "load_benchmark_dataset",
+        "run_ablation_memory_benchmark",
+        "run_ablation_strategy_benchmark",
+        "run_benchmark_suite",
+        "run_cost_pressure_benchmark",
+        "run_cpcv_benchmark",
+        "run_efficiency_benchmark",
+        "run_runtime_mining_benchmark",
+        "run_phase2_ablation_study",
+        "run_phase2_comparison",
+        "run_table1_benchmark",
+        "select_frozen_top_k",
+    )
+}
+_STATISTICS_EXPORTS = {
+    name: "factorminer.benchmark.statistics"
+    for name in (
+        "BenchmarkResult",
+        "MethodResult",
+        "DMTestResult",
         "StatisticalComparisonTests",
-    ),
-    "SpeedBenchmark": ("factorminer.benchmark.runtime", "SpeedBenchmark"),
-    "OperatorSpeedResult": ("factorminer.benchmark.runtime", "OperatorSpeedResult"),
-    "PipelineSpeedResult": ("factorminer.benchmark.runtime", "PipelineSpeedResult"),
+        "OperatorSpeedResult",
+        "PipelineSpeedResult",
+    )
+}
+_SPEED_EXPORTS = {
+    "SpeedBenchmark": "factorminer.benchmark.speed",
+}
+_RUNNER_EXPORTS = {
+    name: "factorminer.benchmark.runners"
+    for name in (
+        "AblationStudy",
+        "AblationResult",
+        "AblatedMethodRunner",
+        "ABLATION_CONFIGS",
+        "ABLATION_LABELS",
+        "run_full_ablation_study",
+    )
+}
+_RECEIPT_EXPORTS = {
+    name: "factorminer.benchmark.receipt"
+    for name in (
+        "build_research_receipt",
+        "generate_commitment_nonce",
+        "seal_private_commitment",
+        "write_receipt",
+        "verify_research_receipt",
+        "ReceiptVerificationResult",
+    )
+}
+_EXPORTS = {
+    **_CANONICAL_EXPORTS,
+    **_STATISTICS_EXPORTS,
+    **_SPEED_EXPORTS,
+    **_RUNNER_EXPORTS,
+    **_RECEIPT_EXPORTS,
 }
 
-_OPTIONAL_EXPORTS = {
-    "AblationStudy": ("factorminer.benchmark.ablation", "AblationStudy"),
-    "AblationResult": ("factorminer.benchmark.ablation", "AblationResult"),
-    "AblatedMethodRunner": ("factorminer.benchmark.ablation", "AblatedMethodRunner"),
-    "ABLATION_CONFIGS": ("factorminer.benchmark.ablation", "ABLATION_CONFIGS"),
-    "ABLATION_LABELS": ("factorminer.benchmark.ablation", "ABLATION_LABELS"),
-    "run_full_ablation_study": ("factorminer.benchmark.ablation", "run_full_ablation_study"),
-}
+__all__ = list(_EXPORTS)
 
 
 def __getattr__(name: str):
-    if name in _LEGACY_EXPORTS:
-        warnings.warn(
-            f"factorminer.benchmark.{name} is legacy; use factorminer.benchmark.runtime instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        module_name, attr_name = _LEGACY_EXPORTS[name]
-        module = import_module(module_name)
-        value = getattr(module, attr_name)
-        globals()[name] = value
-        return value
-    if name in _OPTIONAL_EXPORTS:
-        module_name, attr_name = _OPTIONAL_EXPORTS[name]
-        module = import_module(module_name)
-        value = getattr(module, attr_name)
-        globals()[name] = value
-        return value
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return resolve_export(globals(), name, _EXPORTS)
 
 
-__all__ = [
-    "BenchmarkManifest",
-    "BenchmarkRuntimeContract",
-    "StressBenchmarkContract",
-    "StrategyGridBenchmarkContract",
-    "WalkForwardBenchmarkContract",
-    "build_benchmark_library",
-    "build_benchmark_runtime_contract",
-    "evaluate_frozen_set",
-    "load_benchmark_dataset",
-    "run_ablation_memory_benchmark",
-    "run_ablation_strategy_benchmark",
-    "run_benchmark_suite",
-    "run_cost_pressure_benchmark",
-    "run_cpcv_benchmark",
-    "run_efficiency_benchmark",
-    "run_runtime_mining_benchmark",
-    "run_table1_benchmark",
-    "select_frozen_top_k",
-    *list(_LEGACY_EXPORTS),
-    *list(_OPTIONAL_EXPORTS),
-]
+def __dir__() -> list[str]:
+    return public_dir(globals(), _EXPORTS)

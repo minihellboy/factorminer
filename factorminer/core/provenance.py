@@ -99,6 +99,8 @@ def _compact_memory_signal(memory_signal: Mapping[str, Any] | None) -> dict[str,
             memory_signal.get("forbidden_directions", [])
         ),
         "insight_count": len(memory_signal.get("insights", []) or []),
+        "source_ids": _json_safe(memory_signal.get("source_ids", [])),
+        "hypothesis_ids": _json_safe(memory_signal.get("hypothesis_ids", [])),
         "semantic_neighbors": _compact_reference_list(
             memory_signal.get("semantic_neighbors", [])
         ),
