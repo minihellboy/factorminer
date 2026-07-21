@@ -137,6 +137,23 @@ from factorminer.operators.c_backend import backend_available as c_backend_avail
 logger = logging.getLogger(__name__)
 
 
+def _industry_evidence_config(cfg, cost_bps: list[float]):
+    from factorminer.evaluation.evidence import IndustryEvidenceConfig
+
+    costs = tuple(float(value) for value in cost_bps)
+    primary_cost = 10.0 if 10.0 in costs else costs[-1]
+    return IndustryEvidenceConfig(
+        periods_per_year=float(getattr(cfg.data, "periods_per_year", 252.0)),
+        top_fraction=float(getattr(cfg.phase2.capacity, "top_fraction", 0.2)),
+        cost_bps=costs,
+        primary_cost_bps=primary_cost,
+        bootstrap_n_samples=int(cfg.phase2.significance.bootstrap_n_samples),
+        bootstrap_block_size=int(cfg.phase2.significance.bootstrap_block_size),
+        fdr_level=float(cfg.phase2.significance.fdr_level),
+        seed=int(cfg.benchmark.seed),
+    )
+
+
 def _mean_universe_metric(
     payload: dict[str, Any],
     metric_group: str,
@@ -244,11 +261,14 @@ def run_table1_benchmark(
             ic_threshold=library_cfg.mining.ic_threshold,
             correlation_threshold=library_cfg.mining.correlation_threshold,
         )
+        selection_split = (
+            "validation" if "validation" in getattr(freeze_dataset, "splits", {}) else "train"
+        )
         frozen = select_frozen_top_k(
             artifacts,
             library,
             top_k=cfg.benchmark.freeze_top_k,
-            split_name="train",
+            split_name=selection_split,
         )
 
         baseline_result = {
@@ -265,6 +285,7 @@ def run_table1_benchmark(
             "freeze_dataset_contract": dict(freeze_dataset_contract),
             "freeze_library_size": library.size,
             "freeze_stats": library_stats,
+            "selection_split": selection_split,
             "frozen_top_k": [
                 {
                     "name": artifact.name,
@@ -274,6 +295,8 @@ def run_table1_benchmark(
                     "train_ic_mean": artifact.split_stats["train"]["ic_mean"],
                     "train_ic_abs_mean": artifact.split_stats["train"]["ic_abs_mean"],
                     "train_icir": artifact.split_stats["train"]["ic_paper_icir"],
+                    "selection_ic": artifact.split_stats[selection_split]["ic_paper_mean"],
+                    "selection_icir": artifact.split_stats[selection_split]["ic_paper_icir"],
                 }
                 for artifact in frozen
             ],
@@ -291,13 +314,43 @@ def run_table1_benchmark(
                 mock=mock,
             )
             dataset_hashes[universe] = dataset_hash
+            family_ic_series = None
+            if dataset_hash == freeze_hash:
+                raw_family_series = [
+                    np.asarray(
+                        artifact.split_stats.get("test", {}).get("rank_ic_series", []),
+                        dtype=np.float64,
+                    )
+                    for artifact in artifacts
+                ]
+                test_periods = next(
+                    (int(series.size) for series in raw_family_series if series.size),
+                    0,
+                )
+                if test_periods:
+                    family_ic_series = {
+                        f"trial_{index}_{artifact.factor_id}": (
+                            series
+                            if artifact.succeeded and series.size == test_periods
+                            else np.zeros(test_periods, dtype=np.float64)
+                        )
+                        for index, (artifact, series) in enumerate(
+                            zip(artifacts, raw_family_series, strict=True)
+                        )
+                    }
             baseline_result["universes"][universe] = evaluate_frozen_set(
                 frozen,
                 dataset,
                 split_name="test",
-                fit_split="train",
+                fit_split=selection_split,
                 cost_bps=list(runtime_contract.stress.cost_bps),
                 capacity_levels=list(runtime_contract.stress.capacity_levels),
+                industry_evidence_config=_industry_evidence_config(
+                    cfg, list(runtime_contract.stress.cost_bps)
+                ),
+                n_trials=candidate_count,
+                include_capacity_evidence=bool(cfg.phase2.capacity.enabled),
+                family_ic_series=family_ic_series,
             )
 
         result_path = benchmark_dir / f"{baseline}.json"
@@ -314,6 +367,7 @@ def run_table1_benchmark(
             report_universes=list(cfg.benchmark.report_universes),
             train_period=list(cfg.data.train_period),
             test_period=list(cfg.data.test_period),
+            validation_period=list(getattr(cfg.data, "validation_period", [])),
             freeze_top_k=cfg.benchmark.freeze_top_k,
             signal_failure_policy="reject",
             default_target=cfg.data.default_target,
@@ -742,7 +796,11 @@ def run_efficiency_benchmark(cfg, output_dir: Path) -> dict:
     from factorminer.operators import torch_available
     from factorminer.operators.gpu_backend import to_tensor
     from factorminer.operators.registry import execute_operator
-    from factorminer.utils.visualization import plot_efficiency_benchmark
+
+    try:
+        from factorminer.utils.visualization import plot_efficiency_benchmark
+    except ModuleNotFoundError:
+        plot_efficiency_benchmark = None
 
     operator_bench: dict[str, dict[str, float | None]] = {"numpy": {}, "c": {}, "gpu": {}}
 
@@ -833,20 +891,21 @@ def run_efficiency_benchmark(cfg, output_dir: Path) -> dict:
             factor_bench["gpu"][formula_name] = None
 
     bench_dir = _ensure_dir(output_dir / "benchmark" / "efficiency")
-    plot_efficiency_benchmark(
-        {
-            backend: {k: v for k, v in values.items() if v is not None}
-            for backend, values in operator_bench.items()
-        },
-        save_path=str(bench_dir / "operator_efficiency.png"),
-    )
-    plot_efficiency_benchmark(
-        {
-            backend: {k: v for k, v in values.items() if v is not None}
-            for backend, values in factor_bench.items()
-        },
-        save_path=str(bench_dir / "factor_efficiency.png"),
-    )
+    if plot_efficiency_benchmark is not None:
+        plot_efficiency_benchmark(
+            {
+                backend: {k: v for k, v in values.items() if v is not None}
+                for backend, values in operator_bench.items()
+            },
+            save_path=str(bench_dir / "operator_efficiency.png"),
+        )
+        plot_efficiency_benchmark(
+            {
+                backend: {k: v for k, v in values.items() if v is not None}
+                for backend, values in factor_bench.items()
+            },
+            save_path=str(bench_dir / "factor_efficiency.png"),
+        )
     result = {
         "panel_shape": {"periods": periods, "assets": assets},
         "operator_level_ms": operator_bench,
@@ -856,6 +915,7 @@ def run_efficiency_benchmark(cfg, output_dir: Path) -> dict:
             "c": c_backend_available(),
             "gpu": torch_available(),
         },
+        "plots_available": plot_efficiency_benchmark is not None,
     }
     _write_json(bench_dir / "efficiency.json", result)
     return result
@@ -1104,9 +1164,7 @@ def run_phase2_comparison(
         per_run_tables.append(table1)
         run_roots.append(run_dir)
         for method in methods:
-            run_result = _method_result_from_runtime_payload(
-                method, table1[method], runtime_cfg
-            )
+            run_result = _method_result_from_runtime_payload(method, table1[method], runtime_cfg)
             run_result.run_id = run_id
             per_run_results[method].append(run_result)
 
@@ -1145,6 +1203,7 @@ def run_phase2_comparison(
                 "frozen_top_k": payload.get("frozen_top_k", []),
                 "library": evaluation.get("library", {}),
                 "combinations": combinations,
+                "industry_evidence": evaluation.get("industry_evidence", {}),
                 "selections": evaluation.get("selections", {}),
                 "provenance": payload.get("provenance", {}),
             }
@@ -1179,9 +1238,7 @@ def run_phase2_comparison(
     ralph_runs = per_run_results.get("ralph_loop", [])
     paired_tests: list[dict[str, Any]] = []
     if helix_runs and ralph_runs:
-        for run_id, (helix, ralph) in enumerate(
-            zip(helix_runs, ralph_runs, strict=True)
-        ):
+        for run_id, (helix, ralph) in enumerate(zip(helix_runs, ralph_runs, strict=True)):
             if helix.ic_series is None or ralph.ic_series is None:
                 continue
             paired_tests.append(
@@ -1203,8 +1260,7 @@ def run_phase2_comparison(
             "n_runs": n_runs,
             "seeds": seeds,
             "methods": {
-                method: method_result_dispersion(per_run_results[method])
-                for method in methods
+                method: method_result_dispersion(per_run_results[method]) for method in methods
             },
         }
 
@@ -1217,9 +1273,7 @@ def run_phase2_comparison(
     if n_runs > 1:
         artifacts.update(
             {
-                "runtime_roots": [
-                    str((root / "benchmark").resolve()) for root in run_roots
-                ],
+                "runtime_roots": [str((root / "benchmark").resolve()) for root in run_roots],
                 "n_runs": n_runs,
                 "seeds": seeds,
             }

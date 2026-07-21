@@ -80,6 +80,18 @@ _EXPORTS = {
             "register_futures_features",
         )
     },
+    **{
+        name: "factorminer.data.public_archive"
+        for name in (
+            "PublicArchive",
+            "PublicDatasetLock",
+            "PublicDatasetVerification",
+            "load_public_dataset_lock",
+            "lock_public_dataset_spec",
+            "prepare_public_dataset",
+            "verify_prepared_public_dataset",
+        )
+    },
 }
 
 __all__ = list(_EXPORTS)

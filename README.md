@@ -220,6 +220,9 @@ and deployment notes are in the
 | [Architecture](docs/architecture.md) | Runtime contracts, dependency direction, and package ownership |
 | [Reproducibility](docs/reproducibility.md) | Data contracts, metrics, baseline provenance, public and paper-scale workflows |
 | [Evidence protocol](docs/evidence-protocol.md) | IC definitions, inference, risk neutralization, cost stress, and report schema |
+| [Public evidence release](docs/public-evidence-release.md) | Checksum-locked public data, multi-seed run, portable release, and fresh-clone verification |
+| [Design-partner pilot](docs/design-partner-pilot.md) | Private dataset commitments and bounded external acknowledgments |
+| [Hosted pilot](docs/hosted-pilot.md) | Tenant isolation, scoped MCP, quotas, retention, incident response, and consent-based learning |
 | [Security](docs/security.md) | Connectors, MCP, model/content boundaries, persistence, secrets |
 | [License](LICENSE) | MIT license terms for the entire project |
 | [Integration guide](integrations/factor-researcher/README.md) | Agent packaging, financial-data connectors, deployment guardrails |

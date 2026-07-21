@@ -1,0 +1,52 @@
+dataset_id: binance-spot-daily-frozen12-2023-2024-v1
+provider: Binance public data archive
+asset_class: crypto
+frequency: daily
+periods_per_year: 365
+liquidity_evidence: true
+interval: 1d
+target:
+  name: next_close
+  entry_delay_bars: 0
+  holding_bars: 1
+  price_pair: close_to_close
+  return_transform: simple
+start_month: 2023-01
+end_month: 2024-12
+start: "2023-01-01T00:00:00Z"
+end: "2024-12-31T23:59:59Z"
+assets:
+  - ADAUSDT
+  - BNBUSDT
+  - BTCUSDT
+  - DOGEUSDT
+  - DOTUSDT
+  - ETHUSDT
+  - LINKUSDT
+  - LTCUSDT
+  - SOLUSDT
+  - TRXUSDT
+  - XLMUSDT
+  - XRPUSDT
+allowed_hosts:
+  - data.binance.vision
+url_template: "https://data.binance.vision/data/spot/monthly/klines/{asset}/{interval}/{asset}-{interval}-{period}.zip"
+checksum_suffix: .CHECKSUM
+parser: binance_spot_kline_zip
+license:
+  data_license_class: publicly_retrievable
+  redistribution_status: not_asserted
+  source_url: https://github.com/binance/binance-public-data
+  terms_url: https://github.com/binance/binance-spot-api-docs/blob/master/PROD-TERMS-OF-USE.md
+  distribution_policy: Fetch exact archives from the provider; do not redistribute raw files without a separate confirmed grant.
+universe:
+  selection: frozen named asset list
+  frozen_at: "2026-07-21T00:00:00Z"
+  quote_asset: USDT
+  membership_policy: Constant membership across the evaluated period.
+availability_lag: Monthly archive files are consumed only after the full month is complete and the provider checksum is available.
+point_in_time_limitations:
+  - The universe was frozen after the evaluated period and therefore has survivorship and ex-post selection risk.
+  - Exchange listing, delisting, symbol migration, and venue availability are not reconstructed point in time.
+  - Results describe one crypto venue and are not evidence for equities or other asset classes.
+  - Archive corrections remain possible; the committed lock pins the exact provider versions used.

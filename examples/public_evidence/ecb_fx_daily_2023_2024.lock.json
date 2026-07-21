@@ -1,0 +1,162 @@
+{
+  "allowed_hosts": [
+    "data-api.ecb.europa.eu"
+  ],
+  "archives": [
+    {
+      "asset_id": "AUD",
+      "checksum_source": "content_sha256",
+      "parser": "ecb_exchange_rate_csv",
+      "period": "2023-2024",
+      "sha256": "c6634fe636a16bc04a7861b347a55823b946e6d715369657892a5800d2011517",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.AUD.EUR.SP00.A?startPeriod=2023-01-01&endPeriod=2024-12-31&format=csvdata"
+    },
+    {
+      "asset_id": "CAD",
+      "checksum_source": "content_sha256",
+      "parser": "ecb_exchange_rate_csv",
+      "period": "2023-2024",
+      "sha256": "fb3da676f830ec7f5582fdcffe5fb5d3e402e4464e8c1747bc7ea2421e2441c9",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.CAD.EUR.SP00.A?startPeriod=2023-01-01&endPeriod=2024-12-31&format=csvdata"
+    },
+    {
+      "asset_id": "CHF",
+      "checksum_source": "content_sha256",
+      "parser": "ecb_exchange_rate_csv",
+      "period": "2023-2024",
+      "sha256": "80c99d5745123f074fe557a5d1b1b086f275d5ba00a8d0f7e26f94754f00ee48",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.CHF.EUR.SP00.A?startPeriod=2023-01-01&endPeriod=2024-12-31&format=csvdata"
+    },
+    {
+      "asset_id": "CNY",
+      "checksum_source": "content_sha256",
+      "parser": "ecb_exchange_rate_csv",
+      "period": "2023-2024",
+      "sha256": "ea5121e1cb76241b1fd63c194736e3a3f584b4e8f20217bf90d78022447d4bcb",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.CNY.EUR.SP00.A?startPeriod=2023-01-01&endPeriod=2024-12-31&format=csvdata"
+    },
+    {
+      "asset_id": "CZK",
+      "checksum_source": "content_sha256",
+      "parser": "ecb_exchange_rate_csv",
+      "period": "2023-2024",
+      "sha256": "db2d99cf48e4312f2394c05658623819608293b16e509d9bf6682d79bbc2a106",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.CZK.EUR.SP00.A?startPeriod=2023-01-01&endPeriod=2024-12-31&format=csvdata"
+    },
+    {
+      "asset_id": "DKK",
+      "checksum_source": "content_sha256",
+      "parser": "ecb_exchange_rate_csv",
+      "period": "2023-2024",
+      "sha256": "a435c80f5f103d661bbf82046f353bf541a9335aa031e9da183df0b103346edc",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.DKK.EUR.SP00.A?startPeriod=2023-01-01&endPeriod=2024-12-31&format=csvdata"
+    },
+    {
+      "asset_id": "GBP",
+      "checksum_source": "content_sha256",
+      "parser": "ecb_exchange_rate_csv",
+      "period": "2023-2024",
+      "sha256": "5d2138a362d9d420ed0f6e2f0cab2cd95085073768348097ec4d4ad451b7f304",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.GBP.EUR.SP00.A?startPeriod=2023-01-01&endPeriod=2024-12-31&format=csvdata"
+    },
+    {
+      "asset_id": "HUF",
+      "checksum_source": "content_sha256",
+      "parser": "ecb_exchange_rate_csv",
+      "period": "2023-2024",
+      "sha256": "424763f28fade8ac496f4f99928ebecf6a4f923651b4589b381e0c01fe7da8b6",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.HUF.EUR.SP00.A?startPeriod=2023-01-01&endPeriod=2024-12-31&format=csvdata"
+    },
+    {
+      "asset_id": "JPY",
+      "checksum_source": "content_sha256",
+      "parser": "ecb_exchange_rate_csv",
+      "period": "2023-2024",
+      "sha256": "e3c2f802fcf6c14c47796c5b5d26f0581dcfcf404b2d3c4868b3181ae912b67f",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.JPY.EUR.SP00.A?startPeriod=2023-01-01&endPeriod=2024-12-31&format=csvdata"
+    },
+    {
+      "asset_id": "NOK",
+      "checksum_source": "content_sha256",
+      "parser": "ecb_exchange_rate_csv",
+      "period": "2023-2024",
+      "sha256": "76fcd23745376db5471b3a0bd826cc49c94ba8bffd4666de99d77d520b215926",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.NOK.EUR.SP00.A?startPeriod=2023-01-01&endPeriod=2024-12-31&format=csvdata"
+    },
+    {
+      "asset_id": "SEK",
+      "checksum_source": "content_sha256",
+      "parser": "ecb_exchange_rate_csv",
+      "period": "2023-2024",
+      "sha256": "493785e5562dd045006c842f628c1b7dcc88094bc937caaacfa78ce22f4e14a1",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.SEK.EUR.SP00.A?startPeriod=2023-01-01&endPeriod=2024-12-31&format=csvdata"
+    },
+    {
+      "asset_id": "USD",
+      "checksum_source": "content_sha256",
+      "parser": "ecb_exchange_rate_csv",
+      "period": "2023-2024",
+      "sha256": "b307f4dd43dacbe9a93ac62fd440037bd1daed9d10411e6a7aae3aae3884d811",
+      "url": "https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?startPeriod=2023-01-01&endPeriod=2024-12-31&format=csvdata"
+    }
+  ],
+  "asset_class": "fx",
+  "assets": [
+    "AUD",
+    "CAD",
+    "CHF",
+    "CNY",
+    "CZK",
+    "DKK",
+    "GBP",
+    "HUF",
+    "JPY",
+    "NOK",
+    "SEK",
+    "USD"
+  ],
+  "availability_lag": "Daily reference observations are treated as available only after their approximately 16:00 CET provider publication; each observation may inform only subsequent reference observations.",
+  "dataset_id": "ecb-fx-daily-frozen12-2023-2024-v1",
+  "end": "2024-12-31T23:59:59Z",
+  "frequency": "daily",
+  "interval": "1d",
+  "license": {
+    "attribution": "Source: European Central Bank; rates inverted and schema fields derived by FactorMiner.",
+    "data_license_class": "redistributable_with_attribution",
+    "distribution_policy": "Reproduce the information accurately, cite the ECB, and state every modification.",
+    "redistribution_status": "allowed",
+    "source_url": "https://data.ecb.europa.eu/data/datasets/EXR",
+    "terms_url": "https://www.ecb.europa.eu/services/using-our-site/disclaimer/html/index.en.html"
+  },
+  "liquidity_evidence": false,
+  "periods_per_year": 252.0,
+  "point_in_time_limitations": [
+    "ECB reference rates are reference observations, not executable market closes or venue fills.",
+    "No spread, volume, depth, borrow, or capacity data is supplied; liquidity and capacity gates remain unavailable.",
+    "The currency universe was selected after the evaluation period and carries ex-post selection risk.",
+    "Provider revisions remain possible; the committed content hashes pin the exact CSV responses used.",
+    "Non-publication dates remain absent rather than being forward-filled.",
+    "Normalized 00:00 UTC timestamps are observation-date labels, not publication timestamps; availability is after the stated provider publication time."
+  ],
+  "provider": "European Central Bank Data Portal",
+  "schema_version": 2,
+  "start": "2023-01-01T00:00:00Z",
+  "target": {
+    "entry_delay_bars": 0,
+    "holding_bars": 1,
+    "name": "next_close",
+    "price_pair": "close_to_close",
+    "return_transform": "simple"
+  },
+  "transformations": [
+    "OBS_VALUE (foreign-currency units per EUR) is inverted to EUR per foreign-currency unit.",
+    "The daily reference observation is mapped to equal open, high, low, and close fields.",
+    "Volume is set to one and amount to close only as schema placeholders; neither is liquidity evidence."
+  ],
+  "universe": {
+    "denominator": "EUR",
+    "frozen_at": "2026-07-21T00:00:00Z",
+    "membership_policy": "Constant membership across the evaluated period.",
+    "selection": "frozen named currency list"
+  }
+}

@@ -114,6 +114,12 @@ The static bearer token is a single-operator/trusted-network control. It does
 not provide user identity, roles, tenant isolation, or per-tool authorization;
 do not expose the development listener as a public multi-tenant service.
 
+The separate `hosted-pilot serve` surface adds tenant-bound scoped credentials,
+durable allow-listed jobs, quotas, retention, and consent controls. Its threat
+model and operator runbook are in [Hosted pilot security and
+operations](hosted-pilot.md). The local server and hosted server must never be
+routed through the same public endpoint.
+
 Every tool description states its argument/result shape and the research-only
 contract. Tool functions return structured JSON and never invoke a trading or
 broker endpoint. Deployment details are in the

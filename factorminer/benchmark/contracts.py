@@ -47,6 +47,7 @@ class BenchmarkManifest:
     dataset_hashes: dict[str, str]
     artifact_paths: dict[str, str]
     runtime_contract: dict[str, Any] = field(default_factory=dict)
+    validation_period: list[str] = field(default_factory=list)
     baseline_provenance: dict[str, dict[str, Any]] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
 
@@ -65,6 +66,10 @@ class WalkForwardBenchmarkContract:
     default_target: str = "paper"
     signal_failure_policy: str = "reject"
     dataset_contract: dict[str, Any] = field(default_factory=dict)
+    validation_period: list[str] = field(default_factory=list)
+    selection_split: str = "train"
+    purge_bars: int = 0
+    embargo_bars: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return json_safe(asdict(self))
