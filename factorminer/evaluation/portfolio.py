@@ -66,18 +66,20 @@ class PortfolioBacktester:
         for t in range(T):
             sig_t = combined_signal[t]
             ret_t = returns[t]
-            valid = np.isfinite(sig_t) & np.isfinite(ret_t)
-            n_valid = valid.sum()
-            if n_valid < 5:
+            eligible = np.isfinite(sig_t)
+            n_eligible = int(eligible.sum())
+            if n_eligible < 5:
                 continue
-            ranks = _rank_array(sig_t[valid])
+            ranks = _rank_array(sig_t[eligible])
+            eligible_returns = ret_t[eligible]
             boundaries = np.linspace(0, 1, 6)
             for q in range(5):
                 mask = (ranks >= boundaries[q]) & (ranks < boundaries[q + 1])
                 if q == 4:
                     mask = (ranks >= boundaries[q]) & (ranks <= boundaries[q + 1])
-                if mask.sum() > 0:
-                    quintile_returns[t, q] = np.mean(ret_t[valid][mask])
+                bucket_returns = eligible_returns[mask]
+                if mask.any() and np.all(np.isfinite(bucket_returns)):
+                    quintile_returns[t, q] = np.mean(bucket_returns)
 
         # Turnover for cost adjustment
         turnover = self.compute_turnover(combined_signal, top_fraction=0.2)
@@ -111,18 +113,14 @@ class PortfolioBacktester:
             ic_win_rate = 0.0
 
         finite_pearson_ic = pearson_ic_series[np.isfinite(pearson_ic_series)]
-        pearson_ic_mean = (
-            float(np.mean(finite_pearson_ic)) if finite_pearson_ic.size else 0.0
-        )
+        pearson_ic_mean = float(np.mean(finite_pearson_ic)) if finite_pearson_ic.size else 0.0
         pearson_icir = compute_icir(pearson_ic_series)
 
         # Mean quintile returns
         q_means = [_finite_mean_or_nan(quintile_returns[:, q]) for q in range(5)]
 
         # Monotonicity: fraction of adjacent quintile pairs in correct order
-        correct_pairs = sum(
-            1 for i in range(4) if q_means[i] < q_means[i + 1]
-        )
+        correct_pairs = sum(1 for i in range(4) if q_means[i] < q_means[i + 1])
         monotonicity = correct_pairs / 4.0
 
         return {
@@ -185,7 +183,9 @@ class PortfolioBacktester:
         results: dict[float, dict] = {}
         for cost_bps in cost_settings:
             results[cost_bps] = self.quintile_backtest(
-                combined_signal, returns, transaction_cost_bps=cost_bps,
+                combined_signal,
+                returns,
+                transaction_cost_bps=cost_bps,
             )
         return results
 
@@ -246,6 +246,7 @@ class PortfolioBacktester:
 # ------------------------------------------------------------------
 # Module-level helpers
 # ------------------------------------------------------------------
+
 
 def _finite_mean_or_nan(values: np.ndarray) -> float:
     """Return the finite-value mean, or NaN without an empty-slice warning."""

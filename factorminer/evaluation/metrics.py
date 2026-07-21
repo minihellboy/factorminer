@@ -54,13 +54,9 @@ def _compute_cross_sectional_correlation(
             y = rankdata(y)
         x_centered = x - x.mean()
         y_centered = y - y.mean()
-        denominator = np.sqrt(
-            np.dot(x_centered, x_centered) * np.dot(y_centered, y_centered)
-        )
+        denominator = np.sqrt(np.dot(x_centered, x_centered) * np.dot(y_centered, y_centered))
         series[period] = (
-            float(np.dot(x_centered, y_centered) / denominator)
-            if denominator > 1e-12
-            else 0.0
+            float(np.dot(x_centered, y_centered) / denominator) if denominator > 1e-12 else 0.0
         )
     return series
 
@@ -124,7 +120,7 @@ def compute_ic_vectorized(signals: np.ndarray, returns: np.ndarray) -> np.ndarra
     ic_series = np.full(T, np.nan, dtype=np.float64)
 
     # Mask invalid entries
-    invalid = np.isnan(signals) | np.isnan(returns)
+    invalid = ~np.isfinite(signals) | ~np.isfinite(returns)
 
     # Rank each column independently (replace NaN with very large value to push to end)
     big = 1e18
@@ -140,7 +136,7 @@ def compute_ic_vectorized(signals: np.ndarray, returns: np.ndarray) -> np.ndarra
         rr = rankdata(ret_filled[valid, t])
         rs_m = rs - rs.mean()
         rr_m = rr - rr.mean()
-        denom = np.sqrt((rs_m ** 2).sum() * (rr_m ** 2).sum())
+        denom = np.sqrt((rs_m**2).sum() * (rr_m**2).sum())
         ic_series[t] = (rs_m * rr_m).sum() / denom if denom > 1e-12 else 0.0
 
     return ic_series
@@ -151,6 +147,7 @@ def compute_ic_vectorized(signals: np.ndarray, returns: np.ndarray) -> np.ndarra
 # ---------------------------------------------------------------------------
 
 METRIC_VERSION = "paper_ic_v2"
+
 
 def compute_icir(ic_series: np.ndarray) -> float:
     """Compute ICIR = mean(IC) / std(IC).
@@ -231,6 +228,7 @@ def compute_ic_win_rate(ic_series: np.ndarray) -> float:
 # Cross-factor correlation
 # ---------------------------------------------------------------------------
 
+
 def compute_pairwise_correlation(
     signals_a: np.ndarray,
     signals_b: np.ndarray,
@@ -255,7 +253,7 @@ def compute_pairwise_correlation(
     for t in range(T):
         a = signals_a[:, t]
         b = signals_b[:, t]
-        valid = ~(np.isnan(a) | np.isnan(b))
+        valid = np.isfinite(a) & np.isfinite(b)
         n = valid.sum()
         if n < 5:
             continue
@@ -263,7 +261,7 @@ def compute_pairwise_correlation(
         rb = rankdata(b[valid])
         ra_m = ra - ra.mean()
         rb_m = rb - rb.mean()
-        denom = np.sqrt((ra_m ** 2).sum() * (rb_m ** 2).sum())
+        denom = np.sqrt((ra_m**2).sum() * (rb_m**2).sum())
         if denom < 1e-12:
             corrs.append(0.0)
         else:
@@ -277,6 +275,7 @@ def compute_pairwise_correlation(
 # ---------------------------------------------------------------------------
 # Quintile analysis
 # ---------------------------------------------------------------------------
+
 
 def compute_quintile_returns(
     signals: np.ndarray,
@@ -300,19 +299,17 @@ def compute_quintile_returns(
     """
     M, T = signals.shape
     # Accumulate per-quintile return sums
-    quintile_returns: dict[int, list[float]] = {
-        q: [] for q in range(1, n_quantiles + 1)
-    }
+    quintile_returns: dict[int, list[float]] = {q: [] for q in range(1, n_quantiles + 1)}
 
     for t in range(T):
         s = signals[:, t]
         r = returns[:, t]
-        valid = ~(np.isnan(s) | np.isnan(r))
-        n = valid.sum()
+        eligible = np.isfinite(s)
+        n = int(eligible.sum())
         if n < n_quantiles:
             continue
-        s_valid = s[valid]
-        r_valid = r[valid]
+        s_valid = s[eligible]
+        r_eligible = r[eligible]
         # Assign quintile labels via rank
         ranks = rankdata(s_valid)
         # Map to quintile: ceil(rank / n * n_quantiles), clamped
@@ -323,8 +320,9 @@ def compute_quintile_returns(
         )
         for q in range(1, n_quantiles + 1):
             mask = q_labels == q
-            if mask.any():
-                quintile_returns[q].append(float(np.mean(r_valid[mask])))
+            bucket_returns = r_eligible[mask]
+            if mask.any() and np.all(np.isfinite(bucket_returns)):
+                quintile_returns[q].append(float(np.mean(bucket_returns)))
 
     result = {}
     means = {}
@@ -349,7 +347,7 @@ def compute_quintile_returns(
         rr = rankdata(q_returns)
         rq_m = rq - rq.mean()
         rr_m = rr - rr.mean()
-        denom = np.sqrt((rq_m ** 2).sum() * (rr_m ** 2).sum())
+        denom = np.sqrt((rq_m**2).sum() * (rr_m**2).sum())
         result["monotonicity"] = float((rq_m * rr_m).sum() / denom) if denom > 1e-12 else 0.0
 
     return result
@@ -358,6 +356,7 @@ def compute_quintile_returns(
 # ---------------------------------------------------------------------------
 # Turnover
 # ---------------------------------------------------------------------------
+
 
 def compute_turnover(signals: np.ndarray, top_fraction: float = 0.2) -> float:
     """Compute average portfolio turnover rate.
@@ -383,7 +382,7 @@ def compute_turnover(signals: np.ndarray, top_fraction: float = 0.2) -> float:
     prev_top = None
     for t in range(T):
         col = signals[:, t]
-        valid = ~np.isnan(col)
+        valid = np.isfinite(col)
         if valid.sum() < k:
             prev_top = None
             continue
@@ -406,6 +405,7 @@ def compute_turnover(signals: np.ndarray, top_fraction: float = 0.2) -> float:
 # ---------------------------------------------------------------------------
 # Comprehensive factor statistics
 # ---------------------------------------------------------------------------
+
 
 def compute_factor_stats(
     signals: np.ndarray,
@@ -440,9 +440,7 @@ def compute_factor_stats(
         "icir": compute_icir(rank_ic_series),
         "ic_paper_icir": compute_ic_paper_icir(rank_ic_series),
         "ic_win_rate": compute_ic_win_rate(rank_ic_series),
-        "ic_std": (
-            float(np.std(valid_rank_ic, ddof=1)) if len(valid_rank_ic) > 2 else 0.0
-        ),
+        "ic_std": (float(np.std(valid_rank_ic, ddof=1)) if len(valid_rank_ic) > 2 else 0.0),
         "n_periods": int((~np.isnan(rank_ic_series)).sum()),
         "rank_ic_series": rank_ic_series,
         "rank_ic_mean": compute_ic_mean(rank_ic_series),
@@ -451,9 +449,7 @@ def compute_factor_stats(
         "rank_icir": compute_icir(rank_ic_series),
         "rank_ic_paper_icir": compute_ic_paper_icir(rank_ic_series),
         "rank_ic_win_rate": compute_ic_win_rate(rank_ic_series),
-        "rank_ic_std": (
-            float(np.std(valid_rank_ic, ddof=1)) if len(valid_rank_ic) > 2 else 0.0
-        ),
+        "rank_ic_std": (float(np.std(valid_rank_ic, ddof=1)) if len(valid_rank_ic) > 2 else 0.0),
         "rank_ic_n_periods": int((~np.isnan(rank_ic_series)).sum()),
         "pearson_ic_series": pearson_ic_series,
         "pearson_ic_mean": compute_ic_mean(pearson_ic_series),
@@ -463,9 +459,7 @@ def compute_factor_stats(
         "pearson_ic_paper_icir": compute_ic_paper_icir(pearson_ic_series),
         "pearson_ic_win_rate": compute_ic_win_rate(pearson_ic_series),
         "pearson_ic_std": (
-            float(np.std(valid_pearson_ic, ddof=1))
-            if len(valid_pearson_ic) > 2
-            else 0.0
+            float(np.std(valid_pearson_ic, ddof=1)) if len(valid_pearson_ic) > 2 else 0.0
         ),
         "pearson_ic_n_periods": int((~np.isnan(pearson_ic_series)).sum()),
     }

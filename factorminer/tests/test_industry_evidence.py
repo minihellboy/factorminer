@@ -183,6 +183,16 @@ def test_portfolio_backtest_retains_rankic_alias_and_adds_pearson():
     assert result["pearson_ic_mean"] > 0.0
 
 
+def test_portfolio_membership_does_not_use_future_return_availability():
+    signals = np.arange(10, dtype=np.float64)[None, :]
+    returns = np.ones_like(signals)
+    returns[0, -1] = np.nan
+
+    result = PortfolioBacktester().quintile_backtest(signals, returns)
+
+    assert np.isnan(result["q5_return"])
+
+
 def test_evidence_rejects_misaligned_panels():
     with pytest.raises(ValueError, match="identical shapes"):
         evaluate_industry_evidence(
