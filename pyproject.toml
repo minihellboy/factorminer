@@ -62,7 +62,7 @@ visualization = [
     "tabulate>=0.9",
 ]
 mcp = [
-    "mcp>=1.2",
+    "mcp>=1.27,<2",
 ]
 dev = [
     "pytest>=7.0",
@@ -85,7 +85,7 @@ all = [
     "matplotlib>=3.7",
     "seaborn>=0.12",
     "tabulate>=0.9",
-    "mcp>=1.2",
+    "mcp>=1.27,<2",
     "pytest>=7.0",
     "pytest-cov",
     "ruff",

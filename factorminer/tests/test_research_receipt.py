@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import FrozenInstanceError, replace
+from pathlib import Path
 
 import pytest
 
@@ -18,6 +20,7 @@ from factorminer.architecture.research_receipt import (
 from factorminer.benchmark.receipt import (
     build_research_receipt,
     generate_commitment_key,
+    publish_portable_bundle,
     verify_research_receipt,
     write_receipt,
 )
@@ -129,6 +132,15 @@ def test_construction_enforces_tier_license_and_commitment_scheme() -> None:
                 data_license_class="proprietary_licensed",
             )
         )
+
+    public = ExternalResearchReceipt(
+        **_base_kwargs(
+            evidence_tier=EvidenceTier.PUBLIC_REPRODUCIBLE,
+            dataset_commitment=DatasetCommitment(scheme="sha256", digest="d" * 64),
+            data_license_class="publicly_retrievable",
+        )
+    )
+    assert public.data_license_class == "publicly_retrievable"
     with pytest.raises(ValueError, match="hmac-sha256"):
         ExternalResearchReceipt(
             **_base_kwargs(
@@ -175,6 +187,16 @@ def test_verify_receipt_recomputes_release_id_from_content(tmp_path) -> None:
     result = verify_research_receipt(receipt_path.parent)
     assert result.passed is False
     assert any("content mismatch" in mismatch for mismatch in result.mismatches)
+
+
+def test_verify_receipt_rejects_invalid_json_without_crashing(tmp_path) -> None:
+    release_dir = tmp_path / ("a" * 64)
+    release_dir.mkdir()
+    (release_dir / "receipt.json").write_text("{not-json")
+
+    result = verify_research_receipt(release_dir)
+    assert result.passed is False
+    assert "cannot be read as JSON" in result.mismatches[0]
 
 
 def test_builder_refuses_missing_artifact(tmp_path) -> None:
@@ -257,3 +279,151 @@ def test_private_commitment_requires_witness_without_exposing_key(tmp_path) -> N
         ).passed
         is False
     )
+
+
+def test_portable_bundle_verifies_after_relocation_and_source_removal(tmp_path) -> None:
+    producer = tmp_path / "producer"
+    producer.mkdir()
+    receipt, _, _, _ = _build_fixture(producer, runtime_manifest=True)
+    receipt_path = publish_portable_bundle(
+        receipt,
+        phase2_manifest=json.loads((producer / "phase2_manifest.json").read_text()),
+        releases_root=tmp_path / "releases",
+    )
+    payload = json.loads(receipt_path.read_text())
+    manifest = json.loads((receipt_path.parent / "manifest.json").read_text())
+    assert payload["source_manifest"]["path"] == "manifest.json"
+    assert all(not Path(path).is_absolute() for path in manifest["artifact_paths"].values())
+    assert all(
+        not Path(path).is_absolute()
+        for ref in manifest["runtime_manifest_refs"]
+        for path in ref["artifact_paths"].values()
+    )
+    serialized_json = "\n".join(
+        path.read_text() for path in receipt_path.parent.rglob("*.json")
+    )
+    assert str(producer) not in serialized_json
+
+    relocated = tmp_path / "relocated" / receipt_path.parent.name
+    relocated.parent.mkdir()
+    shutil.move(receipt_path.parent, relocated)
+    shutil.rmtree(producer)
+
+    result = verify_research_receipt(relocated)
+    assert result.passed is True, result.mismatches
+
+
+def test_portable_public_bundle_can_verify_bundled_dataset(tmp_path) -> None:
+    producer = tmp_path / "producer"
+    producer.mkdir()
+    data_path = producer / "public.csv"
+    data_path.write_text("date,value\n2026-01-01,1\n")
+    receipt, manifest_path, _, _ = _build_fixture(
+        producer,
+        evidence_tier=EvidenceTier.PUBLIC_REPRODUCIBLE,
+        data_license_class="public_domain",
+        data_path=data_path,
+    )
+    receipt_path = publish_portable_bundle(
+        receipt,
+        phase2_manifest=json.loads(manifest_path.read_text()),
+        releases_root=tmp_path / "releases",
+        commitment_input=data_path,
+        include_commitment_input=True,
+    )
+    shutil.rmtree(producer)
+
+    result = verify_research_receipt(receipt_path.parent)
+    assert result.passed is True, result.mismatches
+    payload = json.loads(receipt_path.read_text())
+    bundled = receipt_path.parent / payload["dataset_descriptor"]["bundle_path"]
+    assert bundled.read_text() == "date,value\n2026-01-01,1\n"
+
+
+def test_portable_public_bundle_refuses_unlicensed_redistribution(tmp_path) -> None:
+    data_path = tmp_path / "publicly-retrievable.csv"
+    data_path.write_text("date,value\n2026-01-01,1\n")
+    receipt, manifest_path, _, _ = _build_fixture(
+        tmp_path,
+        evidence_tier=EvidenceTier.PUBLIC_REPRODUCIBLE,
+        data_license_class="publicly_retrievable",
+        data_path=data_path,
+    )
+    with pytest.raises(ValueError, match="does not permit public bundling"):
+        publish_portable_bundle(
+            receipt,
+            phase2_manifest=json.loads(manifest_path.read_text()),
+            releases_root=tmp_path / "releases",
+            commitment_input=data_path,
+            include_commitment_input=True,
+        )
+
+
+def test_portable_bundle_refuses_private_dataset_copy(tmp_path) -> None:
+    data_path = tmp_path / "private.csv"
+    data_path.write_text("date,value\n2026-01-01,1\n")
+    receipt, manifest_path, _, _ = _build_fixture(
+        tmp_path,
+        evidence_tier=EvidenceTier.PRIVATE_PARTNER_OBSERVED,
+        data_license_class="proprietary_licensed",
+        data_path=data_path,
+        commitment_key=generate_commitment_key(),
+    )
+    with pytest.raises(ValueError, match="only public_reproducible"):
+        publish_portable_bundle(
+            receipt,
+            phase2_manifest=json.loads(manifest_path.read_text()),
+            releases_root=tmp_path / "releases",
+            commitment_input=data_path,
+            include_commitment_input=True,
+        )
+
+
+def test_portable_bundle_detects_bundled_artifact_tampering(tmp_path) -> None:
+    receipt, manifest_path, _, _ = _build_fixture(tmp_path)
+    receipt_path = publish_portable_bundle(
+        receipt,
+        phase2_manifest=json.loads(manifest_path.read_text()),
+        releases_root=tmp_path / "releases",
+    )
+    manifest = json.loads((receipt_path.parent / "manifest.json").read_text())
+    artifact = receipt_path.parent / manifest["artifact_paths"]["html_report"]
+    artifact.write_text("tampered")
+
+    result = verify_research_receipt(receipt_path.parent)
+    assert result.passed is False
+    assert any("phase2/html_report" in mismatch for mismatch in result.mismatches)
+
+
+def test_portable_bundle_verifier_rejects_manifest_path_escape(tmp_path) -> None:
+    receipt, manifest_path, _, _ = _build_fixture(tmp_path)
+    receipt_path = publish_portable_bundle(
+        receipt,
+        phase2_manifest=json.loads(manifest_path.read_text()),
+        releases_root=tmp_path / "releases",
+    )
+    bundled_manifest_path = receipt_path.parent / "manifest.json"
+    bundled_manifest = json.loads(bundled_manifest_path.read_text())
+    bundled_manifest["artifact_paths"]["html_report"] = "../../outside.html"
+    bundled_manifest_path.write_text(json.dumps(bundled_manifest))
+
+    result = verify_research_receipt(receipt_path.parent)
+    assert result.passed is False
+    assert any("invalid artifact path" in mismatch for mismatch in result.mismatches)
+
+
+def test_portable_bundle_verifier_rejects_absolute_artifact_path(tmp_path) -> None:
+    receipt, manifest_path, _, _ = _build_fixture(tmp_path)
+    receipt_path = publish_portable_bundle(
+        receipt,
+        phase2_manifest=json.loads(manifest_path.read_text()),
+        releases_root=tmp_path / "releases",
+    )
+    bundled_manifest_path = receipt_path.parent / "manifest.json"
+    bundled_manifest = json.loads(bundled_manifest_path.read_text())
+    bundled_manifest["artifact_paths"]["html_report"] = str(tmp_path / "outside.html")
+    bundled_manifest_path.write_text(json.dumps(bundled_manifest))
+
+    result = verify_research_receipt(receipt_path.parent)
+    assert result.passed is False
+    assert any("portable bundle paths must be relative" in item for item in result.mismatches)

@@ -14,8 +14,11 @@ import_module("factorminer.cli.analysis_commands")
 import_module("factorminer.cli.benchmark_commands")
 import_module("factorminer.cli.data_commands")
 import_module("factorminer.cli.integration_commands")
+import_module("factorminer.cli.hosted_commands")
 _mining_commands = import_module("factorminer.cli.mining_commands")
+import_module("factorminer.cli.partner_review_commands")
 import_module("factorminer.cli.receipt_commands")
+import_module("factorminer.cli.public_data_commands")
 import_module("factorminer.cli.research_commands")
 
 main = _app.main

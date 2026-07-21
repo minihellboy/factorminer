@@ -32,6 +32,8 @@ _DATA_LICENSE_CLASSES = frozenset(
     {
         "proprietary_licensed",
         "public_domain",
+        "publicly_retrievable",
+        "redistributable_with_attribution",
         "synthetic",
         "unknown",
         "vendor_redistributable_sample",
@@ -137,6 +139,8 @@ class ExternalResearchReceipt:
                 )
             if self.data_license_class not in {
                 "public_domain",
+                "publicly_retrievable",
+                "redistributable_with_attribution",
                 "vendor_redistributable_sample",
             }:
                 raise ValueError(

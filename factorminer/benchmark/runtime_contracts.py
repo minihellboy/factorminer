@@ -63,6 +63,10 @@ def _build_walk_forward_contract(
         default_target=str(cfg.data.default_target),
         signal_failure_policy="reject",
         dataset_contract=dict(freeze_dataset_contract),
+        validation_period=list(getattr(cfg.data, "validation_period", [])),
+        selection_split=("validation" if getattr(cfg.data, "validation_period", []) else "train"),
+        purge_bars=int(getattr(cfg.data, "purge_bars", 0)),
+        embargo_bars=int(getattr(cfg.data, "embargo_bars", 0)),
     )
 
 
@@ -178,6 +182,7 @@ def _benchmark_dataset_contract(cfg, dataset: Any) -> dict[str, Any]:
             for name, spec in target_specs.items()
         },
         "train_period": list(getattr(cfg.data, "train_period", [])),
+        "validation_period": list(getattr(cfg.data, "validation_period", [])),
         "test_period": list(getattr(cfg.data, "test_period", [])),
         "asset_count": int(_safe_len(getattr(dataset, "asset_ids", None))),
         "period_count": int(_safe_len(getattr(dataset, "timestamps", None))),

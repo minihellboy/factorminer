@@ -91,6 +91,9 @@ class DataConfig:
     train_period: list[str] = field(
         default_factory=lambda: ["2024-01-01", "2024-12-31"]
     )
+    validation_period: list[str] = field(default_factory=list)
+    purge_bars: int = 0
+    embargo_bars: int = 0
     test_period: list[str] = field(
         default_factory=lambda: ["2025-01-01", "2025-12-31"]
     )
@@ -110,6 +113,10 @@ class DataConfig:
     def validate(self) -> None:
         if len(self.train_period) != 2:
             raise ValueError("train_period must be a list of [start, end]")
+        if self.validation_period and len(self.validation_period) != 2:
+            raise ValueError("validation_period must be empty or a list of [start, end]")
+        if self.purge_bars < 0 or self.embargo_bars < 0:
+            raise ValueError("purge_bars and embargo_bars must be non-negative")
         if len(self.test_period) != 2:
             raise ValueError("test_period must be a list of [start, end]")
         if self.train_period[0] >= self.train_period[1]:

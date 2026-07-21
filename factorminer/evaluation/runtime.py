@@ -303,7 +303,21 @@ def load_runtime_dataset(
         ),
     }
 
-    for split_name in ("train", "test"):
+    validation_period = list(getattr(cfg.data, "validation_period", []))
+    if validation_period:
+        splits["validation"] = _build_named_split(
+            "validation",
+            timestamps,
+            returns,
+            target_panels,
+            cfg.data.default_target,
+            start=validation_period[0],
+            end=validation_period[1],
+        )
+
+    for split_name in ("train", "validation", "test"):
+        if split_name not in splits:
+            continue
         if splits[split_name].size == 0:
             raise ValueError(
                 f"{split_name} split is empty for configured period "

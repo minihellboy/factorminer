@@ -1,0 +1,2074 @@
+{
+  "allowed_hosts": [
+    "data.binance.vision"
+  ],
+  "archives": [
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-01",
+      "sha256": "ce3b8c0abee68832c1357ead66ce0816b14e411692cb1f3a844a8c97dadd8e43",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2023-01.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-02",
+      "sha256": "91e1b332ebcd2338555f501603baaaf4157bbf9725709b25e61b617c67fc6e0f",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2023-02.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-03",
+      "sha256": "29d2e434243e7e4ea52dcbb68298e9d804525a16f268554926757c5e6a9d3398",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2023-03.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-04",
+      "sha256": "5f869873a022268c1eed837842cddc5e556a4e5bf3a811a5ffcd8573542ed0d2",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2023-04.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-05",
+      "sha256": "06ff99c6f0f75dd5919adae093a482d8ce8ec1ce2f9996ef1acde3fb5d1c7890",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2023-05.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-06",
+      "sha256": "0c0d38ddc046dea07632d28cc75c82123769d68e3456c751077ed525e00d47fe",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2023-06.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-07",
+      "sha256": "cc1bd6e2125518ff2c31b3f64426f31f221a626acc18007b1de5b7fc7150f746",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2023-07.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-08",
+      "sha256": "d2b700700108836ea6f3379ca74684b82a4b570985f13ff675b107c49f56cc11",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2023-08.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-09",
+      "sha256": "31c340be055e2d922957565218b06db7cc3be5eaadb90016296c6c8f68526350",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2023-09.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-10",
+      "sha256": "53c9a6f992f2880f805991ac8a7cce4470774cdea450f9ce334736776c66305e",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2023-10.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-11",
+      "sha256": "8059c70dacbe89adda2300384c0740f2fec27ecab9c970999febcce631cb9523",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2023-11.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-12",
+      "sha256": "858760581bad3ecd173a5daaff999c9681b174a87686b5df5efda39b76fa4517",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2023-12.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-01",
+      "sha256": "70adfedbca42b3c5397a5c798897c72e0ca9f448c4cbf8299dbb5f8fcc983290",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2024-01.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-02",
+      "sha256": "4f90e3c4b6f1897aa8b5a7cc96b8d1b8a38a8815a58d8e5869a01fd9a5023efa",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2024-02.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-03",
+      "sha256": "f334945e0d063036bb16c36b1c15dbd6e87ef6077b34482f0e00a82581247049",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2024-03.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-04",
+      "sha256": "95ca090a9aaa794021a901cd5e38d08e51ac160e2a1fd9beb5e775f93f3bb503",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2024-04.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-05",
+      "sha256": "119df30ada8864e09a294d41aab0da7f27e973b9c080c081cb94dcf584e9b3d0",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2024-05.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-06",
+      "sha256": "0248ead8f68ca9e00cac0fa23c3e7528612ef1b7b4580d122c8ff42902f76d44",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2024-06.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-07",
+      "sha256": "39ed5c467433c8a0f296e6654484f2a56ba0cda8a2c9ee8a7fd7582a387b6b59",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2024-07.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-08",
+      "sha256": "1ce4544d4790ac61de480e6d7522ecc37dd2a151fc45710fa1bb97264630117a",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2024-08.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-09",
+      "sha256": "d3fe571236508ef8a972d77993e15057880414350f5ec9251e85d72e94bd2cba",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2024-09.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-10",
+      "sha256": "71519a3fcb2ce782ccbe1466ba0958713b69f1b45b11472a906fb42bf11b0f0d",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2024-10.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-11",
+      "sha256": "387689a4b45c5617b80874e9da377f07f44033a703b53dbb601463f0b75d98bf",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2024-11.zip"
+    },
+    {
+      "asset_id": "ADAUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-12",
+      "sha256": "cb5b254a6e3df19027b21b348d17aebc7ed65914275f823b20b4af2977c4c66b",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ADAUSDT/1d/ADAUSDT-1d-2024-12.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-01",
+      "sha256": "05be0f46d31ecf6caca990c4be77f866f52cf5481361ff4abbdbd3e2a4ea374a",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2023-01.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-02",
+      "sha256": "410fbb22da231870ad59911391bdf07bb4aa8665aa3949c64aaf2c54ce64c849",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2023-02.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-03",
+      "sha256": "26fd3b5676cf6931773f5e87d341e7cc9c17cfee57b11a64921346c3bce725a0",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2023-03.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-04",
+      "sha256": "b4cd24822818759814338a0a86b2e36e88ad888690c8cface82f9efde3ac4b96",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2023-04.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-05",
+      "sha256": "3ab0a70edd10567d640dd6c7c35926716153292708b0651d939f42e5adf4fda4",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2023-05.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-06",
+      "sha256": "34b239403a1c0b3fdf062080dcf195e0ccd336cd192c7d85dcc8b7c5e26b1cbe",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2023-06.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-07",
+      "sha256": "82ef4a7e5cfefe5916b50bb6225b134baf854d7125395b292442deb27e0322df",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2023-07.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-08",
+      "sha256": "391f00309a8c85ad58517287ffd288156c8b50c2e129b5ca430315d4cbcbd2a5",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2023-08.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-09",
+      "sha256": "8bd6326ced778911b9ccd13a7b9d475fd72a4990b2e08946a0ad435d7a53ca6b",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2023-09.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-10",
+      "sha256": "1b12d8d8687a2c3184612fadb23d403815e4b38011b2dc8ad9c7aaab53c85a49",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2023-10.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-11",
+      "sha256": "265f43677cdca9c19e7cef1cee1614339bd2589a1207733f6f6f8a24fceff628",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2023-11.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-12",
+      "sha256": "cd892efd72678fe5885b47607a6dd57422bcfacfd899a23155a4c832a3349b98",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2023-12.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-01",
+      "sha256": "5d4bdb84616da2d4b6a83b9b9360c40eec0871648a0cac65734e33444faf678c",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2024-01.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-02",
+      "sha256": "1ab8349b900bb461b5099079b33c8e81225bcf405788b6f3b2c818a8a31f882f",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2024-02.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-03",
+      "sha256": "fa6108d195ab1e9ba3a93edd617fd09fc5af2ca8a58f655dc710d91415c517ae",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2024-03.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-04",
+      "sha256": "d7fc923f6a8b776a567eb475a6fa86cb471b06588455e6e3f4648b292d7d5d17",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2024-04.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-05",
+      "sha256": "805a64670052eedac4a271e180555347e4a027c2a551c57ea66b2827e4fd9eac",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2024-05.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-06",
+      "sha256": "3295c5a0ecb21631caa8f5c95d8d895c434c34edb2c3d4699155a0e2893cf949",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2024-06.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-07",
+      "sha256": "7d2b8921df19108e5f92ca27e5a846bf06831d03fc072879de63c1f66aebd33a",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2024-07.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-08",
+      "sha256": "074f124320c2aff60894d49aa3de8a76284c27af73379e41fe88fa0c2f191c28",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2024-08.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-09",
+      "sha256": "c6594d1164647e075218c6c61fd98081c655c27db443fb2fa7d5543fbeae6afd",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2024-09.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-10",
+      "sha256": "b9d1534493268393431f6a189a905041a794ae553f242b495c102fcd5292c3ae",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2024-10.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-11",
+      "sha256": "e056a4d76b86fae5d833a9d2ad1c2fdf4e33d894c93a10fb12135fa258ef152b",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2024-11.zip"
+    },
+    {
+      "asset_id": "BNBUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-12",
+      "sha256": "cb56172239def1e8e6c983b6050971333bb6aeb3d3305be702e780d3ee2becf0",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BNBUSDT/1d/BNBUSDT-1d-2024-12.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-01",
+      "sha256": "a9fd53b75add7cc42fb4779a545811606260f79810f3826215d6ebecda11bb36",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2023-01.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-02",
+      "sha256": "13df1e3633f15be3eeba4768d0cc323ef221191002657b53936a6d0fb5e6556f",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2023-02.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-03",
+      "sha256": "1cb1209700ec74fa4592048de2e4ea4a38ab2bd622dfe03f1d6195c249501381",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2023-03.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-04",
+      "sha256": "999e86be73731ebc347c6ada94abceb5e291b65e7f1b4df2ce390af1aa2a4a08",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2023-04.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-05",
+      "sha256": "c343e4689784c29f83d25147a096dd44b6ae5c1063c909f8adda82b56414469d",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2023-05.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-06",
+      "sha256": "634919565c55a29729543d730927ca4b547c0e52d118a38de730f37fdd7617ef",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2023-06.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-07",
+      "sha256": "32363d37de02e6ad8d334ac332c685f8cdf5684733a9f2cfbca40e15e591396b",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2023-07.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-08",
+      "sha256": "8c5e47bfe3f0b0273534379e8ba5c93e69c84d67e8b9a03f293d6621bead2a5f",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2023-08.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-09",
+      "sha256": "2fe68ecad48d6927a9280d89700e991cb6481dc2767698c785f2b2d1c0b14744",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2023-09.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-10",
+      "sha256": "358b83bf0c2a5d5390a4bc4d4ae14fa9df0f56139642ad996c0df0f7bc712400",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2023-10.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-11",
+      "sha256": "fac9823cac7bf56a3a6038c3b79417e949b00c172939e62000451c8c25edd7c1",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2023-11.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-12",
+      "sha256": "056dad65795c9264ef90ee668a4c245e8fec73ebcbb272d28f5596c389913979",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2023-12.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-01",
+      "sha256": "474c1ce6fbb09e42cfc7231fee249aecc58af2fb5918570ffeba37998926b4a4",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2024-01.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-02",
+      "sha256": "4dae0b3d6b8ea59e39e6493b7964040c52459ea7b0a50b9c2793dcbfae53800d",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2024-02.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-03",
+      "sha256": "f7cd4fcafe79d1fac0c830d5fe152f7b3b9100e7c97e40352188766388af0ae0",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2024-03.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-04",
+      "sha256": "b4a8542c33e5251fb53f8a3352dd4e6f3cde4ac25f2c24935db8089aa1a2c3a0",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2024-04.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-05",
+      "sha256": "0175f696039b9e30f06c6398d218c99e577661ac30424869c648fe9770507248",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2024-05.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-06",
+      "sha256": "8a0f6416c2a83cfa15ba26c688d716fdafe35bb1748dd244f0550e8b2f7e38f7",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2024-06.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-07",
+      "sha256": "9a2963ef6541b4d7630eff8df7b2eaee48ece33180af03c34b0bf92675692899",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2024-07.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-08",
+      "sha256": "df41fe3260920b85da86855b4880f34618982e689081317d3d63b9b3bbcb1d53",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2024-08.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-09",
+      "sha256": "89e459b2a8f4b138dc742d9358c0084fcabf719d40468e156c3149a3635f3359",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2024-09.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-10",
+      "sha256": "d442a5f158d45d9ff7b1584b35023a4161cf915a3857f5e71a2a2e6aa68c69c5",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2024-10.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-11",
+      "sha256": "b197219d9e8b5e933226e1cd24fe2b7bfc3a2e8a3e74e6f7dc08a48f314da8c3",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2024-11.zip"
+    },
+    {
+      "asset_id": "BTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-12",
+      "sha256": "82ec90210f492694b9d01722f97f579108ee787968b8485b53d736ea735700da",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-2024-12.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-01",
+      "sha256": "110be6f38eb88e72747502f63b1cdbea6364614ec8c3142a13fa8e882afc54ec",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2023-01.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-02",
+      "sha256": "61170b6489f01c9b8b57b168fd5f45a1210710fff9515223e52a38e63e895fce",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2023-02.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-03",
+      "sha256": "d5056f06036a390ba38356560e4d5e2f8e4b3de7b64109e9b2d1fa66ba623269",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2023-03.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-04",
+      "sha256": "baa64505114b4a671413edebfbe48e4b5bb51c7faa96118dc6f6b418ca600ca0",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2023-04.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-05",
+      "sha256": "bbc3af49e33377588cd24dda44aa3ff8e59382f864111424dcbbd149cec06d17",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2023-05.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-06",
+      "sha256": "286a6fb905bbada4b9da92842dad5c38dc4cb34dc1b7e01f607acb5863095d29",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2023-06.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-07",
+      "sha256": "62619da6dfb98b80a54fd87f3247f7cfed18b0dc065c1b22d461d933a358b0f1",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2023-07.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-08",
+      "sha256": "035f3c244805deb299c3cb4cd68a1e900d75a263d0ac84bfcc7b9855e6e3d66c",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2023-08.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-09",
+      "sha256": "05e0666a5861e22519d169fc32bbf9abd3ae1557960b28d9d9bc5fbc51971e90",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2023-09.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-10",
+      "sha256": "89ca1a44f1625e6097d99de343d7d0e609a19386dd038bbe70516387f28e5c4f",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2023-10.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-11",
+      "sha256": "6fc04c33f2ec2003e615e0e0f1d2df3b9e9c0f82a0cb1fd8a50aa89a788064b7",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2023-11.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-12",
+      "sha256": "ffef6d265b8cb39530bda23a66787af05fca5002bbb447d58ae89a8878e30471",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2023-12.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-01",
+      "sha256": "4ea01bae6ac81d90de1620ca141691483df5e6ba104d977fd66241f43c2f987a",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2024-01.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-02",
+      "sha256": "ec05eaba605825b3b9d79a6e2879241c126138ca8f84652b21c811347cecda1c",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2024-02.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-03",
+      "sha256": "4562390613a728b7b2e951083de57014341b64e96e1a9ca63ce8f8b11457df1b",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2024-03.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-04",
+      "sha256": "54b82b550b147a097a0a0981186c17d654d16f659c14521d699edac9e19946cf",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2024-04.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-05",
+      "sha256": "c831c9c34a3813a7dc7578bb31bf950f7c360c2ad8f5b967b045beba4d47102f",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2024-05.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-06",
+      "sha256": "e66fb26a4801d5321b9c4daacf7baf3e3e6e737901582ce917c77a1b2e8c1b14",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2024-06.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-07",
+      "sha256": "cc31def17f6481b49051706e61fdb29140917dc63ae7db5a1ee29cdaea85b686",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2024-07.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-08",
+      "sha256": "b554b2204be2b6e0f4dd463541137462716503d11cf7530b61d33cf041838a39",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2024-08.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-09",
+      "sha256": "cc07b1e378731f147f62b9c0b186c60bb0b25917616c4d60e7664cbf1d71d868",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2024-09.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-10",
+      "sha256": "3985b83236f69e2f9829f0c064289b375bbef57787f1fff7b4e25268e8bf35f4",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2024-10.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-11",
+      "sha256": "611d025b1f914d1b85a5c9e9ad68aa3718b10e33591b29cce536ed246c2c24a6",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2024-11.zip"
+    },
+    {
+      "asset_id": "DOGEUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-12",
+      "sha256": "fe1b1fa8598ea8dcd7e74346fd2d2a12ca0ed0dd7f3ccc1b90fb9c334d7818f1",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOGEUSDT/1d/DOGEUSDT-1d-2024-12.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-01",
+      "sha256": "8d2b528affa9f6523976bb6dba9ff45cbf9a508aeb1ea7e3c8f8956c567cfe9e",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2023-01.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-02",
+      "sha256": "bf0cb48f683a32db8e0dc3ead3c7395d7bad3f06b950d92eacf91932d51c52f5",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2023-02.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-03",
+      "sha256": "fa4af98ab46b67a030123b1b2460b2c8663dccf8e3fec7173a7e485f76255810",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2023-03.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-04",
+      "sha256": "aa7b0686dbd0374f0e745c3db43f6de54acc3516d7aeb55f604b95a6d1001742",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2023-04.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-05",
+      "sha256": "63ae532933a5f5a8de22afe35de51bd02170184d85c1e7c7ba9f6e81909c45a7",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2023-05.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-06",
+      "sha256": "c2d14fc71e03efe1e3649653dea544865f4d2283c316628d128e00255ec1eab9",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2023-06.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-07",
+      "sha256": "1a3b42f77e248b7770e87bda2b091307cdee95f76a559597b7f146d3b1793575",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2023-07.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-08",
+      "sha256": "b825c749032ce082fb752b1c3958d09282e47eb4700e653ff582ebe9c8048dbe",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2023-08.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-09",
+      "sha256": "8129e274967ea29e36e24f7936998773fa29bcb858d4979fbf5ba76b257abf85",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2023-09.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-10",
+      "sha256": "0d902684bc2c3488bdfc801396b5606d54c0cbf755867e3eecaf41c1dd9e3263",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2023-10.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-11",
+      "sha256": "f6cb2bf2b81e0f21e343aed60aa396f301368e0d72e31ebf0552bcaf2c1c5cbf",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2023-11.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-12",
+      "sha256": "0b228ebee97dbbf018762753087a605e5646bd9ae2d2c871bae884782480748b",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2023-12.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-01",
+      "sha256": "0f7d3cb5615ae0586b79361f8084926b0f4075d5d70aca5a7b5e720fa84a61cf",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2024-01.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-02",
+      "sha256": "4e6526e08d88e52f8335c6951d73fce08e93c70509414e5070c1495a74ba8483",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2024-02.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-03",
+      "sha256": "44b4406fd8db6a54b13b80d0618b364170cb7d2493dd90c690e076ceae02c555",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2024-03.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-04",
+      "sha256": "eb45a3b18cbdf2cbd28c872d8805e551375429858c258cf7a9394ace0010e6b0",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2024-04.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-05",
+      "sha256": "73744411e9173f1df4b3c0f219986d2364e7745c01332cead38cff7ed6da9171",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2024-05.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-06",
+      "sha256": "33f5bf78b9819b20dcfadf96bd11aa93900884d97f56d439ee5d13050111e4ba",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2024-06.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-07",
+      "sha256": "963d07435fcd6276ef06ee5dd56140fdbf4806a9f73837f6aa36f1fbc8734af2",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2024-07.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-08",
+      "sha256": "fa9421086d91e19c15f3155e6503c11a291af00bc5d7a4787e9e1ed2f41e9bcf",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2024-08.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-09",
+      "sha256": "648ea3dc6dd5c8dfbeeb6f0bb099496e776e7e0604305ad920db16d1e8606385",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2024-09.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-10",
+      "sha256": "ea9a2dbe33c76ed07eefece72948f992b987c1692dc369b5f4cc631143576cf4",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2024-10.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-11",
+      "sha256": "676a2f9597698c434721861f809dc8ad17f1fdc3bfe5b95892de28eb7169f9ce",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2024-11.zip"
+    },
+    {
+      "asset_id": "DOTUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-12",
+      "sha256": "9085b7c92f70fe59a78467b1ab14f738fd3f7bcf21a112e73ba702169f8b035d",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/DOTUSDT/1d/DOTUSDT-1d-2024-12.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-01",
+      "sha256": "811ff55e20735e6fff55ef37c0c3e922eb6d26d41fe84fc04b2a03c0179549ad",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2023-01.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-02",
+      "sha256": "2f6cdf5aa6613ab3621dbd730a234935e8909f980f1195f7581abf145e422cce",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2023-02.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-03",
+      "sha256": "dbfe653bf62ebac3e4e2bf5c96160de6c76bcbd76e4979ca2105d11cf2bdf77e",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2023-03.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-04",
+      "sha256": "d316aea182914c088b06d03640812bae72e889a347ed9dcc78bb8ad10ed1bdf9",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2023-04.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-05",
+      "sha256": "a86ef09c35c764e6f0066953074ffb0dc93239afe92e3d73e232fbc95cdeab51",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2023-05.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-06",
+      "sha256": "4932a5fd8853ddf99f3853a501e5f35ffad45a07a466bbf4603ddb7fb4c821ac",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2023-06.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-07",
+      "sha256": "f66293651e4a841fe9bc36cc76483bdb9c1faaa085377fbbd2fd064cd401cd5e",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2023-07.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-08",
+      "sha256": "e694749c085b888401f51002dbd21bc8cf0c4d801d2da311e72d6c1ae97627d4",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2023-08.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-09",
+      "sha256": "c1faa848529e17e15deafb208d817155576ef51e556813109cdb60c0153ac73d",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2023-09.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-10",
+      "sha256": "baadc74c685a63d7ba453531c9f4d1df81a5719200501ab229018352a1be9630",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2023-10.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-11",
+      "sha256": "8faf9f53efe268d25d01b987b3a364cd9f1983703ab2f78486192c29218b1faf",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2023-11.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-12",
+      "sha256": "1778c56d995fe5d32a0816a5214feabcd84d594f4e882315b4e225d6e86e5275",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2023-12.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-01",
+      "sha256": "49598e812edcbf446f20d21a3ffc382a6f51fc1982a7e4224b78a416dbe36e8d",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2024-01.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-02",
+      "sha256": "36ebece2c2a6fcccdc4ee2924cd037870e88fa09877208843e2cbdf5f5c93a44",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2024-02.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-03",
+      "sha256": "78f5a6edba263350c1df6d4678596570ae5ce5df38edd4e253ec89431fbddfc0",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2024-03.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-04",
+      "sha256": "d0a5088a3d49cea7269dc3bf7f29912e23a390c87fb7b14acbed210ac9be8177",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2024-04.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-05",
+      "sha256": "d0c98ff2f16913e1c1f9bb72165086056ae9923db5b07f113ca6eaf334b87bbf",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2024-05.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-06",
+      "sha256": "5198557b48b8df354f5dc07e76270e988416f9e8972e577d9c327b31d2cb1db1",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2024-06.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-07",
+      "sha256": "ae4a1a154d9c4e27bb7551293216d6824a0455fef7ecea0efb5084e145ba1ac5",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2024-07.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-08",
+      "sha256": "e41fc2dcefc5d0737fd74e943602327cfdbcde04dec40d94030cfcf01720e593",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2024-08.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-09",
+      "sha256": "6e6add68412a0d89199fb6185b88b24994c32522e4ee67ac88d02ab8b81eb1c1",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2024-09.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-10",
+      "sha256": "cc2ae0b168f8ddd7b45441a30ae9aa95f748ec9ecaa19ab3cf5e9ec21fc63783",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2024-10.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-11",
+      "sha256": "fe8b32f1ab7a3a72316b404ffc9d7002cb75801364f12dc52eddfedbb3e3af43",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2024-11.zip"
+    },
+    {
+      "asset_id": "ETHUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-12",
+      "sha256": "e36880cb5d79157599878eb97db2d20a5bc10f904384501f0b3571a09c1b6bcc",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/ETHUSDT/1d/ETHUSDT-1d-2024-12.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-01",
+      "sha256": "0a59571d5e78db48a3395ed3f15c8d959c93cc272eec4e7503f86dab9270c3f2",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2023-01.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-02",
+      "sha256": "6ec598840bc87bbfe952caafcb85e675d2fb968ff59011c80b70555d3cb8c23c",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2023-02.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-03",
+      "sha256": "7e93abe56711895671185e4b311dd0954ca2bbb2fad419220a83167d3cf9c076",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2023-03.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-04",
+      "sha256": "8f6252ee7f7323152639130497e55bdbc49e01e91edc7a0e9255a752ff13c083",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2023-04.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-05",
+      "sha256": "e210744a1a50e0928b898cb332a91e2a97fa0c43ed171c19565e13613481172c",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2023-05.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-06",
+      "sha256": "f74199e27769f045f1c8c8e9a52639465e06c62bd02c4c4a51ad99ea711a5b7d",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2023-06.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-07",
+      "sha256": "0505ba4266509741672c52e41fc953151cb67c4a444cf822f36e288ea3c714f1",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2023-07.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-08",
+      "sha256": "7ad1573b7c31f13a5da1e90df312a2dff2b13f591ee01b53a1d373292986819e",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2023-08.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-09",
+      "sha256": "9db1bf15e9611970c39088a60b388b4b89f6f1f3bbc1acfd3104c16e3bad52c0",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2023-09.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-10",
+      "sha256": "208031833dc750b323d923dc9c91aee0a2067111d13a0b7f46b037d84ad4e848",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2023-10.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-11",
+      "sha256": "bc126beba5203ffceadd456cde74ddefad4d8534ed472d2cc399998c2d01a2db",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2023-11.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-12",
+      "sha256": "68c878fbb8dd94b44dbf4c347a5ded5944285ea195feeb774a716af0003186c3",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2023-12.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-01",
+      "sha256": "fb51c3585b3c3f9aeabd65df82e2cfedbff8618d550ecc1632dd916668b47ba9",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2024-01.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-02",
+      "sha256": "dcd68701ed45cadb5c1d888321b10e59e47abe790c950885f33ab00a029b04e1",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2024-02.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-03",
+      "sha256": "9d08ff3016458fb7edea5cba63aeaf647496eb1cc9413ff2540a660160abcfe1",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2024-03.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-04",
+      "sha256": "124ae82928099f3cacd1c425819ed3936f5828277709531311f4354f7928cacd",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2024-04.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-05",
+      "sha256": "a52ad7bc1a79042f52c621351507196776486c165a1a6117d3f78ad19c5521dc",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2024-05.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-06",
+      "sha256": "b91fb2de373f3afc2af4ef3a5cf40a4dc042bbf9fd12d882165bad2b792a5a31",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2024-06.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-07",
+      "sha256": "eddb70966c9be13b0b9d3e96642b0b75f3884c967c8aa323ae5abde423074d4a",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2024-07.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-08",
+      "sha256": "bdf5e1278a1981068543047e8b0496fb422d2030a6514470736ad1f27cc1db9c",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2024-08.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-09",
+      "sha256": "495eb44c5f69453d95ca8aad117e4de1e8e915037b88f8a471bdf3fd02769a74",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2024-09.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-10",
+      "sha256": "f2b37efa7f84d0c3b1ba93c3a2aca85853079b1c6eebacd85b5dfd3443b5672f",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2024-10.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-11",
+      "sha256": "c99e19b5fb1d4c8e6e2d3b1ba54b62b4dbf0f8fb596fa48bb7c0b56545b20969",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2024-11.zip"
+    },
+    {
+      "asset_id": "LINKUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-12",
+      "sha256": "a87918fc398affd9a2157bedf050bcea9b392f6c21a7658bde75a722b04a93a8",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LINKUSDT/1d/LINKUSDT-1d-2024-12.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-01",
+      "sha256": "731d4063a90d7bc1ad6db75d26c0330d63365171e9b0d2a1d5e9db4cf5e29360",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2023-01.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-02",
+      "sha256": "2407ecca269dedc71001f68b5321b79e000652021123cf8c51354c0c575c8c05",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2023-02.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-03",
+      "sha256": "3d9969d9091a37f19b1b988e7cb96597f7c926fbca38e266c97880026feb5924",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2023-03.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-04",
+      "sha256": "157d9490ca247ce4960cb68eddd651e0e49e14a7c4853c5c2eb2419b8d2e7425",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2023-04.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-05",
+      "sha256": "a4840d3dee4e0ca9c5de100733faf0b58a26c43cede3ab81bcae03317b198381",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2023-05.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-06",
+      "sha256": "11523573eb81123a5c8da247f778598d5a024829718d742f39fd433adbe08067",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2023-06.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-07",
+      "sha256": "eab175314c839168673f3b1ff74bc5f1b1ca4d8a9aed77794dc3b26da26776ba",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2023-07.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-08",
+      "sha256": "2efa96ebee93ac7ceaaea035f8b07fecbae51e8b6e188b59de09eccc0dc735e8",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2023-08.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-09",
+      "sha256": "efaf6b1de82341cd4ceb39f6f813521f4f5f62c4fb66e78ba6ee5afa511e2436",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2023-09.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-10",
+      "sha256": "dbc21c353efb630d004e18c670d608fa8f99188bbc807d6f12a0405aa65c84fe",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2023-10.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-11",
+      "sha256": "24da3d09f3d75a442216c8df6acfa4aa7980ea69fdde66da5f80334797d984e0",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2023-11.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-12",
+      "sha256": "185a6ae11f028561d46afb50f64e4e7f2d3bbde799d6eb8f0bf4067e635003a9",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2023-12.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-01",
+      "sha256": "e884c136e4ef083a5661561dfd76d96d8a800b1b93c36a516769109bc7229c6a",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2024-01.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-02",
+      "sha256": "28e33de98c84221b6cc185e47b5ef7a77d2c189dfe4e00edaf122de9ec40c6d9",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2024-02.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-03",
+      "sha256": "30347eeffdd651fc7a4db3027c222deff3b983694bac88110f23422f64b1d319",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2024-03.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-04",
+      "sha256": "66b17737afea5aa9d6e6dc21929862fd4ed6ebf3b1e2d0610ed380efdd7d1969",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2024-04.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-05",
+      "sha256": "7419ce74c26de2b21439cf337249434b027e0eebdbf9b37e1230ef3e41b3a279",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2024-05.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-06",
+      "sha256": "9cdbe1e0d36220a1fde0caf6c1d5012fb4500011315e4430e434f2e4015028c4",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2024-06.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-07",
+      "sha256": "59e299411ad86dd200c26c435ffdb157a0afdba2287e05084e212e20b6df32c1",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2024-07.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-08",
+      "sha256": "4fd2ee9b4649638a3be297847ac7f7234cbb2e7b578e88dc463c2ac4de578585",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2024-08.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-09",
+      "sha256": "8ffdf4bbbf33355c41c66c6e85667cffe8f8ebe842363c7247c956098c411fdd",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2024-09.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-10",
+      "sha256": "d77a88201f3c39a626d550caef80c3224d269697dfb9c93cd73b4ee5e54374a9",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2024-10.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-11",
+      "sha256": "5a15d1116bd6c002c437b3358c189ae6ba4e30a47d12157db83ad64d346ff32d",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2024-11.zip"
+    },
+    {
+      "asset_id": "LTCUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-12",
+      "sha256": "6edb76636582d7cad3762111b264cbb614ea124ce190081421783dfde9838b8f",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/LTCUSDT/1d/LTCUSDT-1d-2024-12.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-01",
+      "sha256": "09fc042c2ab54d9fc09a414a290b74711bd9c8665a58bb520e56432ed7a3041b",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2023-01.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-02",
+      "sha256": "2e0df24a2aa7ac6790da6a09be2448c50b8eb539a4b68003375c853c4a33ab71",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2023-02.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-03",
+      "sha256": "61dabcc011f27759552fd3ff9f43915f40a286b5287619b56ef2f3e088374432",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2023-03.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-04",
+      "sha256": "c91db96b1be0e068cfaaab5c75cca5e9e92171713f44f1856115687a96c828a0",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2023-04.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-05",
+      "sha256": "a3c74635f90344b9af798ce16e45674e8d7c816641db7a825f4317a6be4647d4",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2023-05.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-06",
+      "sha256": "79c2853d97448e168891e429143111c3b0d8f4f54c7faee18ce3aba1414ac5e4",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2023-06.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-07",
+      "sha256": "5a55d12a72e39bd5b8c4e8230914d9537b2a9d5a865ed0ba6ee53212a9abfbf0",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2023-07.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-08",
+      "sha256": "88917ca3c65a50860c51a4b2b63ff0bc8b89764d164deae347feb287db490e67",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2023-08.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-09",
+      "sha256": "bbfb009f933b02c10e79b3b7fa717163af1838d490a57ca4229194149cd52d42",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2023-09.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-10",
+      "sha256": "6daf020274d54de9e3fbaa4f8c4e8f43b549fe15e6a8fb7759b8ef1716d0a235",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2023-10.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-11",
+      "sha256": "66298306327d421adfe227262c4bb5551ad97ad89e3990a72bbd82c2df44d217",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2023-11.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-12",
+      "sha256": "d07143cfcfec4d988590a30b74be234dbd96238da2560190b9e16a633761b480",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2023-12.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-01",
+      "sha256": "521c3949cf679a3054234c8c8eed43babe89b26d337c02d1feb764da28516b27",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2024-01.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-02",
+      "sha256": "27c2a0db505c5eadf66d8efdbd921b01df3bcce41c2e09fb62ca4030495074cf",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2024-02.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-03",
+      "sha256": "25e02203a9571e57f203855ea585a065e8fb499ba31e961f49d0c8011925b30c",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2024-03.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-04",
+      "sha256": "901a98c35bb7a1bf0fdf06c4b2e3fd7062ca55d3459c0127dc7993332cf9b1e8",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2024-04.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-05",
+      "sha256": "552ef6e5be0a3c7fef83480b907678c4b2712148290db0c7d9f8cf86273ce926",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2024-05.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-06",
+      "sha256": "54cc3ff50e1111da33b6fb65ea6ce22b5626e55822787c6d475931e38176b9db",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2024-06.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-07",
+      "sha256": "6a9bfbb2fe8181e35a1fd9b982dab14f4d7146b61ee85cb47abd3dce7253b1ad",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2024-07.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-08",
+      "sha256": "09d69d6b4792fe97757b1b0c95c4527b3d487eca5abd7a7ea0eedc8502595506",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2024-08.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-09",
+      "sha256": "1d0761183c082d09e5a675884c33931bbbc4d56c66516e187aeb2f70240f2fed",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2024-09.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-10",
+      "sha256": "08b9ce2dc300735ad58cb347ee7ea84ed42faffe56fedc659845d8d445596c57",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2024-10.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-11",
+      "sha256": "c13259d17ecf4965fc79c1831d773e3210da69fe364ea5b7c6378cae7b5616a5",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2024-11.zip"
+    },
+    {
+      "asset_id": "SOLUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-12",
+      "sha256": "cbe6c4aaf9ec9eba4b5dbac0192b992b3a0d588416789d348fbb24a07d923f47",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/SOLUSDT/1d/SOLUSDT-1d-2024-12.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-01",
+      "sha256": "02b70d95532d22fca032c3c1bc3180e2b45ee2d5579d178e6b433090e5738239",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2023-01.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-02",
+      "sha256": "bb4e06ac009ae19154745de4e44f9e16a8e6ce04149522f7c5935bcba6e5cae5",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2023-02.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-03",
+      "sha256": "88806f55ced6fb13cac8b99b759588fc39f47005070563f201f9fa5d47d801d3",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2023-03.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-04",
+      "sha256": "188a95c015efa468bac344c7998daac93051874ce4f4a3db857efefb60d2a46b",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2023-04.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-05",
+      "sha256": "9a426abde11957b2a474eedc328899d8f778ee0d01e9a7f88fbb3a2a5e28cb36",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2023-05.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-06",
+      "sha256": "c0c0c1a632d676eb3b8f1e6e3d3e25bb4f1b384d57fcacb3cc46794d36071f39",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2023-06.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-07",
+      "sha256": "a4554328603571f375ba8b530e98a57f7fc591ce5830e959f98cc90e0a5da50a",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2023-07.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-08",
+      "sha256": "8d8c28198925848b3b42504cc37b53067827e1b9f24e0d293bcd00179f6e8422",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2023-08.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-09",
+      "sha256": "3e39ce9a88473fdad22a491576c654eba54c06cb813a39d5d6c4b641a5de9fd7",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2023-09.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-10",
+      "sha256": "80680fbe1a189a1a6ecd205cb6d1a3e1804514b87ebdff9d368d55e072b893ff",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2023-10.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-11",
+      "sha256": "37ac66bffccc021050f29f94710a53ecd09097eb08ba313d70ed4954b4de2ba8",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2023-11.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-12",
+      "sha256": "f2dcbfb35d300b24463dbc1f88e9d72cfeee5981ff902d32b8fed7994e7a485f",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2023-12.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-01",
+      "sha256": "1b4c57a749d58a55d080fc3c8c203f9620e64d3498ba56ee953bdb9481e708d5",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2024-01.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-02",
+      "sha256": "6309f7ce87fcb01473f42c1e0775827a815772e66240d02ddb4531c13e833327",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2024-02.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-03",
+      "sha256": "c7ed2401ec7149eac58f4c7a007fb6ef0e90bd8c008969528e137caff10e82f7",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2024-03.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-04",
+      "sha256": "cd6331e859fb71822991b8abf0d87af17a89b45da7bb57277a4eb239ea8508b1",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2024-04.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-05",
+      "sha256": "a9836da6cf600dcdac6152677d1f983d8b1a7d0031701f11bb14273be4e7ea1d",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2024-05.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-06",
+      "sha256": "2fdd891a6a8d0a01f9f000899a5ebc107eb7bc05d5ab337dfbd9b087c175bf5d",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2024-06.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-07",
+      "sha256": "9017f8665e7afb2c5ae3b86eea1886275eec372a5a959c38d3496d2cf9de66ac",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2024-07.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-08",
+      "sha256": "2d4d31e1f018685f251f8614fe25c35287051d3b4e25821daea5b78ed8c09c59",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2024-08.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-09",
+      "sha256": "a3a1acfb9ad4691a1373406535ae7a23f7b211b7b3b0dfbbe187ea009e489cce",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2024-09.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-10",
+      "sha256": "7d3349c088190dc069ee6768e1f2ba6b7ed937ad107165d09ef03bd22a33cc38",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2024-10.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-11",
+      "sha256": "c4d2292c80cab260d9ec24bab68a833fce2fbfdec32226bb54e629446ce1b86f",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2024-11.zip"
+    },
+    {
+      "asset_id": "TRXUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-12",
+      "sha256": "8a41a988fd7b47f7d4cd4c8bd6035df3abad2e2dc84f984514cea9f2df0b4c6c",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/TRXUSDT/1d/TRXUSDT-1d-2024-12.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-01",
+      "sha256": "1bfb9f4073941ef161ccf737a6093223a831625760b0b2cb08f3ed7b7d156870",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2023-01.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-02",
+      "sha256": "bbebb6a7f54f34847f60b01c1139c822ab3c38fb2147da28b0afdb816008e306",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2023-02.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-03",
+      "sha256": "ceafedb0796079ef9b28acfd1adeccbc8526c215b097a3f21b8605cd07ec14e9",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2023-03.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-04",
+      "sha256": "01126f53a7806fc12aeb9f5d8f976abc31f4bb923c0550168aba9f12c8f39b89",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2023-04.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-05",
+      "sha256": "5747684c9e5a2c4a9888c59150fafe008f176d4bbc94cb9df1a5d4045a3416da",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2023-05.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-06",
+      "sha256": "9c1d20742ea012d0dab9cfc1fc7a62a3ae0edbb3d511e3bcebf25032a0cd5308",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2023-06.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-07",
+      "sha256": "3e32b198ea1efcbcdd88a9b84e3d9738e9c1c47cd27e132fbcb5148ea8a4abfe",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2023-07.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-08",
+      "sha256": "a615ae5912ad34eb89e6dce458fea04bf0b0160f2cfc506e528a777ea0fabf00",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2023-08.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-09",
+      "sha256": "b29193e37be7bb30f89f6bc043e79d3964e56e1d61787dd8c450682cd37ca222",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2023-09.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-10",
+      "sha256": "0f9c1d10a067e7a98cbf313ba8139215d7cc79925e63d27d384d5dcbf30e3c22",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2023-10.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-11",
+      "sha256": "96ad4e5895bc837fdd856e6896e83988d6bf7e04204ace00bb92d658eb142032",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2023-11.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-12",
+      "sha256": "ddaaf5d3e98ea7503f9a286f1a2709f8fd694e571f913d3354f904fd378fdf65",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2023-12.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-01",
+      "sha256": "53861387cd99d37ab3581a73472b77460aa67a2a23e5f53052f0641fc69a1128",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2024-01.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-02",
+      "sha256": "74338a4ee5627815c13f670ad01eea7671ed513d71d2bfff35138cd854c5b1ce",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2024-02.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-03",
+      "sha256": "b5a81827621b49cc73096a31d2844010d3f6caf88e066b54e77553d7339ca711",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2024-03.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-04",
+      "sha256": "d96356dc0e9bb499775a26f4ae40f750895be4c2e62841662dad9278be1d109b",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2024-04.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-05",
+      "sha256": "d6ad4a81c3c90627e863a280e106dc64d823eb3add98aa6a8411b06506b551cc",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2024-05.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-06",
+      "sha256": "948eb6855ea3b46d40eab83664243f5139d4279e4aedb462c2dc1f93701e2f3d",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2024-06.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-07",
+      "sha256": "c10bcd9f0a68495ebd6c00ab6bad353e9e9a5b872c713d3d8741c86b52b8ccf3",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2024-07.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-08",
+      "sha256": "b86c2f7a70650764c6d93eb8dde166e8e28a800f4fa95defbaa41067a3a23b99",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2024-08.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-09",
+      "sha256": "6a634cd55f2bd756ecca7a9d07ba1e03809dfac93e21e1629bd4348d53af6d7a",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2024-09.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-10",
+      "sha256": "12fa1aee1fea5d538d8da9d01359551705124018436c0b0660d323962c057817",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2024-10.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-11",
+      "sha256": "f5d443fb5ea279c302d2ed275f1959c7d635e58e9b34dfcf99a574ddcd1504b0",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2024-11.zip"
+    },
+    {
+      "asset_id": "XLMUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-12",
+      "sha256": "35a99ea86cd13333248f0ce8865eac8a13186cc36915e6fcc6d828c155a4e558",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XLMUSDT/1d/XLMUSDT-1d-2024-12.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-01",
+      "sha256": "8be26490687e21718f03fc24138a2b2369b67eed27cd2a4df2341bd9de1ff8f1",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2023-01.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-02",
+      "sha256": "3980f23c45e2512de04b3b35dfd3c74847397544c3878a5aa577aee7f0400e6c",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2023-02.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-03",
+      "sha256": "00dc37357422723ce04e7871d05d89454f7ac16758a29b5d6eb990ed8d647589",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2023-03.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-04",
+      "sha256": "9ae8857bfcda35413ece8f8d038ab0ad7a6b810bef0552a008ab162c393d251a",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2023-04.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-05",
+      "sha256": "4d407d9b06d7b8af4263cb6a02dd72d762b82b3fac747044407095661cc4b0a2",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2023-05.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-06",
+      "sha256": "fc2055e68aff582d847adbfdc2fbca7cb9fcbae4811e5068a5f5a41d81212db9",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2023-06.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-07",
+      "sha256": "2e9c69ad1ac561bb0884f934d6a15a87be3d8b657b5852d5a78e7f9119f4f194",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2023-07.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-08",
+      "sha256": "7265881181ea7542fd0fc7c765256a53ad26c0e9ed219be4ee616991b58c5f84",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2023-08.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-09",
+      "sha256": "480c0f760cd26249c93f8df3939376e27df741fd40052f627a1272e00eb1d236",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2023-09.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-10",
+      "sha256": "9c5280a4bee20f99e1c5b808a7eb321768370e82d49c706c71225aa9d2587733",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2023-10.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-11",
+      "sha256": "7c88be1782d857618087bd828bbfd45e828dc9cc7e6e64eda0fa0b70dc107508",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2023-11.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2023-12",
+      "sha256": "92de6e8836a3f349b485a13664305526a597b90eecc1be9fc1f4cbee51d48f78",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2023-12.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-01",
+      "sha256": "8f7f49bd9983bb41300d1e34b9f1f2c8f71eb83a59e8f80e4e8dc0f25be398e5",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2024-01.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-02",
+      "sha256": "a9397519b2c63d7975647cc25da8e0402d681daa40f1ffa53abd72ff4339518f",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2024-02.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-03",
+      "sha256": "bb59eb280b27bb4b8f53fb451a371be2d5792de73a3ba5855fef9f06036ae2df",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2024-03.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-04",
+      "sha256": "c01cebab808784c9ace45e07f4fa0a0eebcfab9ac2434ba91e4ba10e0bd12e59",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2024-04.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-05",
+      "sha256": "f41ee9027a174e557c1e77864565d98fa3657661eccefd378cbb31b6aa0fff0c",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2024-05.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-06",
+      "sha256": "67373424c870228cc94683da6a3f8cf502a9ed9d862881bd3f76b0cabee71e97",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2024-06.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-07",
+      "sha256": "614caa7bf49eef199b9ac2aca0584b1c867378d0be244711f33a41bf62dbd8f3",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2024-07.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-08",
+      "sha256": "ff037823bd6a03610bf098d3fd1424a19e6685c649045dd450e08d2cc288b951",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2024-08.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-09",
+      "sha256": "93486c5b023b290da8fb1f46d8960d43bb0fa728ba0760bb27233bfc61d0de22",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2024-09.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-10",
+      "sha256": "8412c6971d6c3086dae895bd8d5653ab1af3509e7760ac0e57cf1183e3d5c912",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2024-10.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-11",
+      "sha256": "c1cbca9c5727d3534e3d31702f2e05bbbe3be7787f30bd9cafc1cb0902d44c1e",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2024-11.zip"
+    },
+    {
+      "asset_id": "XRPUSDT",
+      "parser": "binance_spot_kline_zip",
+      "period": "2024-12",
+      "sha256": "60a2b7c038950663a77d9a278966bc47a78eac9655d563f89e9f2412efcfea29",
+      "url": "https://data.binance.vision/data/spot/monthly/klines/XRPUSDT/1d/XRPUSDT-1d-2024-12.zip"
+    }
+  ],
+  "asset_class": "crypto",
+  "assets": [
+    "ADAUSDT",
+    "BNBUSDT",
+    "BTCUSDT",
+    "DOGEUSDT",
+    "DOTUSDT",
+    "ETHUSDT",
+    "LINKUSDT",
+    "LTCUSDT",
+    "SOLUSDT",
+    "TRXUSDT",
+    "XLMUSDT",
+    "XRPUSDT"
+  ],
+  "availability_lag": "Monthly archive files are consumed only after the full month is complete and the provider checksum is available.",
+  "dataset_id": "binance-spot-daily-frozen12-2023-2024-v1",
+  "end": "2024-12-31T23:59:59Z",
+  "frequency": "daily",
+  "interval": "1d",
+  "license": {
+    "data_license_class": "publicly_retrievable",
+    "distribution_policy": "Fetch exact archives from the provider; do not redistribute raw files without a separate confirmed grant.",
+    "redistribution_status": "not_asserted",
+    "source_url": "https://github.com/binance/binance-public-data",
+    "terms_url": "https://github.com/binance/binance-spot-api-docs/blob/master/PROD-TERMS-OF-USE.md"
+  },
+  "liquidity_evidence": true,
+  "periods_per_year": 365.0,
+  "point_in_time_limitations": [
+    "The universe was frozen after the evaluated period and therefore has survivorship and ex-post selection risk.",
+    "Exchange listing, delisting, symbol migration, and venue availability are not reconstructed point in time.",
+    "Results describe one crypto venue and are not evidence for equities or other asset classes.",
+    "Archive corrections remain possible; the committed lock pins the exact provider versions used."
+  ],
+  "provider": "Binance public data archive",
+  "schema_version": 2,
+  "start": "2023-01-01T00:00:00Z",
+  "target": {
+    "entry_delay_bars": 0,
+    "holding_bars": 1,
+    "name": "next_close",
+    "price_pair": "close_to_close",
+    "return_transform": "simple"
+  },
+  "universe": {
+    "frozen_at": "2026-07-21T00:00:00Z",
+    "membership_policy": "Constant membership across the evaluated period.",
+    "quote_asset": "USDT",
+    "selection": "frozen named asset list"
+  }
+}

@@ -1,0 +1,60 @@
+dataset_id: ecb-fx-daily-frozen12-2023-2024-v1
+provider: European Central Bank Data Portal
+asset_class: fx
+frequency: daily
+periods_per_year: 252
+liquidity_evidence: false
+interval: 1d
+target:
+  name: next_close
+  entry_delay_bars: 0
+  holding_bars: 1
+  price_pair: close_to_close
+  return_transform: simple
+periods:
+  - 2023-2024
+start: "2023-01-01T00:00:00Z"
+end: "2024-12-31T23:59:59Z"
+assets:
+  - AUD
+  - CAD
+  - CHF
+  - CNY
+  - CZK
+  - DKK
+  - GBP
+  - HUF
+  - JPY
+  - NOK
+  - SEK
+  - USD
+allowed_hosts:
+  - data-api.ecb.europa.eu
+url_template: "https://data-api.ecb.europa.eu/service/data/EXR/D.{asset}.EUR.SP00.A?startPeriod=2023-01-01&endPeriod=2024-12-31&format=csvdata"
+checksum_mode: content_sha256
+parser: ecb_exchange_rate_csv
+max_source_bytes: 8388608
+license:
+  data_license_class: redistributable_with_attribution
+  redistribution_status: allowed
+  source_url: https://data.ecb.europa.eu/data/datasets/EXR
+  terms_url: https://www.ecb.europa.eu/services/using-our-site/disclaimer/html/index.en.html
+  attribution: "Source: European Central Bank; rates inverted and schema fields derived by FactorMiner."
+  distribution_policy: Reproduce the information accurately, cite the ECB, and state every modification.
+universe:
+  selection: frozen named currency list
+  frozen_at: "2026-07-21T00:00:00Z"
+  denominator: EUR
+  membership_policy: Constant membership across the evaluated period.
+availability_lag: Daily reference observations are treated as available only after their approximately 16:00 CET provider publication; each observation may inform only subsequent reference observations.
+transformations:
+  - OBS_VALUE (foreign-currency units per EUR) is inverted to EUR per foreign-currency unit.
+  - The daily reference observation is mapped to equal open, high, low, and close fields.
+  - Volume is set to one and amount to close only as schema placeholders; neither is liquidity evidence.
+point_in_time_limitations:
+  - ECB reference rates are reference observations, not executable market closes or venue fills.
+  - No spread, volume, depth, borrow, or capacity data is supplied; liquidity and capacity gates remain unavailable.
+  - The currency universe was selected after the evaluation period and carries ex-post selection risk.
+  - Provider revisions remain possible; the committed content hashes pin the exact CSV responses used.
+  - Non-publication dates remain absent rather than being forward-filled.
+  - Normalized 00:00 UTC timestamps are observation-date labels, not publication timestamps; availability is after the stated provider publication time.

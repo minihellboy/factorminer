@@ -191,6 +191,10 @@ def evaluate_frozen_set(
     fit_split: str = "train",
     cost_bps: list[float] | None = None,
     capacity_levels: list[float] | None = None,
+    industry_evidence_config: Any | None = None,
+    n_trials: int = 1,
+    include_capacity_evidence: bool = False,
+    family_ic_series: dict[str, np.ndarray] | None = None,
 ) -> dict:
     """Evaluate one frozen factor set on one universe."""
     if cost_bps is None:
@@ -230,6 +234,7 @@ def evaluate_frozen_set(
             "cost_bps": [float(value) for value in cost_bps],
             "capacity_levels": [float(value) for value in capacity_levels],
         },
+        "industry_evidence": {},
         "warnings": [],
     }
     if not succeeded:
@@ -331,7 +336,7 @@ def evaluate_frozen_set(
             )
             for cost in cost_bps
         }
-        if eval_volume is not None:
+        if include_capacity_evidence and eval_volume is not None:
             result["combinations"][name]["capacity_pressure"] = _capacity_pressure_summary(
                 factor_name=name,
                 signals=composite,
@@ -339,6 +344,37 @@ def evaluate_frozen_set(
                 volume=eval_volume,
                 capacity_levels=capacity_levels,
             )
+        from factorminer.evaluation.evidence import (
+            IndustryEvidenceConfig,
+            evaluate_industry_evidence,
+        )
+
+        evidence_config = industry_evidence_config or IndustryEvidenceConfig(
+            cost_bps=tuple(float(value) for value in cost_bps),
+            primary_cost_bps=(10.0 if 10.0 in cost_bps else float(cost_bps[-1])),
+        )
+        evidence_payload = evaluate_industry_evidence(
+            name,
+            np.asarray(composite, dtype=np.float64).T,
+            np.asarray(eval_returns, dtype=np.float64).T,
+            config=evidence_config,
+            n_trials=max(int(n_trials), 1),
+            family_ic_series=(family_ic_series if name == "equal_weight" else None),
+            volume=(
+                np.asarray(eval_volume, dtype=np.float64)
+                if include_capacity_evidence and eval_volume is not None
+                else None
+            ),
+        ).to_dict()
+        evidence_payload["validation_coverage"]["walk_forward_freeze"] = {
+            "status": "measured",
+            "detail": (
+                f"Factors and combination weights were fit/frozen on {fit_split}; "
+                f"this report uses the disjoint {split_name} split. The receipt records "
+                "the upstream split and purge/embargo contract."
+            ),
+        }
+        result["industry_evidence"][name] = evidence_payload
 
     selection_specs = {}
     try:

@@ -23,6 +23,7 @@ Outputs (in results/phase2_benchmark/):
     selection_metrics.csv      — per-method selection metrics
     turnover_metrics.csv       — runtime turnover metrics
     cost_pressure_metrics.csv  — runtime cost-adjusted metrics
+    industry_evidence_summary.csv — Tier-0 IC/HAC/turnover/DSR/gate summary
     runtime_topk.csv           — runtime top-k summary
     comparison_plot.png        — bar chart comparison figure
     ablation_contributions.csv — component contribution summary
@@ -42,6 +43,7 @@ from factorminer.benchmark.phase2_reporting import (
     _build_phase2_manifest,
     _derive_split_periods,
     _generate_markdown_report,
+    _industry_evidence_frame,
     _json_safe,
     _print_improvement_table,
     _print_stat_tests,
@@ -138,11 +140,19 @@ def _parse_args() -> argparse.Namespace:
         choices=[
             "proprietary_licensed",
             "public_domain",
+            "publicly_retrievable",
+            "redistributable_with_attribution",
             "synthetic",
             "unknown",
             "vendor_redistributable_sample",
         ],
         help="License class for the exact benchmark input.",
+    )
+    parser.add_argument(
+        "--dataset-manifest",
+        type=str,
+        default=None,
+        help="Verified dataset_manifest.json produced by `factorminer public-data prepare`.",
     )
     parser.add_argument(
         "--commitment-key-file",
@@ -155,6 +165,16 @@ def _parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help="release_id this run's receipt supersedes, if any.",
+    )
+    parser.add_argument(
+        "--portable-release",
+        action="store_true",
+        help="Copy declared artifacts into a relocatable content-addressed release bundle.",
+    )
+    parser.add_argument(
+        "--bundle-public-data",
+        action="store_true",
+        help="Include the committed input inside a portable public release. Requires an explicitly redistributable public license class.",
     )
     parser.add_argument(
         "--methods",
@@ -192,6 +212,40 @@ def main() -> None:
     evidence_tier_value = args.evidence_tier or ("simulated" if actual_mock else "unverified")
     data_license_class = args.data_license_class or ("synthetic" if actual_mock else "unknown")
 
+    prepared_dataset_manifest = None
+    if args.dataset_manifest:
+        from factorminer.data.public_archive import verify_prepared_public_dataset
+
+        dataset_manifest_path = Path(args.dataset_manifest).resolve()
+        canonical_manifest_path = dataset_manifest_path.parent / "dataset_manifest.json"
+        if dataset_manifest_path != canonical_manifest_path:
+            raise ValueError("--dataset-manifest must name dataset_manifest.json")
+        prepared = verify_prepared_public_dataset(dataset_manifest_path.parent)
+        if not prepared.passed:
+            raise ValueError(
+                "prepared public dataset verification failed: " + "; ".join(prepared.mismatches)
+            )
+        prepared_dataset_manifest = json.loads(dataset_manifest_path.read_text())
+        expected_data = (
+            dataset_manifest_path.parent / prepared_dataset_manifest["data_path"]
+        ).resolve()
+        if args.data is None or Path(args.data).resolve() != expected_data:
+            raise ValueError("--data must reference the file bound by --dataset-manifest")
+        manifest_license = str(
+            prepared_dataset_manifest.get("license", {}).get("data_license_class", "unknown")
+        )
+        if args.data_license_class and args.data_license_class != manifest_license:
+            raise ValueError("--data-license-class conflicts with the verified dataset manifest")
+        data_license_class = manifest_license
+
+    if evidence_tier_value == "public_reproducible":
+        if not args.portable_release:
+            raise ValueError("public_reproducible evidence requires --portable-release")
+        if prepared_dataset_manifest is None:
+            raise ValueError(
+                "public_reproducible evidence requires a verified --dataset-manifest"
+            )
+
     logging.basicConfig(
         level=getattr(logging, args.log_level.upper(), logging.WARNING),
         format="%(levelname)s %(name)s: %(message)s",
@@ -210,6 +264,19 @@ def main() -> None:
     from factorminer.utils.config import load_config
 
     cfg = load_config()
+    if prepared_dataset_manifest is not None:
+        dataset_identity = str(prepared_dataset_manifest["dataset_id"])
+        dataset_asset_class = str(prepared_dataset_manifest["asset_class"])
+        cfg.data.market = dataset_asset_class
+        cfg.data.asset_class = dataset_asset_class
+        cfg.data.universe = dataset_identity
+        cfg.data.frequency = str(prepared_dataset_manifest["frequency"])
+        cfg.data.periods_per_year = float(prepared_dataset_manifest["periods_per_year"])
+        cfg.data.targets = [dict(prepared_dataset_manifest["target"])]
+        cfg.data.default_target = str(prepared_dataset_manifest["target"]["name"])
+        cfg.phase2.capacity.enabled = bool(prepared_dataset_manifest["liquidity_evidence"])
+        cfg.benchmark.freeze_universe = dataset_identity
+        cfg.benchmark.report_universes = [dataset_identity]
 
     if actual_mock:
         print(f"  Using mock data: {args.n_assets} assets x {args.n_periods} periods")
@@ -232,13 +299,19 @@ def main() -> None:
         t0 = time.perf_counter()
         from factorminer.data.loader import load_market_data
 
-        raw_df = load_market_data(args.data, universe=cfg.data.universe)
+        raw_df = load_market_data(
+            args.data,
+            universe=None if prepared_dataset_manifest is not None else cfg.data.universe,
+        )
         print(f"  Loaded in {time.perf_counter() - t0:.1f}s")
 
-    train_period, test_period = _derive_split_periods(raw_df)
+    train_period, validation_period, test_period = _derive_split_periods(raw_df)
     cfg_runtime = copy.deepcopy(cfg)
     cfg_runtime.data.train_period = train_period
+    cfg_runtime.data.validation_period = validation_period
     cfg_runtime.data.test_period = test_period
+    cfg_runtime.data.purge_bars = 1
+    cfg_runtime.data.embargo_bars = 0
     cfg_runtime.mining.target_library_size = args.n_factors
     cfg_runtime.mining.max_iterations = max(20, args.n_factors * 5)
     cfg_runtime.benchmark.seed = args.seed
@@ -251,7 +324,9 @@ def main() -> None:
 
     print(f"  Shape: M={raw_df['asset_id'].nunique()}, T={raw_df.groupby('asset_id').size().min()}")
     print(
-        f"  Train: [{train_period[0]}, {train_period[1]}]  Test: [{test_period[0]}, {test_period[1]}]"
+        f"  Train: [{train_period[0]}, {train_period[1]}]  "
+        f"Validation: [{validation_period[0]}, {validation_period[1]}]  "
+        f"Test: [{test_period[0]}, {test_period[1]}]  (purge=1, embargo=0 bars)"
     )
 
     # ================================================================
@@ -296,17 +371,31 @@ def main() -> None:
     # ================================================================
     # STEP 3: HelixFactor vs FactorMiner Improvement Table
     # ================================================================
-    _section("STEP 3: HelixFactor vs FactorMiner — Improvement Summary")
-    _print_improvement_table(bench_result)
+    if {"helix_phase2", "ralph_loop"}.issubset(methods):
+        _section("STEP 3: HelixFactor vs FactorMiner — Improvement Summary")
+        _print_improvement_table(bench_result)
+    else:
+        _section("STEP 3: Method Scope")
+        print(
+            "  Deterministic formula baselines only; no Helix-vs-Ralph improvement "
+            "claim is computed."
+        )
 
     # ================================================================
     # STEP 4: Statistical Tests
     # ================================================================
     _section("STEP 4: Statistical Significance Tests")
-    if bench_result.statistical_tests:
+    has_paired_method_test = bool(
+        bench_result.statistical_tests.get("paired_tests_by_run")
+        or "diebold_mariano" in bench_result.statistical_tests
+    )
+    if has_paired_method_test:
         _print_stat_tests(bench_result.statistical_tests)
     else:
-        print("  (No statistical tests available — need both helix_phase2 and ralph_loop methods)")
+        print(
+            "  (No Helix-vs-Ralph paired test: both methods are required. "
+            "Across-seed dispersion remains recorded for every selected method.)"
+        )
 
     # ================================================================
     # STEP 5: Speed Benchmark
@@ -381,6 +470,9 @@ def main() -> None:
     runtime_topk = _runtime_topk_frame(runtime_artifacts)
     if not runtime_topk.empty:
         runtime_topk.to_csv(output_dir / "runtime_topk.csv", index=False)
+    industry_evidence = _industry_evidence_frame(runtime_artifacts)
+    if not industry_evidence.empty:
+        industry_evidence.to_csv(output_dir / "industry_evidence_summary.csv", index=False)
 
     # Statistical tests JSON
     with open(output_dir / "statistical_tests.json", "w") as f:
@@ -436,6 +528,11 @@ def main() -> None:
         "speed_metrics": str((output_dir / "speed_metrics.csv").resolve()),
         "effective_config": str(effective_config_path.resolve()),
     }
+    if prepared_dataset_manifest is not None:
+        phase2_artifact_paths["dataset_manifest"] = str(dataset_manifest_path)
+        phase2_artifact_paths["dataset_lock"] = str(
+            (dataset_manifest_path.parent / str(prepared_dataset_manifest["lock_path"])).resolve()
+        )
     if (output_dir / "turnover_metrics.csv").exists():
         phase2_artifact_paths["turnover_metrics"] = str(
             (output_dir / "turnover_metrics.csv").resolve()
@@ -446,6 +543,10 @@ def main() -> None:
         )
     if (output_dir / "runtime_topk.csv").exists():
         phase2_artifact_paths["runtime_topk"] = str((output_dir / "runtime_topk.csv").resolve())
+    if (output_dir / "industry_evidence_summary.csv").exists():
+        phase2_artifact_paths["industry_evidence_summary"] = str(
+            (output_dir / "industry_evidence_summary.csv").resolve()
+        )
     if (output_dir / "comparison_plot.png").exists():
         phase2_artifact_paths["comparison_plot"] = str(
             (output_dir / "comparison_plot.png").resolve()
@@ -477,7 +578,11 @@ def main() -> None:
     from factorminer.architecture.memory_policy import build_memory_policy
     from factorminer.architecture.paper_protocol import PaperProtocol
     from factorminer.architecture.research_receipt import EvidenceTier, RunStatus
-    from factorminer.benchmark.receipt import build_research_receipt, write_receipt
+    from factorminer.benchmark.receipt import (
+        build_research_receipt,
+        publish_portable_bundle,
+        write_receipt,
+    )
     from factorminer.evaluation.metrics import METRIC_VERSION
 
     protocol = PaperProtocol.from_config(cfg_runtime)
@@ -491,16 +596,41 @@ def main() -> None:
         str(ref.get("baseline") or index): dict(ref.get("stress_contract") or {})
         for index, ref in enumerate(runtime_refs)
     }
-    dataset_descriptor = {
-        "kind": "synthetic" if actual_mock else "file",
-        "identity": "factorminer-mock" if actual_mock else Path(args.data).name,
-        "format": "generated" if actual_mock else Path(args.data).suffix.lower().lstrip("."),
-        "train_period": train_period,
-        "test_period": test_period,
-        "asset_class": cfg_runtime.data.asset_class,
-        "universe": cfg_runtime.data.universe,
-        "frequency": cfg_runtime.data.frequency,
-    }
+    if prepared_dataset_manifest is not None:
+        dataset_descriptor = {
+            "kind": "checksum_locked_public_archive",
+            "identity": prepared_dataset_manifest["dataset_id"],
+            "format": Path(args.data).suffix.lower().lstrip("."),
+            "data_sha256": prepared_dataset_manifest["data_sha256"],
+            "source_lock_sha256": prepared_dataset_manifest["lock_sha256"],
+            "source_archives": prepared_dataset_manifest["source_archives"],
+            "provider": prepared_dataset_manifest["provider"],
+            "license": prepared_dataset_manifest["license"],
+            "availability_lag": prepared_dataset_manifest["availability_lag"],
+            "point_in_time_limitations": prepared_dataset_manifest["point_in_time_limitations"],
+            "train_period": train_period,
+            "validation_period": validation_period,
+            "test_period": test_period,
+            "purge_bars": 1,
+            "embargo_bars": 0,
+            "asset_class": cfg_runtime.data.asset_class,
+            "universe": prepared_dataset_manifest["universe"],
+            "frequency": prepared_dataset_manifest["frequency"],
+        }
+    else:
+        dataset_descriptor = {
+            "kind": "synthetic" if actual_mock else "file",
+            "identity": "factorminer-mock" if actual_mock else Path(args.data).name,
+            "format": "generated" if actual_mock else Path(args.data).suffix.lower().lstrip("."),
+            "train_period": train_period,
+            "validation_period": validation_period,
+            "test_period": test_period,
+            "purge_bars": 1,
+            "embargo_bars": 0,
+            "asset_class": cfg_runtime.data.asset_class,
+            "universe": cfg_runtime.data.universe,
+            "frequency": cfg_runtime.data.frequency,
+        }
     commitment_key = None
     if evidence_tier_value == "private_partner_observed":
         if not args.commitment_key_file:
@@ -532,8 +662,20 @@ def main() -> None:
         commitment_key=commitment_key,
         supersedes_release_id=args.supersedes_release_id,
     )
-    receipt_path = write_receipt(receipt, releases_root=output_dir / "releases")
-    print(f"  Receipt: {receipt_path} (release_id={receipt.release_id})")
+    if args.portable_release:
+        receipt_path = publish_portable_bundle(
+            receipt,
+            phase2_manifest=phase2_manifest,
+            releases_root=output_dir / "releases",
+            commitment_input=Path(args.data).resolve() if args.data else None,
+            include_commitment_input=args.bundle_public_data,
+        )
+    else:
+        if args.bundle_public_data:
+            raise ValueError("--bundle-public-data requires --portable-release")
+        receipt_path = write_receipt(receipt, releases_root=output_dir / "releases")
+    published_release_id = receipt_path.parent.name
+    print(f"  Receipt: {receipt_path} (release_id={published_release_id})")
 
     print(f"\n  Output files saved to: {output_dir.resolve()}")
     for fpath in sorted(output_dir.glob("*")):

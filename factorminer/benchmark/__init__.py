@@ -77,6 +77,7 @@ _RECEIPT_EXPORTS = {
     for name in (
         "build_research_receipt",
         "generate_commitment_nonce",
+        "publish_portable_bundle",
         "seal_private_commitment",
         "write_receipt",
         "verify_research_receipt",
