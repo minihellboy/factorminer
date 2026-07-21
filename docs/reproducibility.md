@@ -136,7 +136,7 @@ plus `ic_definition: spearman_rank`. The legacy keys remain unchanged so old
 libraries and admission thresholds are not silently reinterpreted. The
 industry evidence protocol additionally separates unannualized ICIR,
 annualized ICIR, an independence t-stat, and a Newey-West/HAC t-stat. See
-[Industry Benchmarking](industry-benchmarking.md) for the exact formulas and
+[Evidence Protocol](evidence-protocol.md) for the exact formulas and
 cross-platform comparison rules.
 
 The difference is material. For `IC_t = [0.1, -0.1]`, `ic_abs_mean` is `0.1`

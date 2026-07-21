@@ -145,9 +145,13 @@ def _normalize_backtest_stats(stats: dict) -> dict[str, float]:
         "icir": _abs_icir_from_series(ic_series),
         "ic_win_rate": float(stats.get("ic_win_rate", 0.0)),
         "rank_ic_mean": float(stats.get("rank_ic_mean", signed_ic)),
+        "rank_ic_paper_mean": abs(float(stats.get("rank_ic_mean", signed_ic))),
         "rank_icir": float(stats.get("rank_icir", stats.get("icir", 0.0))),
+        "rank_ic_paper_icir": abs(float(stats.get("rank_icir", stats.get("icir", 0.0)))),
         "pearson_ic_mean": float(stats.get("pearson_ic_mean", 0.0)),
+        "pearson_ic_paper_mean": abs(float(stats.get("pearson_ic_mean", 0.0))),
         "pearson_icir": float(stats.get("pearson_icir", 0.0)),
+        "pearson_ic_paper_icir": abs(float(stats.get("pearson_icir", 0.0))),
         "long_short": float(stats.get("ls_return", 0.0)),
         "monotonicity": float(stats.get("monotonicity", 0.0)),
         "turnover": float(stats.get("avg_turnover", 0.0)),
@@ -211,9 +215,13 @@ def evaluate_frozen_set(
             "ic": 0.0,
             "icir": 0.0,
             "rank_ic": 0.0,
+            "rank_ic_mean": 0.0,
             "rank_icir": 0.0,
+            "rank_ic_paper_icir": 0.0,
             "pearson_ic": 0.0,
+            "pearson_ic_mean": 0.0,
             "pearson_icir": 0.0,
+            "pearson_ic_paper_icir": 0.0,
             "avg_abs_rho": 0.0,
         },
         "combinations": {},
@@ -242,19 +250,37 @@ def evaluate_frozen_set(
                 [artifact.split_stats[split_name]["rank_ic_paper_mean"] for artifact in succeeded]
             )
         ),
+        "rank_ic_mean": float(
+            np.mean([artifact.split_stats[split_name]["rank_ic_mean"] for artifact in succeeded])
+        ),
         "rank_icir": float(
+            np.mean([artifact.split_stats[split_name]["rank_icir"] for artifact in succeeded])
+        ),
+        "rank_ic_paper_icir": float(
             np.mean(
                 [artifact.split_stats[split_name]["rank_ic_paper_icir"] for artifact in succeeded]
             )
         ),
         "pearson_ic": float(
             np.mean(
-                [artifact.split_stats[split_name]["pearson_ic_paper_mean"] for artifact in succeeded]
+                [
+                    artifact.split_stats[split_name]["pearson_ic_paper_mean"]
+                    for artifact in succeeded
+                ]
             )
         ),
+        "pearson_ic_mean": float(
+            np.mean([artifact.split_stats[split_name]["pearson_ic_mean"] for artifact in succeeded])
+        ),
         "pearson_icir": float(
+            np.mean([artifact.split_stats[split_name]["pearson_icir"] for artifact in succeeded])
+        ),
+        "pearson_ic_paper_icir": float(
             np.mean(
-                [artifact.split_stats[split_name]["pearson_ic_paper_icir"] for artifact in succeeded]
+                [
+                    artifact.split_stats[split_name]["pearson_ic_paper_icir"]
+                    for artifact in succeeded
+                ]
             )
         ),
         "avg_abs_rho": _avg_abs_rho(succeeded, split_name),

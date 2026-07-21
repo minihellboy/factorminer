@@ -150,7 +150,7 @@ _EXPORTS = {
         )
     },
     **{
-        name: "factorminer.evaluation.industry_evidence"
+        name: "factorminer.evaluation.evidence"
         for name in (
             "INDUSTRY_EVIDENCE_VERSION",
             "IndustryEvidenceConfig",
