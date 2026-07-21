@@ -7,8 +7,11 @@ transaction cost pressure testing, following the FactorMiner paper methodology.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 
 from factorminer.evaluation.metrics import compute_icir, compute_pearson_ic, compute_rank_ic
+
+_PORTFOLIO_BLOCK_SIZE = 128
 
 
 class PortfolioBacktester:
@@ -61,25 +64,43 @@ class PortfolioBacktester:
         T, N = combined_signal.shape
         cost_frac = transaction_cost_bps / 10000.0
 
-        # Per-period quintile returns
-        quintile_returns = np.full((T, 5), np.nan)
-        for t in range(T):
-            sig_t = combined_signal[t]
-            ret_t = returns[t]
-            eligible = np.isfinite(sig_t)
-            n_eligible = int(eligible.sum())
-            if n_eligible < 5:
-                continue
-            ranks = _rank_array(sig_t[eligible])
-            eligible_returns = ret_t[eligible]
-            boundaries = np.linspace(0, 1, 6)
+        boundaries = np.linspace(0.0, 1.0, 6)
+        quintile_returns = np.full((T, 5), np.nan, dtype=np.float64)
+        for start in range(0, T, _PORTFOLIO_BLOCK_SIZE):
+            stop = start + _PORTFOLIO_BLOCK_SIZE
+            signal_block = combined_signal[start:stop]
+            return_block = returns[start:stop]
+            eligible = np.isfinite(signal_block)
+            eligible_count = eligible.sum(axis=1)
+            ranks = pd.DataFrame(np.where(eligible, signal_block, np.nan)).rank(
+                axis=1, method="average", na_option="keep"
+            )
+            percentile = np.divide(
+                ranks.to_numpy(dtype=np.float64, copy=False) - 1.0,
+                np.maximum(eligible_count - 1, 1)[:, None],
+            )
+            usable_period = eligible_count >= 5
             for q in range(5):
-                mask = (ranks >= boundaries[q]) & (ranks < boundaries[q + 1])
+                lower, upper = boundaries[q], boundaries[q + 1]
                 if q == 4:
-                    mask = (ranks >= boundaries[q]) & (ranks <= boundaries[q + 1])
-                bucket_returns = eligible_returns[mask]
-                if mask.any() and np.all(np.isfinite(bucket_returns)):
-                    quintile_returns[t, q] = np.mean(bucket_returns)
+                    members = (percentile >= lower) & (percentile <= upper)
+                else:
+                    members = (percentile >= lower) & (percentile < upper)
+                has_members = members.any(axis=1)
+                finite_returns = np.all(
+                    np.where(members, np.isfinite(return_block), True), axis=1
+                )
+                take = usable_period & has_members & finite_returns
+                totals = np.where(members, return_block, 0.0).sum(axis=1)
+                counts = members.sum(axis=1)
+                means = np.divide(
+                    totals,
+                    counts,
+                    out=np.zeros(signal_block.shape[0], dtype=np.float64),
+                    where=counts > 0,
+                )
+                rows = start + np.flatnonzero(take)
+                quintile_returns[rows, q] = means[take]
 
         # Turnover for cost adjustment
         turnover = self.compute_turnover(combined_signal, top_fraction=0.2)

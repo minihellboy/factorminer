@@ -256,6 +256,32 @@ class TestPairwiseCorrelation:
         # Should still produce a valid number
         assert np.isfinite(corr)
 
+    def test_ic_matches_scipy_spearman_per_period(self, rng):
+        """Shipped compute_ic must match scipy.stats.spearmanr column-wise."""
+        from scipy.stats import spearmanr
+
+        M, T = 40, 25
+        signals = rng.integers(-3, 4, size=(M, T)).astype(np.float64)
+        returns = rng.normal(0, 0.01, (M, T))
+        signals[rng.random(signals.shape) < 0.1] = np.nan
+        returns[rng.random(returns.shape) < 0.1] = np.nan
+        signals[0, 0] = np.inf
+        returns[1, 1] = -np.inf
+
+        got = compute_ic(signals, returns)
+        for t in range(T):
+            s = signals[:, t]
+            r = returns[:, t]
+            valid = np.isfinite(s) & np.isfinite(r)
+            if valid.sum() < 5:
+                assert np.isnan(got[t])
+                continue
+            exp, _ = spearmanr(s[valid], r[valid])
+            if not np.isfinite(exp):
+                assert got[t] == 0.0 or np.isnan(got[t])
+            else:
+                np.testing.assert_allclose(got[t], exp, rtol=1e-10, atol=1e-10)
+
 
 # ---------------------------------------------------------------------------
 # Quintile returns
@@ -290,6 +316,17 @@ class TestQuintileReturns:
         result = compute_quintile_returns(signals, returns, n_quantiles=5)
         # Should have Q1..Q5 plus long_short and monotonicity
         assert len(result) == 7
+
+    def test_quintiles_preserve_signal_universe_and_invalid_bucket_policy(self):
+        signals = np.tile(np.arange(10, dtype=np.float64)[:, None], (1, 2))
+        returns = np.tile(np.arange(10, dtype=np.float64)[:, None], (1, 2))
+        returns[0, 0] = np.nan
+
+        result = compute_quintile_returns(signals, returns)
+
+        # Q1 at period 0 is skipped as a whole; period 1 still contributes.
+        assert result["Q1"] == pytest.approx(0.5)
+        assert result["Q5"] == pytest.approx(8.5)
 
 
 # ---------------------------------------------------------------------------

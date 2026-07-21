@@ -251,3 +251,24 @@ def test_portfolio_backtest_handles_empty_quintiles_without_runtime_warning():
     assert np.isnan(stats["ls_gross_return"])
     assert stats["monotonicity"] == 0.0
     assert stats["avg_turnover"] == 0.0
+
+
+def test_portfolio_ic_series_matches_metrics_compute_ic():
+    """Portfolio backtest IC must reuse the vectorized metrics path."""
+    from factorminer.evaluation.metrics import compute_ic, compute_pearson_ic
+
+    rng = np.random.default_rng(99)
+    T, N = 30, 50
+    signal = rng.normal(size=(T, N))
+    returns = rng.normal(size=(T, N)) * 0.01
+    signal[rng.random(signal.shape) < 0.05] = np.nan
+    returns[rng.random(returns.shape) < 0.05] = np.nan
+
+    stats = PortfolioBacktester().quintile_backtest(signal, returns)
+    expected = compute_ic(signal.T, returns.T)
+    np.testing.assert_allclose(stats["ic_series"], expected, equal_nan=True)
+    np.testing.assert_allclose(
+        stats["pearson_ic_series"],
+        compute_pearson_ic(signal.T, returns.T),
+        equal_nan=True,
+    )
