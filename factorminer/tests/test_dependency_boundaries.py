@@ -42,3 +42,12 @@ def test_internal_compatibility_import_is_rejected() -> None:
     )
     assert len(violations) == 1
     assert "compatibility import" in violations[0].rule
+
+
+def test_benchmark_service_to_runtime_import_is_rejected() -> None:
+    violations = violations_for_source(
+        "factorminer.benchmark.runners",
+        "from factorminer.benchmark.runtime import run_table1_benchmark\n",
+    )
+    assert len(violations) == 1
+    assert "runtime orchestrator" in violations[0].rule

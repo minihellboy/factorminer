@@ -46,6 +46,19 @@ INTERFACE_PREFIXES = (
 BANNED_INTERNAL_IMPORTS = {
     "factorminer.architecture.dependence": "factorminer.domain.dependence",
 }
+BENCHMARK_SERVICE_MODULES = frozenset(
+    {
+        "factorminer.benchmark.datasets",
+        "factorminer.benchmark.frozen_evaluation",
+        "factorminer.benchmark.mining_runtime",
+        "factorminer.benchmark.provenance",
+        "factorminer.benchmark.reporting",
+        "factorminer.benchmark.runners",
+        "factorminer.benchmark.runtime_contracts",
+        "factorminer.benchmark.speed",
+        "factorminer.benchmark.statistics",
+    }
+)
 
 
 @dataclass(frozen=True, order=True)
@@ -126,6 +139,8 @@ def violations_for_source(module: str, text: str) -> list[ImportViolation]:
         if target in BANNED_INTERNAL_IMPORTS and module != target:
             replacement = BANNED_INTERNAL_IMPORTS[target]
             rule = f"compatibility import is internal-only; use {replacement}"
+        elif module in BENCHMARK_SERVICE_MODULES and target == "factorminer.benchmark.runtime":
+            rule = "benchmark services must not depend on the runtime orchestrator"
         elif source_layer == "domain" and target_layer != "domain":
             rule = "domain must not depend on higher layers"
         elif source_layer == "adapter" and target_layer in {"application", "interface"}:
@@ -144,9 +159,7 @@ def check_repository() -> list[ImportViolation]:
         if "tests" in path.parts:
             continue
         module = _module_name(path)
-        violations.extend(
-            violations_for_source(module, path.read_text(encoding="utf-8"))
-        )
+        violations.extend(violations_for_source(module, path.read_text(encoding="utf-8")))
     return sorted(violations)
 
 

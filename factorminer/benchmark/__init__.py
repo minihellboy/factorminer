@@ -5,18 +5,9 @@ from __future__ import annotations
 from factorminer._lazy_exports import public_dir, resolve_export
 
 _RUNTIME_MODULE = "factorminer.benchmark.runtime"
-_CANONICAL_EXPORTS = {
+_RUNTIME_EXPORTS = {
     name: _RUNTIME_MODULE
     for name in (
-        "BenchmarkManifest",
-        "BenchmarkRuntimeContract",
-        "StrategyGridBenchmarkContract",
-        "StressBenchmarkContract",
-        "WalkForwardBenchmarkContract",
-        "build_benchmark_library",
-        "build_benchmark_runtime_contract",
-        "evaluate_frozen_set",
-        "load_benchmark_dataset",
         "run_ablation_memory_benchmark",
         "run_ablation_strategy_benchmark",
         "run_benchmark_suite",
@@ -27,12 +18,39 @@ _CANONICAL_EXPORTS = {
         "run_phase2_ablation_study",
         "run_phase2_comparison",
         "run_table1_benchmark",
+    )
+}
+_CONTRACT_EXPORTS = {
+    name: "factorminer.benchmark.contracts"
+    for name in (
+        "BenchmarkManifest",
+        "BenchmarkRuntimeContract",
+        "StrategyGridBenchmarkContract",
+        "StressBenchmarkContract",
+        "WalkForwardBenchmarkContract",
+    )
+}
+_RUNTIME_CONTRACT_EXPORTS = {
+    "build_benchmark_runtime_contract": "factorminer.benchmark.runtime_contracts",
+}
+_DATASET_EXPORTS = {
+    name: "factorminer.benchmark.datasets"
+    for name in (
+        "build_benchmark_library",
+        "load_benchmark_dataset",
+    )
+}
+_FROZEN_EVALUATION_EXPORTS = {
+    name: "factorminer.benchmark.frozen_evaluation"
+    for name in (
+        "evaluate_frozen_set",
         "select_frozen_top_k",
     )
 }
 _STATISTICS_EXPORTS = {
     name: "factorminer.benchmark.statistics"
     for name in (
+        "AblationResult",
         "BenchmarkResult",
         "MethodResult",
         "DMTestResult",
@@ -48,7 +66,6 @@ _RUNNER_EXPORTS = {
     name: "factorminer.benchmark.runners"
     for name in (
         "AblationStudy",
-        "AblationResult",
         "AblatedMethodRunner",
         "ABLATION_CONFIGS",
         "ABLATION_LABELS",
@@ -67,7 +84,11 @@ _RECEIPT_EXPORTS = {
     )
 }
 _EXPORTS = {
-    **_CANONICAL_EXPORTS,
+    **_RUNTIME_EXPORTS,
+    **_CONTRACT_EXPORTS,
+    **_RUNTIME_CONTRACT_EXPORTS,
+    **_DATASET_EXPORTS,
+    **_FROZEN_EVALUATION_EXPORTS,
     **_STATISTICS_EXPORTS,
     **_SPEED_EXPORTS,
     **_RUNNER_EXPORTS,
