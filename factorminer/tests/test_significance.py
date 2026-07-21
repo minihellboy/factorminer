@@ -57,10 +57,61 @@ def test_bootstrap_weak_signal_includes_zero(config):
     tester = BootstrapICTester(config)
     result = tester.compute_ci("weak_factor", ic_series)
 
-    # The CI for |IC| may or may not include zero depending on noise,
-    # but the result should be a valid BootstrapCIResult
+    # The signed-mean CI may or may not include zero for a finite sample,
+    # but the result must remain a valid BootstrapCIResult.
     assert isinstance(result, BootstrapCIResult)
     assert result.ci_lower <= result.ci_upper
+
+
+def test_bootstrap_ci_and_p_value_target_same_statistic(config):
+    """Regression: the CI used to bracket mean(|IC_t|) while the p-value
+    tested |mean(IC_t)|. An alternating ±0.1 series (magnitude, no stable
+    direction) then got a CI excluding zero next to a p-value near 1.0 —
+    contradictory evidence for the same factor. Both must target the
+    signed-mean statistic behind paper_ic_v2."""
+    ic_series = np.tile(np.array([0.1, -0.1]), 100)
+
+    tester = BootstrapICTester(config)
+    result = tester.compute_ci("alternating", ic_series)
+    p_value = tester.compute_p_value(ic_series)
+
+    assert result.ic_mean == pytest.approx(0.0, abs=1e-12)
+    assert result.ic_paper_mean == pytest.approx(0.0, abs=1e-12)
+    assert result.ci_lower <= 0.0 <= result.ci_upper
+    assert result.ci_excludes_zero is False
+    assert p_value > 0.5
+
+
+def test_bootstrap_negative_signal_sign_aware(config):
+    """A consistently negative IC must yield a negative signed mean, a CI
+    strictly below zero (which still counts as excluding zero), and a
+    positive paper-mode magnitude."""
+    T = 200
+    ic_series = np.full(T, -0.10) + np.random.default_rng(42).normal(0, 0.01, T)
+
+    tester = BootstrapICTester(config)
+    result = tester.compute_ci("negative_factor", ic_series)
+
+    assert result.ic_mean < -0.08
+    assert result.ci_upper < 0
+    assert result.ci_excludes_zero is True
+    assert result.ic_paper_mean > 0.08
+
+
+def test_block_bootstrap_circular_uniform_coverage():
+    """Regression: block starts were capped at T - block_size, so tail
+    observations were under-sampled despite the 'circular' docstring.
+    With wrap-around sampling every index is equally likely, so the
+    expected bootstrap mean equals the sample mean even when the only
+    nonzero value sits at the final index."""
+    series = np.zeros(100)
+    series[-1] = 1.0
+    tester = BootstrapICTester(
+        SignificanceConfig(bootstrap_n_samples=2000, bootstrap_block_size=10, seed=7)
+    )
+    boot_means = tester._block_bootstrap_means(series)
+
+    assert np.mean(boot_means) == pytest.approx(series.mean(), abs=0.002)
 
 
 def test_bootstrap_p_value_distinguishes_signal_from_noise(config):

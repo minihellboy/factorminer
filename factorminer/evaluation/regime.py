@@ -442,6 +442,15 @@ class RegimeState:
     def label(self) -> str:
         return str(self)
 
+    def similarity(self, other: RegimeState) -> float:
+        """Return normalized agreement across the three regime components."""
+        matches = (
+            int(self.trend == other.trend)
+            + int(self.vol == other.vol)
+            + int(self.mean_rev == other.mean_rev)
+        )
+        return matches / 3.0
+
 
 @dataclass
 class StreamingRegimeConfig:

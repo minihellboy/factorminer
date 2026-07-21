@@ -534,6 +534,36 @@ class TestGPUCPUEquivalence:
                 np_result[valid], torch_result.numpy()[valid], decimal=4
             )
 
+    @pytest.mark.parametrize("op_name,min_obs", [("Skew", 3), ("Kurt", 4)])
+    def test_higher_moment_equivalence_and_nan_guards(
+        self, torch_available, op_name, min_obs
+    ):
+        """Regression: numpy Skew/Kurt lacked the torch backends' minimum
+        valid-count guards, returning finite noise from windows with too few
+        observations where torch returns NaN. NaN masks must now match
+        exactly, not only the values where both happen to be finite."""
+        import torch as th
+
+        rng = np.random.default_rng(5)
+        x = rng.normal(size=(3, 40))
+        x[0, 5:9] = np.nan  # a NaN run partially covering several windows
+        x[1, ::2] = np.nan  # alternating NaN: 2-3 valid obs per window of 5
+
+        np_result = execute_operator(op_name, x, params={"window": 5}, backend="numpy")
+        torch_result = execute_operator(
+            op_name, th.tensor(x, dtype=th.float64), params={"window": 5}, backend="torch"
+        ).numpy()
+
+        np.testing.assert_array_equal(np.isnan(np_result), np.isnan(torch_result))
+        valid = ~np.isnan(np_result)
+        assert valid.any()
+        np.testing.assert_array_almost_equal(
+            np_result[valid], torch_result[valid], decimal=4
+        )
+        if min_obs == 4:
+            # alternating-NaN windows never reach 4 valid obs -> all NaN
+            assert np.isnan(np_result[1, 4:]).all()
+
 
 # ---------------------------------------------------------------------------
 # Registry

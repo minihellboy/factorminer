@@ -736,3 +736,32 @@ def test_strategy_ablation_benchmark_expands_runtime_grid(monkeypatch, tmp_path)
         == "numpy"
     )
     assert (tmp_path / "benchmark" / "ablation" / "strategy_grid.json").exists()
+
+
+def test_diebold_mariano_hac_active_at_default_horizon():
+    """Regression: with h=1 the Bartlett loop was range(1, max(h-1,0)+1) =
+    range(1, 1) — empty — so the 'Newey-West' variance silently degenerated
+    to iid. The automatic truncation must inflate the variance (shrinking
+    the statistic, raising the p-value) for positively autocorrelated loss
+    differentials."""
+    rng = np.random.default_rng(3)
+    T = 400
+    ar = np.empty(T)
+    ar[0] = rng.normal()
+    for t in range(1, T):
+        ar[t] = 0.8 * ar[t - 1] + rng.normal()
+    ic_1 = 0.1 + 0.02 * np.tanh(ar)  # autocorrelated IC level
+    ic_2 = np.zeros(T)
+
+    tests = StatisticalComparisonTests(seed=42)
+    hac = tests.diebold_mariano_test(ic_1, ic_2)  # automatic Newey-West lag
+    iid = tests.diebold_mariano_test(ic_1, ic_2, max_lag=0)  # old default
+
+    assert abs(hac.dm_statistic) < abs(iid.dm_statistic)
+    assert hac.p_value >= iid.p_value
+    assert hac.n_obs == iid.n_obs == T
+
+    with np.testing.assert_raises(ValueError):
+        tests.diebold_mariano_test(ic_1, ic_2, h=0)
+    with np.testing.assert_raises(ValueError):
+        tests.diebold_mariano_test(ic_1, ic_2, max_lag=-1)
