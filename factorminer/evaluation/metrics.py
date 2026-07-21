@@ -375,31 +375,42 @@ def compute_turnover(signals: np.ndarray, top_fraction: float = 0.2) -> float:
     float
         Average turnover rate in [0, 1].
     """
-    M, T = signals.shape
-    k = max(int(M * top_fraction), 1)
-    turnovers = []
-
-    prev_top = None
-    for t in range(T):
-        col = signals[:, t]
-        valid = np.isfinite(col)
-        if valid.sum() < k:
-            prev_top = None
-            continue
-        # Get indices of top-k assets
-        # Use argpartition for efficiency
-        col_filled = np.where(valid, col, -np.inf)
-        top_idx = set(np.argpartition(col_filled, -k)[-k:])
-
-        if prev_top is not None:
-            overlap = len(top_idx & prev_top)
-            turnover = 1.0 - overlap / k
-            turnovers.append(turnover)
-        prev_top = top_idx
-
-    if not turnovers:
+    asset_count, period_count = signals.shape
+    k = max(int(asset_count * top_fraction), 1)
+    if period_count < 2:
         return 0.0
-    return float(np.mean(turnovers))
+
+    turnover_sum = 0.0
+    turnover_count = 0
+    previous_selected: np.ndarray | None = None
+    previous_usable = False
+
+    # Bound temporary memory while batching ranking and membership overlap.
+    for start in range(0, period_count, 64):
+        block = signals[:, start : start + 64]
+        valid = np.isfinite(block)
+        usable = valid.sum(axis=0) >= k
+        top_idx = np.argpartition(
+            np.where(valid, block, -np.inf), -k, axis=0
+        )[-k:, :]
+        selected = np.zeros_like(valid)
+        selected[top_idx, np.arange(block.shape[1])[None, :]] = True
+
+        if previous_selected is not None and previous_usable and usable[0]:
+            overlap = np.count_nonzero(previous_selected & selected[:, 0])
+            turnover_sum += 1.0 - overlap / k
+            turnover_count += 1
+
+        consecutive = usable[1:] & usable[:-1]
+        if np.any(consecutive):
+            overlap = np.sum(selected[:, 1:] & selected[:, :-1], axis=0)
+            turnover_sum += float(np.sum(1.0 - overlap[consecutive] / k))
+            turnover_count += int(np.count_nonzero(consecutive))
+
+        previous_selected = selected[:, -1].copy()
+        previous_usable = bool(usable[-1])
+
+    return turnover_sum / turnover_count if turnover_count else 0.0
 
 
 # ---------------------------------------------------------------------------

@@ -312,6 +312,41 @@ class TestTurnover:
         turnover = compute_turnover(signals, top_fraction=0.2)
         assert 0 <= turnover <= 1.0
 
+    def test_turnover_skips_sparse_columns(self):
+        """Columns with too few finite values reset the consecutive window."""
+        M, T = 10, 4
+        signals = np.arange(M, dtype=np.float64).reshape(M, 1) * np.ones((1, T))
+        # Period 1 almost all NaN → break consecutive chain; constant ranks elsewhere.
+        signals[:, 1] = np.nan
+        signals[0, 1] = 1.0
+        turnover = compute_turnover(signals, top_fraction=0.2)
+        assert turnover == 0.0
+
+    def test_turnover_matches_reference_across_chunk_boundaries(self, rng):
+        signals = rng.integers(-3, 4, size=(40, 130)).astype(np.float64)
+        signals[rng.random(signals.shape) < 0.1] = np.nan
+        signals[:, 64] = np.nan
+        top_fraction = 0.2
+        k = int(signals.shape[0] * top_fraction)
+        expected: list[float] = []
+        previous: set[int] | None = None
+        for period in range(signals.shape[1]):
+            column = signals[:, period]
+            valid = np.isfinite(column)
+            if int(valid.sum()) < k:
+                previous = None
+                continue
+            selected = set(
+                np.argpartition(np.where(valid, column, -np.inf), -k)[-k:]
+            )
+            if previous is not None:
+                expected.append(1.0 - len(selected & previous) / k)
+            previous = selected
+
+        assert compute_turnover(signals, top_fraction) == pytest.approx(
+            np.mean(expected), abs=1e-15
+        )
+
 
 # ---------------------------------------------------------------------------
 # Comprehensive factor stats
@@ -344,7 +379,6 @@ class TestFactorStats:
         returns = rng.normal(0, 0.01, (M, T))
         stats = compute_factor_stats(signals, returns)
         assert stats["ic_series"].shape == (T,)
-
     def test_factor_stats_labels_legacy_rankic_and_explicit_pearson(self, rng):
         signals = rng.normal(size=(20, 12))
         returns = rng.normal(size=(20, 12))
@@ -354,3 +388,96 @@ class TestFactorStats:
         assert stats["ic_definition"] == "spearman_rank"
         np.testing.assert_allclose(stats["ic_series"], stats["rank_ic_series"])
         assert stats["pearson_ic_series"].shape == stats["rank_ic_series"].shape
+
+
+# ---------------------------------------------------------------------------
+# Batch Spearman / rank columns (evaluation.correlation)
+# ---------------------------------------------------------------------------
+
+
+class TestBatchSpearman:
+    """Drive shipped correlation helpers on the real entry points."""
+
+    def test_rank_columns_preserves_nan_and_average_ties(self):
+        from factorminer.evaluation.correlation import _rank_columns
+
+        x = np.array(
+            [
+                [1.0, np.nan, 3.0],
+                [1.0, 2.0, 1.0],
+                [3.0, 4.0, 2.0],
+                [np.nan, 1.0, np.nan],
+            ],
+            dtype=np.float64,
+        )
+        ranked = _rank_columns(x)
+        # col0: values 1,1,3,nan → average ranks 1.5,1.5,3
+        assert np.isnan(ranked[3, 0])
+        np.testing.assert_allclose(sorted(ranked[~np.isnan(ranked[:, 0]), 0]), [1.5, 1.5, 3.0])
+        # col1 has only 3 finite (>=2)
+        assert not np.isnan(ranked[1, 1])
+
+    def test_batch_spearman_identical_is_one(self, rng):
+        from factorminer.evaluation.correlation import batch_spearman_correlation
+
+        M, T = 40, 30
+        cand = rng.normal(0, 1, (M, T))
+        lib = cand[None, :, :].copy()
+        corr = batch_spearman_correlation(cand, lib)
+        assert corr.shape == (1,)
+        assert corr[0] > 0.99
+
+    def test_batch_spearman_matches_period_reference(self, rng):
+        from scipy.stats import rankdata
+
+        from factorminer.evaluation.correlation import batch_spearman_correlation
+
+        candidate = rng.integers(-2, 3, size=(20, 9)).astype(np.float64)
+        library = rng.integers(-2, 3, size=(3, 20, 9)).astype(np.float64)
+        candidate[0:16, 0] = np.nan
+        candidate[:, 1] = 1.0
+        library[0, 2:5, 2] = np.nan
+
+        expected = []
+        for factor in library:
+            period_correlations = []
+            for period in range(candidate.shape[1]):
+                left = candidate[:, period]
+                right = factor[:, period]
+                left_rank = np.full(left.shape, np.nan)
+                right_rank = np.full(right.shape, np.nan)
+                left_observed = ~np.isnan(left)
+                right_observed = ~np.isnan(right)
+                if int(left_observed.sum()) >= 2:
+                    left_rank[left_observed] = rankdata(left[left_observed])
+                if int(right_observed.sum()) >= 2:
+                    right_rank[right_observed] = rankdata(right[right_observed])
+                valid = ~(np.isnan(left_rank) | np.isnan(right_rank))
+                if int(valid.sum()) < 5:
+                    continue
+                left_valid = left_rank[valid]
+                right_valid = right_rank[valid]
+                left_centered = left_valid - left_valid.mean()
+                right_centered = right_valid - right_valid.mean()
+                denominator = np.sqrt(
+                    np.sum(left_centered**2) * np.sum(right_centered**2)
+                )
+                correlation = 0.0
+                if denominator > 1e-12:
+                    correlation = float(
+                        np.sum(left_centered * right_centered) / denominator
+                    )
+                period_correlations.append(correlation)
+            expected.append(np.mean(period_correlations) if period_correlations else 0.0)
+
+        np.testing.assert_allclose(
+            batch_spearman_correlation(candidate, library), expected, atol=1e-15
+        )
+
+    def test_batch_spearman_pairwise_symmetric(self, rng):
+        from factorminer.evaluation.correlation import batch_spearman_pairwise
+
+        sigs = [rng.normal(0, 1, (25, 20)) for _ in range(3)]
+        mat = batch_spearman_pairwise(sigs)
+        np.testing.assert_allclose(mat, mat.T)
+        np.testing.assert_allclose(np.diag(mat), 1.0)
