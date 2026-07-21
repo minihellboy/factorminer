@@ -246,6 +246,23 @@ def _fmt_stat(v, fmt=".4f") -> str:
 
 
 def _print_stat_tests(stat_tests: dict) -> None:
+    paired_runs = stat_tests.get("paired_tests_by_run", [])
+    if paired_runs:
+        print(f"  Paired tests by seed ({len(paired_runs)} runs):")
+        for entry in paired_runs:
+            tests = entry.get("tests", {})
+            dm = tests.get("diebold_mariano", {})
+            boot = tests.get("bootstrap_ci_95", {})
+            print(
+                f"    run {entry.get('run_id', '?')} / seed {entry.get('seed', '?')}: "
+                f"mean_diff={_fmt_stat(tests.get('mean_ic_difference'), '+.4f')}, "
+                f"DM p={_fmt_stat(dm.get('p_value'))}, "
+                f"bootstrap=[{_fmt_stat(boot.get('lower'))}, "
+                f"{_fmt_stat(boot.get('upper'))}], "
+                f"helix_outperforms={tests.get('helix_outperforms', '?')}"
+            )
+        return
+
     dm = stat_tests.get("diebold_mariano", {})
     boot = stat_tests.get("bootstrap_ci_95", {})
     tt = stat_tests.get("paired_t_test", {})
@@ -334,19 +351,45 @@ def _generate_markdown_report(bench_result, ablation_result, output_dir: Path) -
     stat = bench_result.statistical_tests
     if stat:
         md.append("\n\n## Statistical Tests (HelixFactor vs FactorMiner)\n")
-        dm = stat.get("diebold_mariano", {})
-        boot = stat.get("bootstrap_ci_95", {})
-        tt = stat.get("paired_t_test", {})
-        md.append("| Test | Statistic | p-value | Significant |\n|---|---|---|---|\n")
-        md.append(
-            f"| Diebold-Mariano | {dm.get('dm_stat', 0):.4f} | {dm.get('p_value', 1):.4f} | {dm.get('significant', False)} |\n"
-        )
-        md.append(
-            f"| Paired t-test | {tt.get('t_stat', 0):.4f} | {tt.get('p_value', 1):.4f} | {tt.get('p_value', 1) < 0.05} |\n"
-        )
-        md.append(
-            f"| Bootstrap CI (95%) | [{boot.get('lower', 0):.4f}, {boot.get('upper', 0):.4f}] | — | {boot.get('excludes_zero', False)} |\n"
-        )
+        paired_runs = stat.get("paired_tests_by_run", [])
+        if paired_runs:
+            md.append(
+                "| Run | Seed | Mean IC diff | DM stat | DM p-value | "
+                "Paired t p-value | Bootstrap 95% CI | Helix outperforms |\n"
+                "|---:|---:|---:|---:|---:|---:|---|---|\n"
+            )
+            for entry in paired_runs:
+                tests = entry.get("tests", {})
+                dm = tests.get("diebold_mariano", {})
+                boot = tests.get("bootstrap_ci_95", {})
+                tt = tests.get("paired_t_test", {})
+                md.append(
+                    f"| {entry.get('run_id', '?')} | {entry.get('seed', '?')} | "
+                    f"{_fmt_stat(tests.get('mean_ic_difference'))} | "
+                    f"{_fmt_stat(dm.get('dm_stat'))} | "
+                    f"{_fmt_stat(dm.get('p_value'))} | "
+                    f"{_fmt_stat(tt.get('p_value'))} | "
+                    f"[{_fmt_stat(boot.get('lower'))}, {_fmt_stat(boot.get('upper'))}] | "
+                    f"{tests.get('helix_outperforms', '?')} |\n"
+                )
+        else:
+            dm = stat.get("diebold_mariano", {})
+            boot = stat.get("bootstrap_ci_95", {})
+            tt = stat.get("paired_t_test", {})
+            md.append("| Test | Statistic | p-value | Significant |\n|---|---|---|---|\n")
+            md.append(
+                f"| Diebold-Mariano | {dm.get('dm_stat', 0):.4f} | "
+                f"{dm.get('p_value', 1):.4f} | {dm.get('significant', False)} |\n"
+            )
+            md.append(
+                f"| Paired t-test | {tt.get('t_stat', 0):.4f} | "
+                f"{tt.get('p_value', 1):.4f} | {tt.get('p_value', 1) < 0.05} |\n"
+            )
+            md.append(
+                f"| Bootstrap CI (95%) | [{boot.get('lower', 0):.4f}, "
+                f"{boot.get('upper', 0):.4f}] | — | "
+                f"{boot.get('excludes_zero', False)} |\n"
+            )
 
     if ablation_result is not None and ablation_result.contributions is not None:
         md.append("\n\n## Ablation Study: Component Contributions\n")

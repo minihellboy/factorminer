@@ -40,6 +40,66 @@ class MethodResult:
         return payload
 
 
+_METHOD_RESULT_MEAN_FIELDS = (
+    "library_ic",
+    "library_icir",
+    "avg_abs_rho",
+    "ew_ic",
+    "ew_icir",
+    "icw_ic",
+    "icw_icir",
+    "lasso_ic",
+    "lasso_icir",
+    "xgb_ic",
+    "xgb_icir",
+    "admission_rate",
+    "elapsed_seconds",
+    "avg_turnover",
+)
+
+
+def aggregate_method_results(results: list[MethodResult]) -> MethodResult:
+    """Across-run mean of one method's per-seed results.
+
+    ``n_factors`` is averaged and rounded; ``ic_series`` is dropped (per-run
+    series remain in ``raw_method_results``); ``run_id`` is ``-1`` to mark
+    the aggregate. A single-element list is returned unchanged so the
+    ``n_runs=1`` path stays byte-identical.
+    """
+    if not results:
+        raise ValueError("results must be non-empty")
+    methods = {result.method for result in results}
+    if len(methods) != 1:
+        raise ValueError("results must belong to one method")
+    if len(results) == 1:
+        return results[0]
+    aggregate = MethodResult(method=results[0].method, run_id=-1)
+    for name in _METHOD_RESULT_MEAN_FIELDS:
+        setattr(aggregate, name, float(np.mean([getattr(r, name) for r in results])))
+    aggregate.n_factors = int(round(float(np.mean([r.n_factors for r in results]))))
+    return aggregate
+
+
+def method_result_dispersion(results: list[MethodResult]) -> dict[str, dict[str, Any]]:
+    """Across-run dispersion (mean/std/min/max plus per-run values) per metric."""
+    if not results:
+        raise ValueError("results must be non-empty")
+    methods = {result.method for result in results}
+    if len(methods) != 1:
+        raise ValueError("results must belong to one method")
+    dispersion: dict[str, dict[str, Any]] = {}
+    for name in _METHOD_RESULT_MEAN_FIELDS:
+        values = [float(getattr(r, name)) for r in results]
+        dispersion[name] = {
+            "mean": float(np.mean(values)),
+            "std": float(np.std(values, ddof=1)) if len(values) > 1 else 0.0,
+            "min": float(np.min(values)),
+            "max": float(np.max(values)),
+            "values": values,
+        }
+    return dispersion
+
+
 @dataclass
 class DMTestResult:
     """Diebold-Mariano comparison result."""

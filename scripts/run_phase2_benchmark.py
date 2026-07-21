@@ -63,6 +63,13 @@ warnings.filterwarnings("ignore")
 # ---------------------------------------------------------------------------
 
 
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return parsed
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="HelixFactor Phase 2 Comprehensive Benchmark",
@@ -108,6 +115,13 @@ def _parse_args() -> argparse.Namespace:
         type=int,
         default=42,
         help="Random seed for reproducibility",
+    )
+    parser.add_argument(
+        "--runs",
+        type=_positive_int,
+        default=1,
+        help="Independent runs per method/variant with derived seeds "
+        "(seed + run_id); frames report across-seed means",
     )
     parser.add_argument(
         "--evidence-tier",
@@ -264,7 +278,7 @@ def main() -> None:
         mock=actual_mock,
         baseline_methods=methods,
         n_target_factors=args.n_factors,
-        n_runs=1,
+        n_runs=args.runs,
     )
     elapsed = time.perf_counter() - t0
     print(f"  Completed in {elapsed:.1f}s")
@@ -337,7 +351,7 @@ def main() -> None:
             mock=actual_mock,
             configs_to_run=configs_to_run,
             n_target_factors=args.n_factors,
-            n_runs=1,
+            n_runs=args.runs,
         )
         elapsed = time.perf_counter() - t0
         print(f"  Completed in {elapsed:.1f}s")
@@ -541,7 +555,29 @@ def main() -> None:
     if ablation_result is not None:
         print(f"  Ablation configs: {len(ablation_result.configs)}")
 
-    if bench_result.statistical_tests.get("helix_outperforms"):
+    paired_tests = bench_result.statistical_tests.get("paired_tests_by_run", [])
+    if paired_tests:
+        outperform_count = sum(
+            bool(entry.get("tests", {}).get("helix_outperforms"))
+            for entry in paired_tests
+        )
+        significant_count = sum(
+            bool(
+                entry.get("tests", {})
+                .get("diebold_mariano", {})
+                .get("significant")
+            )
+            for entry in paired_tests
+        )
+        print()
+        print(
+            f"  HelixFactor outperforms in {outperform_count}/{len(paired_tests)} "
+            "seed runs"
+        )
+        print(
+            f"  DM test significant in {significant_count}/{len(paired_tests)} seed runs"
+        )
+    elif bench_result.statistical_tests.get("helix_outperforms"):
         print()
         print("  *** HelixFactor OUTPERFORMS FactorMiner ***")
         dm = bench_result.statistical_tests.get("diebold_mariano", {})
