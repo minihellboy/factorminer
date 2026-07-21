@@ -169,6 +169,9 @@ The benchmark package has one execution path with explicit module ownership:
 | --- | --- |
 | `runtime.py` | benchmark orchestration and public run functions |
 | `contracts.py` | immutable manifest, walk-forward, stress, and strategy-grid contracts |
+| `runtime_contracts.py` | construction of runtime contracts from effective configuration and dataset state |
+| `provenance.py` | content hashes and provenance for catalogs, saved libraries, sessions, and artifacts |
+| `mining_runtime.py` | Ralph/Helix benchmark configuration, construction, execution, and loop provenance |
 | `datasets.py` | dataset loading, config projection, baseline catalogs, and library construction |
 | `frozen_evaluation.py` | train-only selection and held-out recomputation |
 | `statistics.py` | result contracts and statistical comparisons |

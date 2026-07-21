@@ -188,7 +188,9 @@ catalog baseline, smoke benchmark, or proxy.
 
 ## Canonical benchmark execution
 
-`factorminer.benchmark.runtime` owns benchmark calculations. The CLI and
+`factorminer.benchmark.runtime` coordinates benchmark calculations. Contract
+construction, provenance capture, loop execution, datasets, frozen evaluation,
+statistics, and reporting live in their named benchmark modules. The CLI and
 standalone report builder delegate to it:
 
 ```bash

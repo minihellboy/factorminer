@@ -41,14 +41,17 @@ def _artifact(
     train_icir: float,
     signal_scale: float,
 ) -> FactorEvaluationArtifact:
-    signal = np.array(
-        [
-            [1.0, 2.0, 3.0],
-            [2.0, 1.0, 0.0],
-            [0.5, 0.3, 0.1],
-        ],
-        dtype=np.float64,
-    ) * signal_scale
+    signal = (
+        np.array(
+            [
+                [1.0, 2.0, 3.0],
+                [2.0, 1.0, 0.0],
+                [0.5, 0.3, 0.1],
+            ],
+            dtype=np.float64,
+        )
+        * signal_scale
+    )
     return FactorEvaluationArtifact(
         factor_id=factor_id,
         name=f"factor_{factor_id}",
@@ -243,11 +246,7 @@ def test_benchmark_table1_cli_invokes_runtime(monkeypatch, tmp_path):
             "factor_miner": {
                 "freeze_library_size": 12,
                 "frozen_top_k": [{"name": "f1"}],
-                "universes": {
-                    "CSI500": {
-                        "library": {"ic": 0.08, "icir": 0.9, "avg_abs_rho": 0.2}
-                    }
-                },
+                "universes": {"CSI500": {"library": {"ic": 0.08, "icir": 0.9, "avg_abs_rho": 0.2}}},
             }
         }
 
@@ -354,7 +353,9 @@ def test_table1_manifest_includes_saved_library_provenance(monkeypatch, tmp_path
     assert provenance["library_summary"]["factor_count"] == 1
     assert provenance["session_summary"]["total_iterations"] == 2
     assert provenance["source_files"]["library_json"]["path"].endswith("factor_miner_library.json")
-    assert provenance["source_files"]["signal_cache"]["path"].endswith("factor_miner_library_signals.npz")
+    assert provenance["source_files"]["signal_cache"]["path"].endswith(
+        "factor_miner_library_signals.npz"
+    )
     assert manifest["artifact_paths"]["result"] == str(result_path)
     assert manifest["artifact_paths"]["manifest"] == str(manifest_path)
     assert result["provenance"]["kind"] == "saved_library"
@@ -421,6 +422,14 @@ def test_benchmark_package_lazy_exports_canonical_statistics():
     import factorminer.benchmark as benchmark_pkg
 
     assert benchmark_pkg.BenchmarkResult.__module__ == "factorminer.benchmark.statistics"
+    assert benchmark_pkg.AblationResult.__module__ == "factorminer.benchmark.statistics"
+    assert benchmark_pkg.BenchmarkManifest.__module__ == "factorminer.benchmark.contracts"
+    assert (
+        benchmark_pkg.build_benchmark_runtime_contract.__module__
+        == "factorminer.benchmark.runtime_contracts"
+    )
+    assert benchmark_pkg.build_benchmark_library.__module__ == "factorminer.benchmark.datasets"
+    assert benchmark_pkg.evaluate_frozen_set.__module__ == "factorminer.benchmark.frozen_evaluation"
     assert "HelixBenchmark" not in dir(benchmark_pkg)
 
 
@@ -502,9 +511,7 @@ def test_json_safe_removes_non_finite_values():
 
 
 def test_markdown_artifacts_use_expected_paths(tmp_path):
-    table_stub = SimpleNamespace(
-        to_markdown=lambda **kwargs: "| a | b |\n|---|---|\n| 1 | 2 |\n"
-    )
+    table_stub = SimpleNamespace(to_markdown=lambda **kwargs: "| a | b |\n|---|---|\n| 1 | 2 |\n")
     bench_result = SimpleNamespace(
         factor_library_metrics=table_stub,
         combination_metrics=table_stub,
@@ -701,9 +708,7 @@ def test_strategy_ablation_benchmark_expands_runtime_grid(monkeypatch, tmp_path)
                     "replaced": 1,
                 },
                 "universes": {
-                    "CSI500": {
-                        "library": {"ic": score, "icir": score * 10.0, "avg_abs_rho": 0.2}
-                    }
+                    "CSI500": {"library": {"ic": score, "icir": score * 10.0, "avg_abs_rho": 0.2}}
                 },
                 "provenance": {"requested_runtime_manifest": dict(runtime_manifest)},
             }
@@ -726,5 +731,8 @@ def test_strategy_ablation_benchmark_expands_runtime_grid(monkeypatch, tmp_path)
     assert payload["best"]["dependence_metric"] == "pearson"
     assert payload["leaderboard"][0]["mean_test_library_ic"] == 0.09
     assert payload["strategy_grid_contract"]["memory_policies"] == ["paper", "kg"]
-    assert payload["comparisons"][0]["runtime_contract"]["strategy_grid"]["selected_backend"] == "numpy"
+    assert (
+        payload["comparisons"][0]["runtime_contract"]["strategy_grid"]["selected_backend"]
+        == "numpy"
+    )
     assert (tmp_path / "benchmark" / "ablation" / "strategy_grid.json").exists()
