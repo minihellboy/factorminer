@@ -181,6 +181,15 @@ class TestEvaluate:
         valid = ~np.isnan(result) & (result != 0)
         assert np.all(result[valid] > 0)
 
+    def test_safe_div_zero_denom_is_zero(self):
+        """Expression-tree _safe_div returns 0 on near-zero denominators."""
+        from factorminer.core.expression_tree import _safe_div
+
+        a = np.array([[1.0, 2.0, 3.0]], dtype=np.float64)
+        b = np.array([[2.0, 0.0, 1e-20]], dtype=np.float64)
+        out = _safe_div(a, b)
+        np.testing.assert_allclose(out, [[0.5, 0.0, 0.0]])
+
     def test_constant_in_formula(self, small_data):
         tree = parse("Add($close, 0.0001)")
         result = tree.evaluate(small_data)

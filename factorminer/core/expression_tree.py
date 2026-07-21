@@ -216,9 +216,14 @@ class OperatorNode(Node):
 # ---------------------------------------------------------------------------
 
 def _safe_div(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Division that returns 0 where the denominator is near zero."""
-    out = np.where(np.abs(b) > _EPS, a / np.where(np.abs(b) > _EPS, b, 1.0), 0.0)
-    return out
+    """Division that returns 0 where the denominator is near zero.
+
+    Single-mask form: one boolean and one ``where``, instead of nested
+    ``where`` that rebuilds a safe denominator array then divides again.
+    """
+    mask = np.abs(b) > _EPS
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(mask, a / b, 0.0)
 
 
 def _safe_log(x: np.ndarray) -> np.ndarray:
