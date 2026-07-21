@@ -37,7 +37,7 @@ dependencies = [
 
 [project.optional-dependencies]
 gpu = [
-    "torch>=2.0",
+    "torch>=2.13.0",
     "cupy-cuda12x; platform_system == 'Linux'",
 ]
 llm = [
@@ -55,7 +55,7 @@ research = [
     "sympy>=1.13",
 ]
 ml = [
-    "torch>=2.0",
+    "torch>=2.13.0",
     "xgboost>=2.0",
 ]
 visualization = [
@@ -74,7 +74,7 @@ dev = [
 ]
 all = [
     "cupy-cuda12x; platform_system == 'Linux'",
-    "torch>=2.0",
+    "torch>=2.13.0",
     "openai",
     "anthropic",
     "google-generativeai",
