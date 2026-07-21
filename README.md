@@ -219,6 +219,7 @@ and deployment notes are in the
 | --- | --- |
 | [Architecture](docs/architecture.md) | Runtime contracts, dependency direction, and package ownership |
 | [Reproducibility](docs/reproducibility.md) | Data contracts, metrics, baseline provenance, public and paper-scale workflows |
+| [Evidence protocol](docs/evidence-protocol.md) | IC definitions, inference, risk neutralization, cost stress, and report schema |
 | [Security](docs/security.md) | Connectors, MCP, model/content boundaries, persistence, secrets |
 | [License](LICENSE) | MIT license terms for the entire project |
 | [Integration guide](integrations/factor-researcher/README.md) | Agent packaging, financial-data connectors, deployment guardrails |

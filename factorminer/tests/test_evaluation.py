@@ -12,16 +12,20 @@ from factorminer.evaluation.metrics import (
     compute_ic_mean,
     compute_ic_paper_icir,
     compute_ic_paper_mean,
+    compute_ic_vectorized,
     compute_ic_win_rate,
     compute_icir,
     compute_pairwise_correlation,
+    compute_pearson_ic,
     compute_quintile_returns,
+    compute_rank_ic,
     compute_turnover,
 )
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def rng():
@@ -59,6 +63,7 @@ def known_quintile_signal(rng):
 # ---------------------------------------------------------------------------
 # IC computation
 # ---------------------------------------------------------------------------
+
 
 class TestIC:
     """Test Information Coefficient computation."""
@@ -103,10 +108,35 @@ class TestIC:
         ic_series = compute_ic(signals, returns)
         assert np.all(np.isnan(ic_series))
 
+    def test_pearson_ic_and_rank_ic_are_explicitly_distinct(self):
+        signals = np.tile(np.array([1.0, 2.0, 3.0, 4.0, 100.0])[:, None], (1, 4))
+        returns = np.tile(np.array([1.0, 2.0, 3.0, 4.0, 5.0])[:, None], (1, 4))
+
+        pearson = compute_pearson_ic(signals, returns)
+        rank = compute_rank_ic(signals, returns)
+
+        np.testing.assert_allclose(rank, 1.0)
+        assert np.all(pearson < 0.8)
+        np.testing.assert_allclose(compute_ic(signals, returns), rank)
+
+    def test_vectorized_rank_ic_matches_non_finite_contract(self):
+        rng = np.random.default_rng(41)
+        signals = rng.normal(size=(12, 5))
+        returns = rng.normal(size=(12, 5))
+        signals[0, 0] = np.inf
+        returns[1, 1] = -np.inf
+
+        np.testing.assert_allclose(
+            compute_ic_vectorized(signals, returns),
+            compute_rank_ic(signals, returns),
+            equal_nan=True,
+        )
+
 
 # ---------------------------------------------------------------------------
 # ICIR computation
 # ---------------------------------------------------------------------------
+
 
 class TestICIR:
     """Test ICIR = mean(IC) / std(IC)."""
@@ -143,6 +173,7 @@ class TestICIR:
 # ---------------------------------------------------------------------------
 # IC-derived statistics
 # ---------------------------------------------------------------------------
+
 
 class TestICStats:
     """Test IC mean and win rate."""
@@ -192,6 +223,7 @@ class TestICStats:
 # Pairwise correlation
 # ---------------------------------------------------------------------------
 
+
 class TestPairwiseCorrelation:
     """Test pairwise cross-sectional correlation."""
 
@@ -229,6 +261,7 @@ class TestPairwiseCorrelation:
 # Quintile returns
 # ---------------------------------------------------------------------------
 
+
 class TestQuintileReturns:
     """Test quintile return computation."""
 
@@ -244,9 +277,7 @@ class TestQuintileReturns:
         signals, returns = known_quintile_signal
         result = compute_quintile_returns(signals, returns)
         # With positively correlated signal, Q5 > Q1
-        assert result["long_short"] > 0, (
-            f"Expected positive long_short, got {result['long_short']}"
-        )
+        assert result["long_short"] > 0, f"Expected positive long_short, got {result['long_short']}"
         # Monotonicity should be positive
         assert result["monotonicity"] > 0.5, (
             f"Expected high monotonicity, got {result['monotonicity']}"
@@ -264,6 +295,7 @@ class TestQuintileReturns:
 # ---------------------------------------------------------------------------
 # Turnover
 # ---------------------------------------------------------------------------
+
 
 class TestTurnover:
     """Test portfolio turnover computation."""
@@ -284,6 +316,7 @@ class TestTurnover:
 # ---------------------------------------------------------------------------
 # Comprehensive factor stats
 # ---------------------------------------------------------------------------
+
 
 class TestFactorStats:
     """Test the compute_factor_stats wrapper."""
@@ -311,3 +344,13 @@ class TestFactorStats:
         returns = rng.normal(0, 0.01, (M, T))
         stats = compute_factor_stats(signals, returns)
         assert stats["ic_series"].shape == (T,)
+
+    def test_factor_stats_labels_legacy_rankic_and_explicit_pearson(self, rng):
+        signals = rng.normal(size=(20, 12))
+        returns = rng.normal(size=(20, 12))
+
+        stats = compute_factor_stats(signals, returns)
+
+        assert stats["ic_definition"] == "spearman_rank"
+        np.testing.assert_allclose(stats["ic_series"], stats["rank_ic_series"])
+        assert stats["pearson_ic_series"].shape == stats["rank_ic_series"].shape

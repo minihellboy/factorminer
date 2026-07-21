@@ -113,11 +113,12 @@ and evaluation periods should retain `train → test` direction.
 
 ## Information Coefficient semantics
 
-At each time step, FactorMiner computes a cross-sectional Spearman rank
-correlation between the factor signal and forward return:
+At each time step, FactorMiner's historical `ic_*` fields compute a
+cross-sectional Spearman rank correlation between the factor signal and
+forward return. In industry terminology this is **RankIC**, not Pearson IC:
 
 ```text
-IC_t = SpearmanRankCorr(signal_t, forward_return_t)
+legacy IC_t = RankIC_t = SpearmanRankCorr(signal_t, forward_return_t)
 ```
 
 The summaries have distinct meanings:
@@ -129,6 +130,14 @@ The summaries have distinct meanings:
 | `ic_abs_mean` | `mean(abs(IC_t))` | legacy instability diagnostic only |
 | `icir` | `mean(IC_t) / std(IC_t)` | signed diagnostic |
 | `ic_paper_icir` | `abs(mean(IC_t)) / std(IC_t)` | paper-mode ICIR gate and reporting |
+
+New evaluation artifacts also expose `rank_ic_*` and `pearson_ic_*` fields,
+plus `ic_definition: spearman_rank`. The legacy keys remain unchanged so old
+libraries and admission thresholds are not silently reinterpreted. The
+industry evidence protocol additionally separates unannualized ICIR,
+annualized ICIR, an independence t-stat, and a Newey-West/HAC t-stat. See
+[Evidence Protocol](evidence-protocol.md) for the exact formulas and
+cross-platform comparison rules.
 
 The difference is material. For `IC_t = [0.1, -0.1]`, `ic_abs_mean` is `0.1`
 while `ic_paper_mean` is `0.0`; the series has magnitude but no stable average

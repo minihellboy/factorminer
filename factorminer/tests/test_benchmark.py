@@ -400,6 +400,17 @@ def test_evaluate_frozen_set_records_cost_and_capacity_stress():
     )
 
     combo = payload["combinations"]["equal_weight"]
+    library = payload["library"]
+    assert library["ic_definition"] == "spearman_rank"
+    assert library["rank_ic"] == library["ic"]
+    assert library["rank_ic_paper_icir"] == library["icir"]
+    assert "rank_ic_mean" in library
+    assert "pearson_ic_mean" in library
+    assert "pearson_ic_paper_icir" in library
+    assert combo["rank_ic_paper_mean"] == abs(combo["rank_ic_mean"])
+    assert combo["rank_ic_paper_icir"] == abs(combo["rank_icir"])
+    assert combo["pearson_ic_paper_mean"] == abs(combo["pearson_ic_mean"])
+    assert combo["pearson_ic_paper_icir"] == abs(combo["pearson_icir"])
     assert set(combo["cost_pressure"]) == {"1.0", "5.0"}
     assert "capacity_pressure" in combo
     assert combo["capacity_pressure"]["capacity_curve"]

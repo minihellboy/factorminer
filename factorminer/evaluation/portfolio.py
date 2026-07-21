@@ -7,7 +7,8 @@ transaction cost pressure testing, following the FactorMiner paper methodology.
 from __future__ import annotations
 
 import numpy as np
-from scipy.stats import spearmanr
+
+from factorminer.evaluation.metrics import compute_icir, compute_pearson_ic, compute_rank_ic
 
 
 class PortfolioBacktester:
@@ -65,18 +66,20 @@ class PortfolioBacktester:
         for t in range(T):
             sig_t = combined_signal[t]
             ret_t = returns[t]
-            valid = np.isfinite(sig_t) & np.isfinite(ret_t)
-            n_valid = valid.sum()
-            if n_valid < 5:
+            eligible = np.isfinite(sig_t)
+            n_eligible = int(eligible.sum())
+            if n_eligible < 5:
                 continue
-            ranks = _rank_array(sig_t[valid])
+            ranks = _rank_array(sig_t[eligible])
+            eligible_returns = ret_t[eligible]
             boundaries = np.linspace(0, 1, 6)
             for q in range(5):
                 mask = (ranks >= boundaries[q]) & (ranks < boundaries[q + 1])
                 if q == 4:
                     mask = (ranks >= boundaries[q]) & (ranks <= boundaries[q + 1])
-                if mask.sum() > 0:
-                    quintile_returns[t, q] = np.mean(ret_t[valid][mask])
+                bucket_returns = eligible_returns[mask]
+                if mask.any() and np.all(np.isfinite(bucket_returns)):
+                    quintile_returns[t, q] = np.mean(bucket_returns)
 
         # Turnover for cost adjustment
         turnover = self.compute_turnover(combined_signal, top_fraction=0.2)
@@ -92,17 +95,11 @@ class PortfolioBacktester:
         )
         ls_cumulative = np.nancumsum(np.where(np.isfinite(ls_net), ls_net, 0.0))
 
-        # IC series (cross-sectional Spearman rank correlation)
-        ic_series = np.full(T, np.nan)
-        for t in range(T):
-            sig_t = combined_signal[t]
-            ret_t = returns[t]
-            valid = np.isfinite(sig_t) & np.isfinite(ret_t)
-            if valid.sum() < 5:
-                continue
-            corr, _ = spearmanr(sig_t[valid], ret_t[valid])
-            if np.isfinite(corr):
-                ic_series[t] = corr
+        # Historical ``ic_*`` fields remain Spearman RankIC. Explicit
+        # Pearson/Rank fields prevent ambiguity in new benchmark artifacts.
+        rank_ic_series = compute_rank_ic(combined_signal.T, returns.T)
+        pearson_ic_series = compute_pearson_ic(combined_signal.T, returns.T)
+        ic_series = rank_ic_series
 
         finite_ic = ic_series[np.isfinite(ic_series)]
         if len(finite_ic) > 1:
@@ -115,13 +112,15 @@ class PortfolioBacktester:
             icir = 0.0
             ic_win_rate = 0.0
 
+        finite_pearson_ic = pearson_ic_series[np.isfinite(pearson_ic_series)]
+        pearson_ic_mean = float(np.mean(finite_pearson_ic)) if finite_pearson_ic.size else 0.0
+        pearson_icir = compute_icir(pearson_ic_series)
+
         # Mean quintile returns
         q_means = [_finite_mean_or_nan(quintile_returns[:, q]) for q in range(5)]
 
         # Monotonicity: fraction of adjacent quintile pairs in correct order
-        correct_pairs = sum(
-            1 for i in range(4) if q_means[i] < q_means[i + 1]
-        )
+        correct_pairs = sum(1 for i in range(4) if q_means[i] < q_means[i + 1])
         monotonicity = correct_pairs / 4.0
 
         return {
@@ -137,10 +136,17 @@ class PortfolioBacktester:
             "ls_net_series": ls_net,
             "quintile_period_returns": quintile_returns,
             "turnover_series": turnover,
+            "ic_definition": "spearman_rank",
             "ic_series": ic_series,
             "ic_mean": ic_mean,
             "icir": icir,
             "ic_win_rate": ic_win_rate,
+            "rank_ic_series": rank_ic_series,
+            "rank_ic_mean": ic_mean,
+            "rank_icir": icir,
+            "pearson_ic_series": pearson_ic_series,
+            "pearson_ic_mean": pearson_ic_mean,
+            "pearson_icir": pearson_icir,
             "monotonicity": monotonicity,
             "avg_turnover": avg_turnover,
         }
@@ -177,7 +183,9 @@ class PortfolioBacktester:
         results: dict[float, dict] = {}
         for cost_bps in cost_settings:
             results[cost_bps] = self.quintile_backtest(
-                combined_signal, returns, transaction_cost_bps=cost_bps,
+                combined_signal,
+                returns,
+                transaction_cost_bps=cost_bps,
             )
         return results
 
@@ -238,6 +246,7 @@ class PortfolioBacktester:
 # ------------------------------------------------------------------
 # Module-level helpers
 # ------------------------------------------------------------------
+
 
 def _finite_mean_or_nan(values: np.ndarray) -> float:
     """Return the finite-value mean, or NaN without an empty-slice warning."""
