@@ -4,28 +4,38 @@ on:
   push:
     branches:
       - main
-      - master
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Sync dependencies
-        run: uv sync --group dev --all-extras
+        run: uv sync --frozen --group dev --all-extras
 
       - name: Run Ruff lint report
         run: uv run ruff check . --output-format=github
@@ -104,8 +114,7 @@ jobs:
           print(f"CI smoke library factors: {len(factors)}")
           PY
 
-      - name: Optional benchmark smoke
-        continue-on-error: true
+      - name: Run benchmark smoke
         run: |
           cat > /tmp/factorminer-ci-benchmark.yaml <<'YAML'
           mining:
