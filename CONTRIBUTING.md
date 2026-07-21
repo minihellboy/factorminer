@@ -82,11 +82,9 @@ runtime contracts.
    source control.
 8. Add regression coverage for every new public contract, policy, stage,
    benchmark path, manifest field, or public export.
-9. New files default to MIT. A file only becomes BUSL-1.1 for a deliberate,
-   documented reason (see `LICENSING.md`) — add the SPDX header and the
-   `LICENSING.md` table row in the same PR, and never add a hard,
-   unconditional import-time dependency from an MIT file onto a BUSL file;
-   guard it behind an opt-in config flag with a lazy import instead.
+9. All repository-authored source, documentation, and assets are MIT-licensed.
+   By contributing, you agree that your contribution is licensed under MIT.
+   Do not add code or assets whose terms prevent distribution under MIT.
 
 ## Documentation ownership
 
@@ -98,7 +96,6 @@ Technical documentation describes implemented behavior only:
 - `docs/reproducibility.md`: data, splits, metrics, baseline provenance, and
   benchmark interpretation;
 - `docs/security.md`: trust boundaries, controls, and verification;
-- `LICENSING.md`: which files are MIT vs. BUSL-1.1, and why;
 - `integrations/<name>/README.md`: integration-specific manifests, interfaces,
   deployment requirements, and permissions.
 

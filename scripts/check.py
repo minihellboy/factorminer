@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -180,54 +181,55 @@ def check_marketplace_sources() -> None:
             err(f"marketplace: {name} source -> {source} (no plugin.json)")
 
 
-# Authoritative BUSL-1.1 module list. Must match the table in LICENSING.md
-# and the SPDX header actually present in each file -- both directions are
-# checked so the license boundary cannot silently drift.
-BUSL_MODULES = [
-    "factorminer/architecture/sealed_joint_search.py",
-    "factorminer/architecture/_sealed_evaluator_panel.py",
-    "factorminer/architecture/island_model.py",
-    "factorminer/architecture/rft_export.py",
-    "factorminer/architecture/model_stage.py",
-    "factorminer/evaluation/crowding.py",
-    "factorminer/evaluation/capacity.py",
-    "factorminer/evaluation/model_zoo.py",
-    "factorminer/evaluation/mrm_pack.py",
-]
-BUSL_HEADER = "SPDX-License-Identifier: BUSL-1.1"
-
-
-def _has_busl_header(path: Path) -> bool:
+def check_mit_license_policy() -> None:
     global checked
+    license_files = sorted(
+        path.name
+        for path in ROOT.iterdir()
+        if path.is_file() and path.name.upper().startswith(("LICENSE", "COPYING"))
+    )
     checked += 1
-    head = "\n".join(path.read_text(encoding="utf-8").splitlines()[:6])
-    return BUSL_HEADER in head
+    if license_files != ["LICENSE"]:
+        err(f"license: expected only LICENSE at repository root, found {license_files}")
 
+    license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")
+    checked += 1
+    if not license_text.startswith("MIT License\n"):
+        err("license: LICENSE does not contain the MIT License text")
 
-def check_busl_license_boundary() -> None:
-    global checked
-    licensing_doc = (ROOT / "LICENSING.md").read_text(encoding="utf-8")
-    for rel_path in BUSL_MODULES:
-        path = ROOT / rel_path
-        checked += 1
-        if not path.exists():
-            err(f"busl: {rel_path}: listed in scripts/check.py but file does not exist")
-            continue
-        if not _has_busl_header(path):
-            err(f"busl: {rel_path}: listed as BUSL-1.1 but missing the SPDX header")
-        if rel_path not in licensing_doc:
-            err(f"busl: {rel_path}: missing from the LICENSING.md module table")
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))[
+        "project"
+    ]
+    checked += 1
+    if project.get("license") != "MIT":
+        err("license: pyproject.toml must declare license = \"MIT\"")
+    if project.get("license-files") != ["LICENSE"]:
+        err('license: pyproject.toml must declare license-files = ["LICENSE"]')
 
-    busl_set = set(BUSL_MODULES)
-    for path in sorted((ROOT / "factorminer").rglob("*.py")):
-        rel_path = rel(path)
-        if "__pycache__" in rel_path or rel_path in busl_set:
-            continue
-        if _has_busl_header(path):
-            err(
-                f"busl: {rel_path}: carries a BUSL-1.1 SPDX header but is not in "
-                "scripts/check.py BUSL_MODULES or LICENSING.md"
-            )
+    data_manifest = json.loads(
+        (ROOT / "data/binance_crypto_5m.manifest.json").read_text(encoding="utf-8")
+    )
+    checked += 1
+    if data_manifest.get("license") != "MIT":
+        err("license: bundled data manifest must declare MIT")
+
+    marker = "SPDX-License-" + "Identifier:"
+    source_roots = (ROOT / "factorminer", ROOT / "scripts", ROOT / "integrations")
+    for source_root in source_roots:
+        for path in sorted(source_root.rglob("*")):
+            if not path.is_file() or "__pycache__" in path.parts:
+                continue
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines()
+            except UnicodeDecodeError:
+                continue
+            for line in lines:
+                if marker not in line:
+                    continue
+                checked += 1
+                identifier = line.partition(marker)[2].strip()
+                if identifier != "MIT":
+                    err(f"license: {rel(path)} declares SPDX identifier {identifier!r}")
 
 
 def main() -> int:
@@ -235,7 +237,7 @@ def main() -> int:
     check_frontmatter()
     check_managed_agents()
     check_marketplace_sources()
-    check_busl_license_boundary()
+    check_mit_license_policy()
 
     if errors:
         print(f"FAIL - {len(errors)} issue(s) across {checked} check(s):", file=sys.stderr)
