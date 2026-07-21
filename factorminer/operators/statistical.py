@@ -95,12 +95,13 @@ def skew_np(x: np.ndarray, window: int = 20) -> np.ndarray:
         return np.full_like(x, np.nan)
     m = np.nanmean(w, axis=2, keepdims=True)
     d = w - m
-    np.sum(~np.isnan(w), axis=2, keepdims=True).astype(np.float64)
+    n = np.sum(~np.isnan(w), axis=2)
     m2 = np.nanmean(d ** 2, axis=2, keepdims=True)
     m3 = np.nanmean(d ** 3, axis=2, keepdims=True)
     with np.errstate(invalid="ignore", divide="ignore"):
         sk = m3 / np.power(m2, 1.5)
     result = sk.squeeze(2)
+    result[n < 3] = np.nan  # match torch guard: third moment needs >= 3 obs
     return _pad_front(result, window, T)
 
 
@@ -112,11 +113,13 @@ def kurt_np(x: np.ndarray, window: int = 20) -> np.ndarray:
         return np.full_like(x, np.nan)
     m = np.nanmean(w, axis=2, keepdims=True)
     d = w - m
+    n = np.sum(~np.isnan(w), axis=2)
     m2 = np.nanmean(d ** 2, axis=2, keepdims=True)
     m4 = np.nanmean(d ** 4, axis=2, keepdims=True)
     with np.errstate(invalid="ignore", divide="ignore"):
         kt = m4 / np.power(m2, 2.0) - 3.0
     result = kt.squeeze(2)
+    result[n < 4] = np.nan  # match torch guard: fourth moment needs >= 4 obs
     return _pad_front(result, window, T)
 
 

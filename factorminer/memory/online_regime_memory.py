@@ -285,8 +285,8 @@ class RegimeSpecificPatternStore:
         Patterns are scored as:
             score = confidence * ic_in_regime * regime_similarity
 
-        where ``regime_similarity`` is the Jaccard similarity between the
-        pattern's tagged regime and ``current_regime``.
+        where ``regime_similarity`` is normalized component agreement between
+        the pattern's tagged regime and ``current_regime``.
 
         Parameters
         ----------

@@ -116,3 +116,54 @@ def test_regime_detector_short_data(rng):
     result = detector.classify(returns)
     # All periods should be SIDEWAYS since T < lookback_window
     assert np.all(result.labels == MarketRegime.SIDEWAYS.value)
+
+
+# -----------------------------------------------------------------------
+# RegimeState.similarity and regime-conditioned pattern retrieval
+# -----------------------------------------------------------------------
+
+def test_regime_state_similarity_component_fraction():
+    from factorminer.evaluation.regime import (
+        MeanRevRegime,
+        RegimeState,
+        TrendRegime,
+        VolRegime,
+    )
+
+    bull_high = RegimeState(TrendRegime.BULL, VolRegime.HIGH_VOL, MeanRevRegime.TRENDING)
+    bear_low = RegimeState(TrendRegime.BEAR, VolRegime.LOW_VOL, MeanRevRegime.MEAN_REVERTING)
+    bull_low = RegimeState(TrendRegime.BULL, VolRegime.LOW_VOL, MeanRevRegime.MEAN_REVERTING)
+    bull_high_mr = RegimeState(TrendRegime.BULL, VolRegime.HIGH_VOL, MeanRevRegime.MEAN_REVERTING)
+
+    assert bull_high.similarity(bull_high) == 1.0
+    assert bull_high.similarity(bear_low) == 0.0
+    assert bull_high.similarity(bull_low) == pytest.approx(1 / 3)
+    assert bull_low.similarity(bull_high) == pytest.approx(1 / 3)
+    assert bull_high.similarity(bull_high_mr) == pytest.approx(2 / 3)
+
+
+def test_regime_pattern_retrieval_scores_by_similarity():
+    """Regression: retrieve_for_regime raised AttributeError before
+    RegimeState.similarity existed (online_regime_memory.py:308 called it
+    on every stored pattern), so regime-conditioned retrieval crashed as
+    soon as the store held a qualifying pattern."""
+    from factorminer.evaluation.regime import (
+        MeanRevRegime,
+        RegimeState,
+        TrendRegime,
+        VolRegime,
+    )
+    from factorminer.memory.online_regime_memory import RegimeSpecificPatternStore
+
+    bull = RegimeState(TrendRegime.BULL, VolRegime.HIGH_VOL, MeanRevRegime.TRENDING)
+    bear = RegimeState(TrendRegime.BEAR, VolRegime.LOW_VOL, MeanRevRegime.MEAN_REVERTING)
+
+    store = RegimeSpecificPatternStore()
+    store.add_pattern("Rank(Delta($close, 3))", bull, ic=0.06)
+    store.add_pattern("Rank($volume)", bear, ic=0.06)
+
+    got = store.retrieve_for_regime(bull, top_k=5, min_confidence=0.0)
+
+    assert len(got) == 2
+    # equal confidence and |IC|: the same-regime pattern must rank first
+    assert got[0].formula_template == "Rank(Delta($close, 3))"

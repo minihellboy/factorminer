@@ -61,7 +61,13 @@ class SealedAgreementConfig:
 
 @dataclass
 class BootstrapCIResult:
-    """Result of a block bootstrap confidence interval for mean |IC|."""
+    """Result of a block bootstrap confidence interval for mean IC.
+
+    ``ic_mean`` is the signed time-average ``mean(IC_t)``; ``ic_paper_mean``
+    is its absolute value — the ``paper_ic_v2`` admission statistic. The CI
+    brackets the signed mean so it is consistent with the sign-flip p-value,
+    which tests ``|mean(IC_t)|``.
+    """
 
     factor_name: str
     ic_mean: float
@@ -69,13 +75,14 @@ class BootstrapCIResult:
     ci_upper: float
     ic_std_boot: float
     ci_excludes_zero: bool
+    ic_paper_mean: float = 0.0
 
 
 class BootstrapICTester:
     """Block bootstrap tester for IC series significance.
 
     Uses circular block bootstrap to preserve time-series autocorrelation
-    when constructing confidence intervals for mean |IC|.
+    when constructing confidence intervals for the signed mean IC.
 
     Parameters
     ----------
@@ -92,7 +99,14 @@ class BootstrapICTester:
     def compute_ci(
         self, factor_name: str, ic_series: np.ndarray
     ) -> BootstrapCIResult:
-        """Compute block-bootstrap CI for mean |IC|.
+        """Compute a block-bootstrap CI for the signed mean IC.
+
+        The CI targets ``mean(IC_t)`` — the statistic whose absolute value
+        is the ``paper_ic_v2`` gate — so it agrees with
+        :meth:`compute_p_value`, which tests ``|mean(IC_t)|`` under a
+        sign-flip null. A series with magnitude but no stable direction
+        (e.g. alternating ±0.1) yields a CI covering zero, not a spuriously
+        positive interval on ``mean(|IC_t|)``.
 
         Parameters
         ----------
@@ -115,12 +129,12 @@ class BootstrapICTester:
                 ci_upper=0.0,
                 ic_std_boot=0.0,
                 ci_excludes_zero=False,
+                ic_paper_mean=0.0,
             )
 
-        abs_valid = np.abs(valid)
-        ic_mean = float(np.mean(abs_valid))
+        ic_mean = float(np.mean(valid))
 
-        boot_means = self._block_bootstrap_means(abs_valid)
+        boot_means = self._block_bootstrap_means(valid)
 
         alpha = 1.0 - self._config.bootstrap_confidence
         ci_lower = float(np.percentile(boot_means, 100 * alpha / 2))
@@ -133,7 +147,8 @@ class BootstrapICTester:
             ci_lower=ci_lower,
             ci_upper=ci_upper,
             ic_std_boot=ic_std_boot,
-            ci_excludes_zero=ci_lower > 0,
+            ci_excludes_zero=bool(ci_lower > 0 or ci_upper < 0),
+            ic_paper_mean=abs(ic_mean),
         )
 
     def compute_p_value(self, ic_series: np.ndarray) -> float:
@@ -188,15 +203,14 @@ class BootstrapICTester:
         n_samples = self._config.bootstrap_n_samples
 
         boot_means = np.empty(n_samples, dtype=np.float64)
-        max_start = T - block_size  # last valid block start
 
         for i in range(n_samples):
-            # Sample block start indices with replacement
-            starts = self._rng.randint(0, max_start + 1, size=n_blocks)
-            # Concatenate blocks and truncate to length T
+            # Circular: any start is valid, blocks wrap modulo T so every
+            # observation is sampled with equal probability
+            starts = self._rng.randint(0, T, size=n_blocks)
             indices = np.concatenate(
                 [np.arange(s, s + block_size) for s in starts]
-            )[:T]
+            )[:T] % T
             boot_means[i] = series[indices].mean()
 
         return boot_means

@@ -244,9 +244,22 @@ class StatisticalComparisonTests:
         ic_series_1: np.ndarray,
         ic_series_2: np.ndarray,
         h: int = 1,
+        max_lag: int | None = None,
     ) -> DMTestResult:
-        """Compare squared IC loss with a Newey-West variance estimate."""
+        """Compare squared IC loss with a Newey-West variance estimate.
+
+        ``max_lag=None`` selects the Newey-West automatic truncation
+        ``max(h - 1, floor(4 * (T / 100) ** (2 / 9)))`` so the Bartlett
+        correction stays active for one-step forecasts (``h=1``), where the
+        classical ``h - 1`` rule degenerates to the iid variance. Pass
+        ``max_lag=0`` to force the uncorrected iid variance.
+        """
         from scipy.stats import norm
+
+        if h < 1:
+            raise ValueError("h must be at least 1")
+        if max_lag is not None and max_lag < 0:
+            raise ValueError("max_lag must be non-negative")
 
         series_1, series_2 = self._paired_valid_series(ic_series_1, ic_series_2)
         if len(series_1) < 5:
@@ -256,9 +269,13 @@ class StatisticalComparisonTests:
             return DMTestResult(0.0, 1.0, False, "no_difference", len(differential))
         mean = float(np.mean(differential))
         variance = float(np.var(differential, ddof=0))
-        for lag in range(1, max(h - 1, 0) + 1):
+        n_obs = len(differential)
+        if max_lag is None:
+            max_lag = max(h - 1, int(4.0 * (n_obs / 100.0) ** (2.0 / 9.0)))
+        max_lag = min(max_lag, n_obs - 1)
+        for lag in range(1, max_lag + 1):
             covariance = float(np.mean((differential[lag:] - mean) * (differential[:-lag] - mean)))
-            variance += 2.0 * (1.0 - lag / h) * covariance
+            variance += 2.0 * (1.0 - lag / (max_lag + 1.0)) * covariance
         if variance <= 0.0 or not np.isfinite(variance):
             return DMTestResult(0.0, 1.0, False, "no_difference", len(differential))
         statistic = mean / math.sqrt(variance / len(differential))
