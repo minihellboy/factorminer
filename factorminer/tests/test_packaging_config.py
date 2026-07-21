@@ -12,6 +12,14 @@ from factorminer.utils.config import load_config
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_project_is_mit_licensed():
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+
+    assert pyproject["project"]["license"] == "MIT"
+    assert pyproject["project"]["license-files"] == ["LICENSE"]
+    assert (ROOT / "LICENSE").read_text().startswith("MIT License\n")
+
+
 def test_package_requires_python_312_or_newer():
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
     classifiers = pyproject["project"]["classifiers"]
@@ -52,4 +60,5 @@ def test_binance_sample_config_matches_bundled_manifest():
     assert cfg.data.default_target == "paper"
     assert cfg.data.train_period[0].startswith("2026-02-14")
     assert cfg.data.test_period[1].startswith("2026-02-18")
+    assert manifest["license"] == "MIT"
     assert manifest["matching_config"] == "factorminer/configs/binance_sample.yaml"

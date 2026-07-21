@@ -1,6 +1,7 @@
 {
   "file": "data/binance_crypto_5m.csv",
   "sha256": "f6664790ead548fc2d440a5cf8d065492d8e5635f2d0d7fd114b6d09b2be2d33",
+  "license": "MIT",
   "purpose": "schema validation, CLI smoke testing, examples, and local workflow checks",
   "is_full_paper_benchmark_data": false,
   "frequency": "5min",

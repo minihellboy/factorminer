@@ -4,7 +4,7 @@
 interpretable alpha factors.**
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT AND BUSL-1.1](https://img.shields.io/badge/License-MIT%20%2B%20BUSL--1.1-blue.svg)](LICENSING.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/minihellboy/factorminer/actions/workflows/ci.yml/badge.svg)](https://github.com/minihellboy/factorminer/actions/workflows/ci.yml)
 
 FactorMiner combines a typed formula DSL, LLM-guided search, structured memory,
@@ -220,7 +220,7 @@ and deployment notes are in the
 | [Architecture](docs/architecture.md) | Runtime contracts, dependency direction, and package ownership |
 | [Reproducibility](docs/reproducibility.md) | Data contracts, metrics, baseline provenance, public and paper-scale workflows |
 | [Security](docs/security.md) | Connectors, MCP, model/content boundaries, persistence, secrets |
-| [Licensing](LICENSING.md) | Which files are MIT vs. BUSL-1.1, and why |
+| [License](LICENSE) | MIT license terms for the entire project |
 | [Integration guide](integrations/factor-researcher/README.md) | Agent packaging, financial-data connectors, deployment guardrails |
 | [Contributing](CONTRIBUTING.md) | PR scope, checks, ownership, and documentation governance |
 
@@ -239,6 +239,5 @@ rules, and PR expectations.
 
 ## License
 
-MIT for the core engine; select advanced research modules are BUSL-1.1. See
-[LICENSING.md](LICENSING.md) for the exact file list and terms, or
-[LICENSE](LICENSE) / [LICENSE-BUSL](LICENSE-BUSL) for the full license texts.
+FactorMiner is licensed under the MIT License. See [LICENSE](LICENSE) for the
+full license text.

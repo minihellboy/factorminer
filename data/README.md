@@ -7,7 +7,8 @@ The repository includes a small Binance-shaped OHLCV sample:
 - matching config: `factorminer/configs/binance_sample.yaml`
 
 This file is for schema validation, CLI smoke tests, examples, and local
-workflow checks. It is not the full paper benchmark dataset.
+workflow checks. It is distributed under the project's MIT License and is not
+the full paper benchmark dataset.
 
 ## Current Sample
 
