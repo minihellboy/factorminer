@@ -114,6 +114,28 @@ class TestArithmeticOps:
         assert np.isnan(result[1, 1])
         np.testing.assert_almost_equal(result[0, 1], 1.0)
 
+    def test_torch_division_masks_values_and_gradients(self):
+        torch = pytest.importorskip("torch")
+        from factorminer.operators.arithmetic import div_torch, inv_torch
+
+        numerator = torch.tensor([2.0, 3.0, 4.0], requires_grad=True)
+        denominator = torch.tensor([2.0, 0.0, 1e-20], requires_grad=True)
+        quotient = div_torch(numerator, denominator)
+        torch.nan_to_num(quotient).sum().backward()
+
+        torch.testing.assert_close(quotient[:1], torch.tensor([1.0]))
+        assert torch.isnan(quotient[1:]).all()
+        torch.testing.assert_close(numerator.grad, torch.tensor([0.5, 0.0, 0.0]))
+        torch.testing.assert_close(denominator.grad, torch.tensor([-0.5, 0.0, 0.0]))
+
+        values = torch.tensor([2.0, 0.0, 1e-20], requires_grad=True)
+        reciprocal = inv_torch(values)
+        torch.nan_to_num(reciprocal).sum().backward()
+
+        torch.testing.assert_close(reciprocal[:1], torch.tensor([0.5]))
+        assert torch.isnan(reciprocal[1:]).all()
+        torch.testing.assert_close(values.grad, torch.tensor([-0.25, 0.0, 0.0]))
+
     def test_max_elementwise(self, x_simple, y_simple):
         result = execute_operator("Max", x_simple, y_simple)
         np.testing.assert_array_almost_equal(result, np.fmax(x_simple, y_simple))

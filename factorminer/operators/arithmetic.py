@@ -41,10 +41,10 @@ def mul_np(x: np.ndarray, y: np.ndarray) -> np.ndarray:
 
 
 def div_np(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    out = np.full_like(x, np.nan, dtype=np.float64)
+    """Element-wise divide; near-zero denominators stay NaN."""
     mask = np.abs(y) > _EPS_NP
-    out[mask] = x[mask] / y[mask]
-    return out
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(mask, x / y, np.nan)
 
 
 def neg_np(x: np.ndarray) -> np.ndarray:
@@ -74,10 +74,10 @@ def square_np(x: np.ndarray) -> np.ndarray:
 
 
 def inv_np(x: np.ndarray) -> np.ndarray:
-    out = np.full_like(x, np.nan, dtype=np.float64)
+    """Element-wise reciprocal; near-zero inputs stay NaN."""
     mask = np.abs(x) > _EPS_NP
-    out[mask] = 1.0 / x[mask]
-    return out
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(mask, 1.0 / x, np.nan)
 
 
 def pow_np(x: np.ndarray, y: np.ndarray) -> np.ndarray:
@@ -132,9 +132,8 @@ def mul_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
 def div_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     mask = y.abs() > 1e-10
-    out = torch.full_like(x, float("nan"))
-    out[mask] = x[mask] / y[mask]
-    return out
+    safe_y = torch.where(mask, y, 1.0)
+    return torch.where(mask, x / safe_y, torch.nan)
 
 
 def neg_torch(x: torch.Tensor) -> torch.Tensor:
@@ -163,9 +162,8 @@ def square_torch(x: torch.Tensor) -> torch.Tensor:
 
 def inv_torch(x: torch.Tensor) -> torch.Tensor:
     mask = x.abs() > 1e-10
-    out = torch.full_like(x, float("nan"))
-    out[mask] = 1.0 / x[mask]
-    return out
+    safe_x = torch.where(mask, x, 1.0)
+    return torch.where(mask, 1.0 / safe_x, torch.nan)
 
 
 def pow_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
