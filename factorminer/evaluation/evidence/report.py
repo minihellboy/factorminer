@@ -208,18 +208,38 @@ def evaluate_industry_evidence(
             else "Exposures were supplied, but no period had enough valid assets to fit."
         )
 
+    rank_periods = int(raw_metrics["rank_ic"]["n_periods"])
+    pearson_periods = int(raw_metrics["pearson_ic"]["n_periods"])
+    gross_periods = int(np.isfinite(raw_portfolio["gross_return_series"]).sum())
+    turnover_periods = int(np.isfinite(raw_portfolio["turnover_series"]).sum())
+    ic_status = "measured" if rank_periods and pearson_periods else "partial"
+    serial_status = "measured" if rank_periods >= 3 else "partial"
+    portfolio_status = "measured" if gross_periods and turnover_periods else "partial"
+
     validation_coverage = {
         "ic_rankic": _coverage(
-            "measured",
-            "Pearson IC and Spearman RankIC are separate, with exact series and definitions.",
+            ic_status,
+            (
+                "Pearson IC and Spearman RankIC are separate, with exact series and definitions."
+                if ic_status == "measured"
+                else "No period had enough finite signal/return pairs for both IC definitions."
+            ),
         ),
         "serial_dependence": _coverage(
-            "measured",
-            "Newey-West inference and a circular block-bootstrap CI are reported.",
+            serial_status,
+            (
+                "Newey-West inference and a circular block-bootstrap CI are reported."
+                if serial_status == "measured"
+                else "At least three valid RankIC periods are required for mean inference."
+            ),
         ),
         "turnover_cost_stress": _coverage(
-            "measured",
-            "Long/short target-weight turnover and configurable linear cost stress.",
+            portfolio_status,
+            (
+                "Long/short target-weight turnover and configurable linear cost stress."
+                if portfolio_status == "measured"
+                else "Valid selected returns and at least two eligible portfolio periods are required."
+            ),
         ),
         "capacity": _coverage(
             "measured" if volume is not None else "not_supplied",
@@ -230,7 +250,7 @@ def evaluate_industry_evidence(
             ),
         ),
         "multiple_testing": _coverage(
-            "measured" if family_ic_series is not None else "partial",
+            ("measured" if family_ic_series is not None and rank_periods >= 3 else "partial"),
             (
                 "Family-wide HAC p-values receive Benjamini-Hochberg adjustment; DSR "
                 "also uses the declared trial count."
@@ -267,6 +287,8 @@ def evaluate_industry_evidence(
         warnings.append("Raw predictive power may be an unmeasured style or industry exposure.")
     if family_ic_series is None:
         warnings.append("A single-factor p-value does not control false discoveries.")
+    if not rank_periods:
+        warnings.append("No period had enough finite observations to estimate RankIC.")
 
     return IndustryEvidenceReport(
         protocol_version=INDUSTRY_EVIDENCE_VERSION,

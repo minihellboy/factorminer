@@ -122,6 +122,22 @@ def test_evidence_report_marks_inputs_it_cannot_infer():
     assert report.risk_residual is None
 
 
+def test_evidence_report_does_not_mark_empty_measurements_complete():
+    signals = np.full((10, 8), np.nan)
+    returns = np.zeros_like(signals)
+
+    report = evaluate_industry_evidence(
+        "empty",
+        signals,
+        returns,
+        config=IndustryEvidenceConfig(bootstrap_n_samples=10),
+    )
+
+    assert report.validation_coverage["ic_rankic"]["status"] == "partial"
+    assert report.validation_coverage["serial_dependence"]["status"] == "partial"
+    assert report.validation_coverage["turnover_cost_stress"]["status"] == "partial"
+
+
 def test_cost_path_ignores_nan_returns_outside_selected_assets():
     assets, periods = 20, 8
     signals = np.tile(np.arange(assets, dtype=np.float64)[:, None], (1, periods))
