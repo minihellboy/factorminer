@@ -1,4 +1,4 @@
-"""Runtime ablation study for HelixFactor Phase 2 components.
+"""Canonical benchmark runners, including Phase-2 component ablations.
 
 This module now drives ablations through the real loop path:
 - HelixLoop execution on a training slice
@@ -33,6 +33,7 @@ import factorminer.core.helix_loop as helix_loop_module
 import factorminer.core.ralph_loop as ralph_loop_module
 from factorminer.agent.debate import DebateConfig as RuntimeDebateConfig
 from factorminer.agent.llm_interface import MockProvider
+from factorminer.application.runtime_context import build_run_context
 from factorminer.benchmark.runtime import (
     AblationResult,
     MethodResult,
@@ -41,20 +42,20 @@ from factorminer.benchmark.runtime import (
     evaluate_frozen_set,
     select_frozen_top_k,
 )
-from factorminer.core.config import MiningConfig
 from factorminer.core.factor_library import FactorLibrary
 from factorminer.core.helix_loop import HelixLoop
 from factorminer.evaluation.causal import CausalConfig as RuntimeCausalConfig
 from factorminer.evaluation.regime import RegimeConfig as RuntimeRegimeConfig
 from factorminer.evaluation.runtime import (
-    DatasetSplit,
     EvaluationDataset,
+    build_runtime_dataset_from_arrays,
     evaluate_factors,
 )
 from factorminer.evaluation.significance import (
     SignificanceConfig as RuntimeSignificanceConfig,
 )
 from factorminer.memory.memory_store import ExperienceMemory
+from factorminer.utils.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +146,11 @@ def _slice_data(data: dict, start: int, end: int) -> dict:
     }
 
 
-def _build_runtime_dataset(data: dict) -> EvaluationDataset:
+def _build_runtime_dataset(
+    data: dict,
+    *,
+    split_indices: dict[str, np.ndarray] | None = None,
+) -> EvaluationDataset:
     """Build a minimal runtime dataset from the benchmark dictionary format."""
     feature_keys = [key for key in _FEATURE_KEYS if key in data]
     if "forward_returns" not in data:
@@ -153,120 +158,64 @@ def _build_runtime_dataset(data: dict) -> EvaluationDataset:
     if not feature_keys:
         raise ValueError("Runtime ablation requires at least one market feature array")
 
-    arrays = [np.asarray(data[key], dtype=np.float64) for key in feature_keys]
-    data_tensor = np.stack(arrays, axis=2)
     returns = np.asarray(data["forward_returns"], dtype=np.float64)
-    timestamps = np.arange(returns.shape[1])
-    asset_ids = np.arange(returns.shape[0])
-    full_split = DatasetSplit(
-        name="full",
-        indices=np.arange(returns.shape[1]),
-        timestamps=timestamps,
-        returns=returns,
-        target_returns={"target": returns},
-        default_target="target",
-    )
-
-    # The caller populates train/test splits by passing a merged train+test view.
-    return EvaluationDataset(
-        data_dict={key: np.asarray(data[key], dtype=np.float64) for key in feature_keys},
-        data_tensor=data_tensor,
-        returns=returns,
-        timestamps=timestamps,
-        asset_ids=asset_ids,
-        splits={"full": full_split},
-        processed_df=pd.DataFrame(),
+    return build_runtime_dataset_from_arrays(
+        {key: np.asarray(data[key], dtype=np.float64) for key in feature_keys},
+        returns,
+        feature_order=feature_keys,
         target_panels={"target": returns},
         default_target="target",
+        split_indices=split_indices,
     )
 
 
 def _build_split_dataset(data: dict, split_name: str) -> EvaluationDataset:
     """Create a single-split runtime dataset from one benchmark slice."""
-    dataset = _build_runtime_dataset(data)
-    split = DatasetSplit(
-        name=split_name,
-        indices=np.arange(dataset.returns.shape[1]),
-        timestamps=dataset.timestamps,
-        returns=dataset.returns,
-        target_returns={"target": dataset.returns},
-        default_target="target",
+    period_count = np.asarray(data["forward_returns"]).shape[1]
+    return _build_runtime_dataset(
+        data,
+        split_indices={split_name: np.arange(period_count)},
     )
-    dataset.splits = {split_name: split}
-    return dataset
 
 
 def _build_combined_dataset(train_data: dict, test_data: dict) -> EvaluationDataset:
     """Create a train/test runtime dataset from sliced benchmark inputs."""
     merged = _merge_slices(train_data, test_data)
-    dataset = _build_runtime_dataset(merged)
     train_len = np.asarray(train_data["forward_returns"]).shape[1]
     test_len = np.asarray(test_data["forward_returns"]).shape[1]
-    timestamps = np.arange(train_len + test_len)
-    returns = np.asarray(merged["forward_returns"], dtype=np.float64)
-
-    dataset.timestamps = timestamps
-    dataset.returns = returns
-    dataset.target_panels = {"target": returns}
-    dataset.default_target = "target"
-    dataset.splits = {
-        "train": DatasetSplit(
-            name="train",
-            indices=np.arange(0, train_len),
-            timestamps=timestamps[:train_len],
-            returns=returns[:, :train_len],
-            target_returns={"target": returns[:, :train_len]},
-            default_target="target",
-        ),
-        "test": DatasetSplit(
-            name="test",
-            indices=np.arange(train_len, train_len + test_len),
-            timestamps=timestamps[train_len:],
-            returns=returns[:, train_len:],
-            target_returns={"target": returns[:, train_len:]},
-            default_target="target",
-        ),
-        "full": DatasetSplit(
-            name="full",
-            indices=np.arange(train_len + test_len),
-            timestamps=timestamps,
-            returns=returns,
-            target_returns={"target": returns},
-            default_target="target",
-        ),
-    }
-    return dataset
+    return _build_runtime_dataset(
+        merged,
+        split_indices={
+            "train": np.arange(0, train_len),
+            "test": np.arange(train_len, train_len + test_len),
+            "full": np.arange(train_len + test_len),
+        },
+    )
 
 
 def _build_mining_config(
     *,
-    output_dir: str,
     target_library_size: int,
     batch_size: int,
     max_iterations: int,
     ic_threshold: float,
     correlation_threshold: float,
-) -> MiningConfig:
-    """Create a loop config tailored for a single runtime ablation."""
-    cfg = MiningConfig(
-        target_library_size=target_library_size,
-        batch_size=batch_size,
-        max_iterations=max_iterations,
-        ic_threshold=ic_threshold,
-        icir_threshold=0.5,
-        correlation_threshold=correlation_threshold,
-        replacement_ic_min=max(ic_threshold * 2.5, ic_threshold + 0.05),
-        replacement_ic_ratio=1.3,
-        fast_screen_assets=100,
-        num_workers=1,
-        output_dir=output_dir,
-        backend="numpy",
-        signal_failure_policy="reject",
-    )
-    cfg.benchmark_mode = "paper"
-    cfg.research = None
-    cfg.target_panels = None
-    cfg.target_horizons = None
+) -> Config:
+    """Create one canonical hierarchical config for a runtime ablation."""
+    cfg = Config()
+    cfg.mining.target_library_size = target_library_size
+    cfg.mining.batch_size = batch_size
+    cfg.mining.max_iterations = max_iterations
+    cfg.mining.ic_threshold = ic_threshold
+    cfg.mining.icir_threshold = 0.5
+    cfg.mining.correlation_threshold = correlation_threshold
+    cfg.mining.replacement_ic_min = max(ic_threshold * 2.5, ic_threshold + 0.05)
+    cfg.mining.replacement_ic_ratio = 1.3
+    cfg.evaluation.fast_screen_assets = 100
+    cfg.evaluation.num_workers = 1
+    cfg.evaluation.backend = "numpy"
+    cfg.evaluation.signal_failure_policy = "reject"
+    cfg.benchmark.mode = "paper"
     return cfg
 
 
@@ -391,7 +340,7 @@ def _runtime_payload_to_result(
 def _evaluate_runtime_library(
     library,
     dataset: EvaluationDataset,
-    cfg: MiningConfig,
+    cfg: Config,
     *,
     target_library_size: int,
     cost_bps: list[float] | None = None,
@@ -407,8 +356,8 @@ def _evaluate_runtime_library(
         artifacts,
         cfg,
         split_name="train",
-        ic_threshold=cfg.ic_threshold,
-        correlation_threshold=cfg.correlation_threshold,
+        ic_threshold=cfg.mining.ic_threshold,
+        correlation_threshold=cfg.mining.correlation_threshold,
     )
     frozen = select_frozen_top_k(
         artifacts,
@@ -487,7 +436,7 @@ class AblatedMethodRunner:
         *,
         train_data: dict,
         n_factors: int,
-    ) -> tuple[HelixLoop, MiningConfig]:
+    ) -> tuple[HelixLoop, Config]:
         """Instantiate and run the real HelixLoop on the training slice."""
         phase2 = _build_phase2_configs(self._cfg)
         target_library_size = max(int(n_factors), 1)
@@ -496,14 +445,19 @@ class AblatedMethodRunner:
         loop_dataset = _build_runtime_dataset(train_data)
         with tempfile.TemporaryDirectory(prefix="factorminer_ablation_") as tmp:
             mining_cfg = _build_mining_config(
-                output_dir=tmp,
                 target_library_size=target_library_size,
                 batch_size=batch_size,
                 max_iterations=max_iterations,
                 ic_threshold=self.ic_threshold,
                 correlation_threshold=self.correlation_threshold,
             )
-            mining_cfg.benchmark_mode = self.benchmark_mode
+            mining_cfg.benchmark.mode = self.benchmark_mode
+            run_context = build_run_context(
+                mining_cfg,
+                output_dir=tmp,
+                dataset=loop_dataset,
+                benchmark_mode=self.benchmark_mode,
+            )
             if self._cfg.get("memory", True):
                 memory = ExperienceMemory()
             else:
@@ -519,6 +473,7 @@ class AblatedMethodRunner:
                     correlation_threshold=self.correlation_threshold,
                     ic_threshold=self.ic_threshold,
                 ),
+                run_context=run_context,
                 debate_config=phase2["debate_config"],
                 enable_knowledge_graph=False,
                 enable_embeddings=False,

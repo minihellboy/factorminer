@@ -48,12 +48,14 @@ consumers and the test that proves the old path is no longer required.
 
 | Path | Owns |
 | --- | --- |
+| `factorminer/domain/` | dependency-free numerical contracts shared by application workflows |
+| `factorminer/application/` | typed execution context and cross-workflow application contracts |
 | `factorminer/architecture/` | protocol contracts, policies, stages, reusable research services |
 | `factorminer/core/` | loop orchestration, DSL/parser, expressions, factor library, session I/O |
 | `factorminer/agent/` | model providers, prompt construction, generation, debate |
 | `factorminer/data/` | ingestion, normalization, connectors, tensor construction |
 | `factorminer/evaluation/` | runtime recomputation, metrics, validation, reports |
-| `factorminer/benchmark/` | canonical comparative runtime and compatibility exports |
+| `factorminer/benchmark/` | comparative contracts, datasets, runners, statistics, and reports |
 | `factorminer/memory/` | stores, retrieval primitives, knowledge graph, embeddings |
 | `factorminer/operators/` | typed operator definitions and execution backends |
 | `factorminer/mcp/` | external MCP tools/resources over stable engine workflows |
@@ -79,7 +81,7 @@ runtime contracts.
 7. Keep `output/`, credentials, private data, and local configuration out of
    source control.
 8. Add regression coverage for every new public contract, policy, stage,
-   benchmark path, manifest field, or compatibility export.
+   benchmark path, manifest field, or public export.
 9. New files default to MIT. A file only becomes BUSL-1.1 for a deliberate,
    documented reason (see `LICENSING.md`) — add the SPDX header and the
    `LICENSING.md` table row in the same PR, and never add a hard,
@@ -117,6 +119,7 @@ Before opening a PR, run:
 
 ```bash
 uv run ruff check .
+uv run python scripts/check_architecture.py
 uv run python scripts/check.py
 uv run pytest -q factorminer/tests
 uv build
@@ -143,7 +146,7 @@ A reviewer should be able to answer:
 
 - What contract or path changed?
 - Which execution surfaces are affected?
-- What remains intentionally compatible?
+- Which public imports or artifacts remain stable?
 - Which tests demonstrate the result?
 - Which technical document was updated?
 - Are there data, security, migration, or reproducibility implications?

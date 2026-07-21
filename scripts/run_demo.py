@@ -413,25 +413,26 @@ def main():
     section("STEP 9: Mining Loop Demo (3 iterations with MockProvider)")
 
     from factorminer.agent.llm_interface import MockProvider
-    from factorminer.core.config import MiningConfig
+    from factorminer.application.runtime_context import build_run_context
     from factorminer.core.ralph_loop import RalphLoop
+    from factorminer.utils.config import Config
 
-    mining_config = MiningConfig(
-        target_library_size=20,
-        batch_size=10,
-        max_iterations=3,
-        ic_threshold=0.02,
-        correlation_threshold=0.5,
-        fast_screen_assets=50,
-        num_workers=1,
-        signal_failure_policy="synthetic",
-    )
+    mining_config = Config()
+    mining_config.mining.target_library_size = 20
+    mining_config.mining.batch_size = 10
+    mining_config.mining.max_iterations = 3
+    mining_config.mining.ic_threshold = 0.02
+    mining_config.mining.correlation_threshold = 0.5
+    mining_config.evaluation.fast_screen_assets = 50
+    mining_config.evaluation.num_workers = 1
+    run_context = build_run_context(mining_config, mock=True)
 
     loop = RalphLoop(
         config=mining_config,
         data_tensor=np.stack(list(data_dict.values()), axis=-1),  # (M, T, F)
         returns=forward_returns,
         llm_provider=MockProvider(),
+        run_context=run_context,
     )
 
     print("  Running 3 mining iterations...")

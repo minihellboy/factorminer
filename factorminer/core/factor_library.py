@@ -17,7 +17,7 @@ from datetime import datetime
 
 import numpy as np
 
-from factorminer.architecture.dependence import (
+from factorminer.domain.dependence import (
     DependenceMetric,
     build_dependence_metric,
 )
@@ -46,6 +46,7 @@ class Factor:
     signals: np.ndarray | None = field(default=None, repr=False)  # (M, T)
     research_metrics: dict = field(default_factory=dict)
     provenance: dict = field(default_factory=dict)
+    evidence_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.admission_date:
@@ -76,6 +77,7 @@ class Factor:
             "admission_date": self.admission_date,
             "research_metrics": self.research_metrics,
             "provenance": self.provenance,
+            "evidence_ids": list(self.evidence_ids),
         }
 
     @classmethod
@@ -98,6 +100,7 @@ class Factor:
             admission_date=d.get("admission_date", ""),
             research_metrics=d.get("research_metrics", {}),
             provenance=d.get("provenance", {}),
+            evidence_ids=tuple(str(item) for item in d.get("evidence_ids", ())),
         )
 
 

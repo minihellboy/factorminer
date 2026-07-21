@@ -260,6 +260,8 @@ benchmark:
 # ---------------------------------------------------------------------------
 research:
   enabled: false
+  # Maximum persisted research hypotheses injected into any generation batch.
+  knowledge_retrieval_limit: 4
 
   # single_horizon | weighted_multi_horizon | pareto_multi_horizon | net_ir
   primary_objective: "weighted_multi_horizon"

@@ -6,6 +6,8 @@ centralizing the repeated stage-chain execution and iteration telemetry.
 
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -14,6 +16,8 @@ import numpy as np
 
 from factorminer.architecture import IterationPayload
 from factorminer.utils.logging import FactorRecord, IterationRecord
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -43,6 +47,67 @@ class LoopExecutionService:
     ) -> None:
         for stage_name in stage_names:
             self.loop.stages[stage_name].run(self.loop, payload)
+
+    def execute_iteration(
+        self,
+        batch_size: int,
+        *,
+        trailing_stages: Sequence[str] = (),
+        phase2_summary: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Execute the canonical mining sequence for a loop composition."""
+        started_at = time.time()
+        payload = self.new_payload(batch_size)
+        self.run_stage_chain(payload, ("retrieve",))
+        retrieval = self.loop.research_knowledge.retrieve(
+            payload.library_state,
+            limit=self.loop.settings.research_knowledge_retrieval_limit,
+        )
+        payload.memory_signal = retrieval.enrich(payload.memory_signal)
+        self.run_stage_chain(payload, ("generate",))
+        self.loop.budget.record_llm_call()
+
+        if not payload.candidates:
+            logger.warning(
+                "%s iteration %d: %s",
+                self.loop._loop_type().title(),
+                self.loop.iteration,
+                self.describe_empty_generation(payload),
+            )
+            return self.empty_stats()
+
+        self.run_stage_chain(payload, ("evaluate", "library_update"))
+        summary = dict(phase2_summary or {})
+        if "phase2_rejections" in payload.stage_metrics:
+            summary["phase2_rejections"] = payload.stage_metrics["phase2_rejections"]
+        self.loop._attach_factor_provenance(
+            payload.admitted_results,
+            library_state={
+                **payload.library_state,
+                "diagnostics": self.loop.library.get_diagnostics(),
+            },
+            memory_signal=payload.memory_signal,
+            phase2_summary=summary,
+            generator_family=self.loop._generator_family(),
+        )
+
+        self.run_stage_chain(payload, ("distill", *trailing_stages))
+        self.loop.research_knowledge.record_results(
+            payload.results,
+            payload.memory_signal,
+            iteration=self.loop.iteration,
+        )
+        elapsed = time.time() - started_at
+        self.loop.budget.record_compute(elapsed)
+        stats = self.build_stats(payload, elapsed)
+        telemetry = self.build_telemetry(
+            payload,
+            stats,
+            elapsed,
+            candidates_generated=self.candidate_count(payload),
+        )
+        self.log_telemetry(telemetry)
+        return stats
 
     def candidate_count(self, payload: IterationPayload) -> int:
         if "candidates_before_canon" in payload.stage_metrics:
@@ -74,16 +139,16 @@ class LoopExecutionService:
         if total_candidates <= 0 or total_admitted > 0 or self.loop.library.size > 0:
             return None
 
-        config = getattr(self.loop, "config", None)
+        settings = getattr(self.loop, "settings", getattr(self.loop, "config", None))
         data_tensor = getattr(self.loop, "data_tensor", None)
         if data_tensor is not None and getattr(data_tensor, "ndim", 0) >= 2:
             panel = f"{data_tensor.shape[0]} assets x {data_tensor.shape[1]} periods"
         else:
             panel = "unknown panel size"
 
-        ic_threshold = getattr(config, "ic_threshold", "unknown")
-        icir_threshold = getattr(config, "icir_threshold", "unknown")
-        corr_threshold = getattr(config, "correlation_threshold", "unknown")
+        ic_threshold = getattr(settings, "ic_threshold", "unknown")
+        icir_threshold = getattr(settings, "icir_threshold", "unknown")
+        corr_threshold = getattr(settings, "correlation_threshold", "unknown")
 
         return (
             "No factors were admitted after "

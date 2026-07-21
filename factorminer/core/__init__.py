@@ -1,103 +1,64 @@
-"""FactorMiner core: expression trees, types, factor DSL parser, and Ralph Loop."""
+"""Core DSL, factor model, session, and loop APIs with lazy exports."""
 
-from importlib import import_module
+from __future__ import annotations
 
-from factorminer.core.canonicalizer import FormulaCanonicalizer
-from factorminer.core.config import MiningConfig as CoreMiningConfig
-from factorminer.core.expression_tree import (
-    ConstantNode,
-    ExpressionTree,
-    LeafNode,
-    Node,
-    OperatorNode,
-)
-from factorminer.core.factor_library import Factor, FactorLibrary
-from factorminer.core.library_io import (
-    export_csv,
-    export_formulas,
-    import_from_paper,
-    load_library,
-    save_library,
-)
-from factorminer.core.parser import parse, try_parse
-from factorminer.core.session import MiningSession
-from factorminer.core.types import (
-    DEFAULT_FEATURES,
-    FEATURE_DESCRIPTIONS,
-    FEATURE_SET,
-    FEATURES,
-    OPERATOR_REGISTRY,
-    OperatorSpec,
-    OperatorType,
-    SignatureType,
-    column_to_feature,
-    feature_to_column,
-    get_feature_descriptions,
-    get_feature_set,
-    get_features,
-    get_operator,
-    normalize_feature_name,
-    register_features,
-    reset_features,
-    unregister_features,
-)
+from factorminer._lazy_exports import public_dir, resolve_export
 
-_LAZY_EXPORTS = {
-    "RalphLoop": ("factorminer.core.ralph_loop", "RalphLoop"),
-    "HelixLoop": ("factorminer.core.helix_loop", "HelixLoop"),
+_EXPORTS = {
+    "FormulaCanonicalizer": "factorminer.core.canonicalizer",
+    "CoreMiningConfig": ("factorminer.core.config", "MiningConfig"),
+    **{
+        name: "factorminer.core.expression_tree"
+        for name in ("Node", "LeafNode", "ConstantNode", "OperatorNode", "ExpressionTree")
+    },
+    "Factor": "factorminer.core.factor_library",
+    "FactorLibrary": "factorminer.core.factor_library",
+    **{
+        name: "factorminer.core.library_io"
+        for name in (
+            "save_library",
+            "load_library",
+            "export_csv",
+            "export_formulas",
+            "import_from_paper",
+        )
+    },
+    "parse": "factorminer.core.parser",
+    "try_parse": "factorminer.core.parser",
+    "MiningSession": "factorminer.core.session",
+    "RalphLoop": "factorminer.core.ralph_loop",
+    "HelixLoop": "factorminer.core.helix_loop",
+    **{
+        name: "factorminer.core.types"
+        for name in (
+            "OperatorSpec",
+            "OperatorType",
+            "SignatureType",
+            "DEFAULT_FEATURES",
+            "FEATURES",
+            "FEATURE_SET",
+            "FEATURE_DESCRIPTIONS",
+            "OPERATOR_REGISTRY",
+            "get_operator",
+            "get_features",
+            "get_feature_set",
+            "get_feature_descriptions",
+            "normalize_feature_name",
+            "feature_to_column",
+            "column_to_feature",
+            "register_features",
+            "unregister_features",
+            "reset_features",
+        )
+    },
 }
+
+__all__ = list(_EXPORTS)
 
 
 def __getattr__(name: str):
-    if name not in _LAZY_EXPORTS:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    module_name, attr_name = _LAZY_EXPORTS[name]
-    module = import_module(module_name)
-    value = getattr(module, attr_name)
-    globals()[name] = value
-    return value
+    return resolve_export(globals(), name, _EXPORTS)
 
-__all__ = [
-    # Expression tree
-    "Node",
-    "LeafNode",
-    "ConstantNode",
-    "OperatorNode",
-    "ExpressionTree",
-    # Factor library
-    "Factor",
-    "FactorLibrary",
-    "save_library",
-    "load_library",
-    "export_csv",
-    "export_formulas",
-    "import_from_paper",
-    # Parser
-    "parse",
-    "try_parse",
-    # Loops
-    "RalphLoop",
-    "HelixLoop",
-    "MiningSession",
-    "CoreMiningConfig",
-    "OperatorSpec",
-    "OperatorType",
-    "SignatureType",
-    "DEFAULT_FEATURES",
-    "FEATURES",
-    "FEATURE_SET",
-    "FEATURE_DESCRIPTIONS",
-    "OPERATOR_REGISTRY",
-    "get_operator",
-    "get_features",
-    "get_feature_set",
-    "get_feature_descriptions",
-    "normalize_feature_name",
-    "feature_to_column",
-    "column_to_feature",
-    "register_features",
-    "unregister_features",
-    "reset_features",
-    # Canonicalizer
-    "FormulaCanonicalizer",
-]
+
+def __dir__() -> list[str]:
+    return public_dir(globals(), _EXPORTS)

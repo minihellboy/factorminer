@@ -22,8 +22,7 @@ import json
 import logging
 import time
 from collections.abc import Callable, Mapping
-from concurrent.futures import as_completed
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -34,6 +33,12 @@ from factorminer.agent.factor_generator import FactorGenerator
 from factorminer.agent.llm_interface import LLMProvider, MockProvider
 from factorminer.agent.output_parser import candidate_pairs
 from factorminer.agent.prompt_builder import PromptBuilder
+from factorminer.application.mining_budget import BudgetTracker, EvaluationResult
+from factorminer.application.mining_reporting import MiningReporter
+from factorminer.application.research_knowledge import ResearchKnowledgeStore
+from factorminer.application.run_artifacts import MiningArtifactService
+from factorminer.application.runtime_context import MiningRunContext, MiningSettings
+from factorminer.application.validation_pipeline import ValidationPipeline
 from factorminer.architecture import (
     DatasetContract,
     DistillStage,
@@ -48,569 +53,20 @@ from factorminer.architecture import (
     LibraryUpdateStage,
     PaperProtocol,
     PromptContextBuilder,
+    ResearchCyclePlanner,
     RetrieveStage,
     build_memory_policy,
 )
 from factorminer.core.factor_library import FactorLibrary
 from factorminer.core.library_io import load_library, save_library
 from factorminer.core.loop_services import LoopExecutionService
-from factorminer.core.provenance import (
-    build_factor_provenance,
-    build_run_manifest,
-    infer_parent_lineage,
-)
+from factorminer.core.provenance import infer_parent_lineage
 from factorminer.core.session import MiningSession
-from factorminer.core.types import get_features
-from factorminer.evaluation.metrics import (
-    compute_factor_stats,
-)
-from factorminer.evaluation.runtime import SignalComputationError, compute_tree_signals
+from factorminer.memory.defaults import create_default_memory
 from factorminer.memory.memory_store import ExperienceMemory
 from factorminer.utils.logging import MiningSessionLogger
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Budget Tracker
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class BudgetTracker:
-    """Tracks resource consumption across the mining session.
-
-    Monitors LLM token usage, GPU compute time, and wall-clock time
-    so the loop can stop early when a budget is exhausted.
-    """
-
-    max_llm_calls: int = 0  # 0 = unlimited
-    max_wall_seconds: float = 0  # 0 = unlimited
-
-    # Running totals
-    llm_calls: int = 0
-    llm_prompt_tokens: int = 0
-    llm_completion_tokens: int = 0
-    compute_seconds: float = 0.0
-    wall_start: float = field(default_factory=time.time)
-
-    def record_llm_call(
-        self,
-        prompt_tokens: int = 0,
-        completion_tokens: int = 0,
-    ) -> None:
-        self.llm_calls += 1
-        self.llm_prompt_tokens += prompt_tokens
-        self.llm_completion_tokens += completion_tokens
-
-    def record_compute(self, seconds: float) -> None:
-        self.compute_seconds += seconds
-
-    @property
-    def wall_elapsed(self) -> float:
-        return time.time() - self.wall_start
-
-    @property
-    def total_tokens(self) -> int:
-        return self.llm_prompt_tokens + self.llm_completion_tokens
-
-    def is_exhausted(self) -> bool:
-        """True if any budget limit has been reached."""
-        if self.max_llm_calls > 0 and self.llm_calls >= self.max_llm_calls:
-            return True
-        if self.max_wall_seconds > 0 and self.wall_elapsed >= self.max_wall_seconds:
-            return True
-        return False
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "llm_calls": self.llm_calls,
-            "llm_prompt_tokens": self.llm_prompt_tokens,
-            "llm_completion_tokens": self.llm_completion_tokens,
-            "total_tokens": self.total_tokens,
-            "compute_seconds": round(self.compute_seconds, 2),
-            "wall_elapsed_seconds": round(self.wall_elapsed, 2),
-        }
-
-
-# ---------------------------------------------------------------------------
-# Candidate evaluation result
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class EvaluationResult:
-    """Result of evaluating a single candidate factor."""
-
-    factor_name: str
-    formula: str
-    parse_ok: bool = False
-    ic_mean: float = 0.0
-    ic_paper_mean: float = 0.0
-    ic_abs_mean: float = 0.0
-    icir: float = 0.0
-    ic_paper_icir: float = 0.0
-    ic_win_rate: float = 0.0
-    max_correlation: float = 0.0
-    correlated_with: str = ""
-    admitted: bool = False
-    replaced: int | None = None  # ID of replaced factor, if any
-    rejection_reason: str = ""
-    stage_passed: int = 0  # 0=parse/IC fail, 1=IC pass, 2=corr pass, 3=dedup pass, 4=admitted
-    signals: np.ndarray | None = None
-    target_stats: dict[str, dict] = field(default_factory=dict)
-    research_score: float = 0.0
-    research_lcb: float = 0.0
-    residual_ic: float = 0.0
-    projection_loss: float = 0.0
-    effective_rank_gain: float = 0.0
-    score_vector: dict[str, Any] | None = None
-    # Parent-formula lineage for EditAwareMemoryPolicy + MRM developmental history.
-    parent_formula: str = ""
-    parent_ic_paper_mean: float | None = None
-    edit_type: str = ""
-    edit_motif: str = ""
-    secondary_parent_formula: str = ""
-
-# ---------------------------------------------------------------------------
-# Validation Pipeline (lightweight orchestrator)
-# ---------------------------------------------------------------------------
-
-
-class ValidationPipeline:
-    """Multi-stage evaluation pipeline for candidate factors.
-
-    Implements the full 4-stage evaluation from the paper:
-      Stage 1: Fast IC screening on M_fast assets  -> C1
-      Stage 2: Correlation check against library L  -> C2 (+ replacement for C1\\C2)
-      Stage 3: Intra-batch deduplication (pairwise rho < theta)  -> C3
-      Stage 4: Full validation on M_full assets + trajectory collection
-    """
-
-    def __init__(
-        self,
-        data_tensor: np.ndarray,
-        returns: np.ndarray,
-        target_panels: dict[str, np.ndarray] | None = None,
-        target_horizons: dict[str, int] | None = None,
-        library: FactorLibrary | None = None,
-        ic_threshold: float = 0.04,
-        icir_threshold: float = 0.5,
-        replacement_ic_min: float = 0.10,
-        replacement_ic_ratio: float = 1.3,
-        fast_screen_assets: int = 100,
-        num_workers: int = 1,
-        research_config: Any = None,
-        benchmark_mode: str = "paper",
-        redundancy_metric: str = "spearman",
-        evaluation_kernel: EvaluationKernel | None = None,
-    ) -> None:
-        self.data_tensor = data_tensor  # (M, T, F)
-        self.returns = returns  # (M, T)
-        self.target_panels = target_panels or {"paper": returns}
-        self.target_horizons = target_horizons or {"paper": 1}
-        self.library = library or FactorLibrary(
-            correlation_threshold=0.5,
-            ic_threshold=ic_threshold,
-            dependence_metric=redundancy_metric,
-        )
-        self.ic_threshold = ic_threshold
-        self.icir_threshold = icir_threshold
-        self.replacement_ic_min = replacement_ic_min
-        self.replacement_ic_ratio = replacement_ic_ratio
-        self.fast_screen_assets = fast_screen_assets
-        self.num_workers = num_workers
-        self.signal_failure_policy = "reject"
-        self.research_config = research_config
-        self.benchmark_mode = benchmark_mode
-        protocol_cfg = type("ProtocolCfg", (), {})()
-        protocol_cfg.mining = type(
-            "MiningCfg",
-            (),
-            {
-                "ic_threshold": ic_threshold,
-                "icir_threshold": icir_threshold,
-                "correlation_threshold": self.library.correlation_threshold,
-                "replacement_ic_min": replacement_ic_min,
-                "replacement_ic_ratio": replacement_ic_ratio,
-            },
-        )()
-        protocol_cfg.data = type("DataCfg", (), {"default_target": "paper", "targets": []})()
-        protocol_cfg.benchmark = type(
-            "BenchCfg",
-            (),
-            {
-                "mode": benchmark_mode,
-                "freeze_top_k": 40,
-                "freeze_universe": "CSI500",
-                "report_universes": [],
-            },
-        )()
-        protocol_cfg.evaluation = type(
-            "EvalCfg",
-            (),
-            {
-                "backend": "numpy",
-                "redundancy_metric": redundancy_metric,
-                "signal_failure_policy": self.signal_failure_policy,
-            },
-        )()
-        self.geometry = LibraryGeometry(self.library)
-        self.kernel = evaluation_kernel or EvaluationKernel(
-            protocol=PaperProtocol.from_config(protocol_cfg),
-            geometry=self.geometry,
-            research_config=research_config,
-        )
-
-        # Pre-compute the fast-screen asset subset indices
-        M = returns.shape[0]
-        if fast_screen_assets > 0 and fast_screen_assets < M:
-            rng = np.random.RandomState(0)
-            self._fast_indices = rng.choice(M, fast_screen_assets, replace=False)
-            self._fast_indices.sort()
-        else:
-            self._fast_indices = np.arange(M)
-
-    def evaluate_candidate(
-        self,
-        name: str,
-        formula: str,
-        fast_screen: bool = True,
-    ) -> EvaluationResult:
-        """Evaluate a single candidate through the full pipeline.
-
-        Parameters
-        ----------
-        name : str
-            Candidate factor name.
-        formula : str
-            DSL formula string.
-        fast_screen : bool
-            If True, Stage 1 uses M_fast assets only.  If False, uses all.
-        """
-        result = EvaluationResult(factor_name=name, formula=formula)
-
-        try:
-            _tree, signals = self.kernel.compute_signals(
-                formula=formula,
-                data_dict=self._build_data_dict(),
-                returns_shape=self.returns.shape,
-                signal_failure_policy=self.signal_failure_policy,
-            )
-        except SignalComputationError as exc:
-            if "Parse failure" in str(exc):
-                result.rejection_reason = "Parse failure"
-            else:
-                result.rejection_reason = f"Signal computation error: {exc}"
-            result.stage_passed = 0
-            return result
-        result.parse_ok = True
-
-        if signals is None or np.all(np.isnan(signals)):
-            result.rejection_reason = "All-NaN signals"
-            result.stage_passed = 0
-            return result
-
-        result.signals = signals
-
-        # Fast IC screen on M_fast asset subset
-        if fast_screen and len(self._fast_indices) < signals.shape[0]:
-            fast_signals = signals[self._fast_indices, :]
-            fast_returns = self.returns[self._fast_indices, :]
-            fast_stats = compute_factor_stats(fast_signals, fast_returns)
-            fast_ic = fast_stats["ic_paper_mean"]
-
-            if fast_ic < self.ic_threshold:
-                result.ic_mean = fast_stats["ic_mean"]
-                result.ic_paper_mean = fast_stats["ic_paper_mean"]
-                result.ic_abs_mean = fast_stats["ic_abs_mean"]
-                result.icir = fast_stats["icir"]
-                result.ic_paper_icir = fast_stats["ic_paper_icir"]
-                result.rejection_reason = (
-                    f"Fast-screen paper IC {fast_ic:.4f} < threshold {self.ic_threshold}"
-                )
-                result.stage_passed = 0
-                return result
-
-        # Full IC statistics on all assets
-        result.target_stats = self.kernel.compute_target_stats(
-            signals,
-            self.returns,
-            self.target_panels,
-        )
-        paper_stats = result.target_stats["paper"]
-        result.ic_mean = paper_stats["ic_mean"]
-        result.ic_paper_mean = paper_stats["ic_paper_mean"]
-        result.ic_abs_mean = paper_stats["ic_abs_mean"]
-        result.icir = paper_stats["icir"]
-        result.ic_paper_icir = paper_stats["ic_paper_icir"]
-        result.ic_win_rate = paper_stats["ic_win_rate"]
-
-        quality = self.kernel.compute_quality_score(
-            signals=signals,
-            returns=self.returns,
-            target_stats=result.target_stats,
-            library_signals=[
-                factor.signals
-                for factor in self.library.list_factors()
-                if factor.signals is not None
-            ],
-            target_horizons=self.target_horizons,
-            benchmark_mode=self.benchmark_mode,
-        )
-        result.research_score = float(quality["research_score"])
-        result.score_vector = quality["score_vector"]
-        result.max_correlation = float(quality["max_correlation"])
-        if result.score_vector:
-            result.research_lcb = result.score_vector["lower_confidence_bound"]
-            result.residual_ic = result.score_vector["geometry"]["residual_ic"]
-            result.projection_loss = result.score_vector["geometry"]["projection_loss"]
-            result.effective_rank_gain = result.score_vector["geometry"]["effective_rank_gain"]
-
-        # Stage 1 gate: IC threshold (full data)
-        quality_gate = result.ic_paper_mean
-        quality_label = "Paper IC"
-        if self._research_enabled():
-            quality_gate = result.research_score
-            quality_label = "Research score"
-
-        if quality_gate < self.ic_threshold:
-            result.rejection_reason = (
-                f"{quality_label} {quality_gate:.4f} < threshold {self.ic_threshold}"
-            )
-            result.stage_passed = 0
-            return result
-        icir_gate = result.ic_paper_icir
-        icir_label = "Paper ICIR"
-        if self._research_enabled():
-            icir_gate = result.icir
-            icir_label = "Signed ICIR"
-        if icir_gate < self.icir_threshold:
-            result.rejection_reason = (
-                f"{icir_label} {icir_gate:.4f} < threshold {self.icir_threshold}"
-            )
-            result.stage_passed = 0
-            return result
-        result.stage_passed = 1
-
-        if self._research_enabled():
-            admitted = bool(quality["admitted"])
-            reason = str(quality["admission_reason"])
-            if admitted:
-                result.admitted = True
-                result.stage_passed = 3
-                return result
-            result.stage_passed = 2
-            result.rejection_reason = reason
-            replace_id, replace_reason = self._research_replacement(result)
-            if replace_id is not None:
-                result.admitted = True
-                result.replaced = replace_id
-                result.rejection_reason = replace_reason
-                result.stage_passed = 3
-            return result
-
-        # Stage 2: Correlation check against library (admission)
-        admitted, reason = self.kernel.admission_decision(result.ic_paper_mean, signals)
-        if admitted:
-            result.admitted = True
-            result.stage_passed = 3
-            if self.library.size > 0:
-                result.max_correlation = self.geometry.candidate_geometry(signals).max_dependence
-            return result
-
-        result.stage_passed = 2
-
-        # Stage 2.5: Replacement check for candidates that failed admission
-        should_replace, replace_id, replace_reason = self.kernel.replacement_decision(
-            result.ic_paper_mean,
-            signals,
-        )
-        if should_replace and replace_id is not None:
-            result.admitted = True
-            result.replaced = replace_id
-            result.max_correlation = self.geometry.candidate_geometry(signals).max_dependence
-            result.stage_passed = 3
-            return result
-
-        # Rejected by correlation
-        result.rejection_reason = reason
-        if self.library.size > 0:
-            result.max_correlation = self.geometry.candidate_geometry(signals).max_dependence
-        return result
-
-    def _research_enabled(self) -> bool:
-        return bool(
-            self.research_config is not None
-            and getattr(self.research_config, "enabled", False)
-            and self.benchmark_mode == "research"
-        )
-
-    def _research_replacement(self, result: EvaluationResult) -> tuple[int | None, str]:
-        if result.score_vector is None or self.library.size == 0:
-            return None, result.rejection_reason
-
-        conflicting: list[tuple[int, float]] = []
-        for factor in self.library.list_factors():
-            if factor.signals is None:
-                continue
-            corr = self.library.compute_correlation(result.signals, factor.signals)
-            if corr >= self.library.correlation_threshold:
-                conflicting.append((factor.id, corr))
-        if len(conflicting) != 1:
-            return None, result.rejection_reason
-
-        target_id, _ = conflicting[0]
-        target_factor = self.library.get_factor(target_id)
-        target_score = float(
-            target_factor.research_metrics.get(
-                "primary_score",
-                target_factor.ic_paper_mean or abs(target_factor.ic_mean),
-            )
-        )
-        if result.research_score < max(
-            self.replacement_ic_min, self.replacement_ic_ratio * target_score
-        ):
-            return None, (
-                f"Research replacement score {result.research_score:.4f} "
-                f"not strong enough to replace factor {target_id} ({target_score:.4f})"
-            )
-        return target_id, f"Research replacement over factor {target_id}"
-
-    def evaluate_batch(self, candidates: list[tuple[str, str]]) -> list[EvaluationResult]:
-        """Evaluate a batch through all stages including intra-batch dedup.
-
-        Stage 1-2.5 are run per-candidate (optionally in parallel).
-        Stage 3 (dedup) runs on all admitted candidates together.
-        """
-        # Stage 1 + 2 + 2.5: per-candidate evaluation
-        if self.num_workers > 1:
-            results = self._evaluate_parallel(candidates)
-        else:
-            results = []
-            for name, formula in candidates:
-                result = self.evaluate_candidate(name, formula)
-                results.append(result)
-
-        # Stage 3: Intra-batch deduplication
-        results = self._deduplicate_batch(results)
-
-        return results
-
-    def _evaluate_parallel(self, candidates: list[tuple[str, str]]) -> list[EvaluationResult]:
-        """Evaluate candidates using a thread pool.
-
-        Note: uses threads rather than processes because signals arrays
-        are large and sharing via processes would require serialization.
-        """
-        from concurrent.futures import ThreadPoolExecutor
-
-        results: list[EvaluationResult | None] = [None] * len(candidates)
-
-        def _eval(idx: int, name: str, formula: str) -> tuple[int, EvaluationResult]:
-            return idx, self.evaluate_candidate(name, formula)
-
-        with ThreadPoolExecutor(max_workers=self.num_workers) as pool:
-            futures = [
-                pool.submit(_eval, i, name, formula) for i, (name, formula) in enumerate(candidates)
-            ]
-            for future in as_completed(futures):
-                idx, result = future.result()
-                results[idx] = result
-
-        return [r for r in results if r is not None]
-
-    def _deduplicate_batch(self, results: list[EvaluationResult]) -> list[EvaluationResult]:
-        """Stage 3: Remove intra-batch duplicates among admitted candidates.
-
-        For candidates that passed Stages 1-2, check pairwise correlation
-        within the batch.  If two admitted candidates are correlated above
-        theta, keep the one with higher IC and reject the other.
-        """
-        before = sum(1 for result in results if result.admitted and result.signals is not None)
-        quality_attr = "research_score" if self._research_enabled() else "ic_mean"
-        results = self.kernel.deduplicate_results(results, quality_attr=quality_attr)
-        dedup_rejected = before - sum(
-            1 for result in results if result.admitted and result.signals is not None
-        )
-        if dedup_rejected > 0:
-            logger.debug(
-                "Intra-batch dedup: rejected %d/%d admitted candidates",
-                dedup_rejected,
-                before,
-            )
-
-        return results
-
-    def _build_data_dict(self) -> dict[str, np.ndarray]:
-        """Convert data_tensor to a dict mapping feature names to (M, T) arrays.
-
-        Handles two formats:
-          - dict: already maps ``"$close"`` etc. to ``(M, T)`` arrays.
-          - np.ndarray of shape ``(M, T, F)``: sliced along the last axis
-            using the active feature registry ordering (defaults + extras).
-        """
-        if isinstance(self.data_tensor, dict):
-            return self.data_tensor
-
-        # (M, T, F) numpy array — map each feature slice
-        data_dict: dict[str, np.ndarray] = {}
-        n_features = self.data_tensor.shape[2] if self.data_tensor.ndim == 3 else 0
-        for i, feat_name in enumerate(get_features()):
-            if i < n_features:
-                data_dict[feat_name] = self.data_tensor[:, :, i]
-        return data_dict
-
-    def _compute_signals(self, tree) -> np.ndarray | None:
-        """Compute factor signals from expression tree on the data tensor.
-
-        Evaluates the parsed expression tree against the market data using
-        the tree's own ``evaluate()`` method which dispatches through the
-        numpy operator implementations under the configured failure policy.
-        """
-        data_dict = self._build_data_dict()
-        return compute_tree_signals(
-            tree,
-            data_dict,
-            self.returns.shape,
-            signal_failure_policy=self.signal_failure_policy,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Mining Reporter
-# ---------------------------------------------------------------------------
-
-
-class MiningReporter:
-    """Lightweight reporter that logs batch results to a JSONL file."""
-
-    def __init__(self, output_dir: str = "./output") -> None:
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        self._log_path = self.output_dir / "mining_batches.jsonl"
-
-    def log_batch(self, iteration: int, **stats: Any) -> None:
-        """Append a batch record to the JSONL log."""
-        record = {"iteration": iteration, "timestamp": time.time()}
-        record.update(stats)
-        with open(self._log_path, "a") as f:
-            f.write(json.dumps(record, default=str) + "\n")
-
-    def export_library(self, library: FactorLibrary, path: str | None = None) -> str:
-        """Export the factor library to JSON."""
-        if path is None:
-            path = str(self.output_dir / "factor_library.json")
-        factors = [f.to_dict() for f in library.list_factors()]
-        diagnostics = library.get_diagnostics()
-        payload = {
-            "factors": factors,
-            "diagnostics": diagnostics,
-            "exported_at": datetime.now().isoformat(),
-        }
-        with open(path, "w") as f:
-            json.dump(payload, f, indent=2, default=str)
-        return path
 
 
 # ---------------------------------------------------------------------------
@@ -640,6 +96,7 @@ class RalphLoop:
         memory: ExperienceMemory | None = None,
         library: FactorLibrary | None = None,
         checkpoint_interval: int = 1,
+        run_context: MiningRunContext | None = None,
     ) -> None:
         """Initialize the Ralph Loop.
 
@@ -660,18 +117,26 @@ class RalphLoop:
         checkpoint_interval : int
             Save a checkpoint every N iterations.  Set to 0 to disable
             automatic checkpointing.  Default is 1 (every iteration).
+        run_context : MiningRunContext, optional
+            Per-run output and materialized target state. Hierarchical config
+            remains the sole source of reusable mining settings.
         """
         self.config = config
+        self.settings = MiningSettings(config, run_context)
         self.data_tensor = data_tensor
         self.returns = returns
         self.checkpoint_interval = checkpoint_interval
-        self.protocol = PaperProtocol.from_config(config)
+        self.protocol = PaperProtocol.from_config(
+            config,
+            benchmark_mode=self.settings.benchmark_mode,
+            signal_failure_policy=self.settings.signal_failure_policy,
+        )
 
         # Core components
         self.library = library or FactorLibrary(
-            correlation_threshold=getattr(config, "correlation_threshold", 0.5),
-            ic_threshold=getattr(config, "ic_threshold", 0.04),
-            dependence_metric=getattr(config, "redundancy_metric", "spearman"),
+            correlation_threshold=self.settings.correlation_threshold,
+            ic_threshold=self.settings.ic_threshold,
+            dependence_metric=self.settings.redundancy_metric,
         )
         self.geometry = LibraryGeometry(self.library)
         self.admission_service = FactorAdmissionService(self.library)
@@ -680,16 +145,18 @@ class RalphLoop:
             config,
             data_tensor=data_tensor,
             returns=returns,
-            target_panels=getattr(config, "target_panels", None),
-            target_horizons=getattr(config, "target_horizons", None),
+            target_panels=dict(self.settings.target_panels or {}),
+            target_horizons=dict(self.settings.target_horizons or {}),
         )
-        self.memory = memory or ExperienceMemory()
+        self.memory = memory if memory is not None else create_default_memory()
         self.memory_policy = build_memory_policy(config, self.protocol, returns=returns)
         self.prompt_context_builder = PromptContextBuilder(
             self.protocol,
             family_discovery=self.family_discovery,
+            cycle_planner=ResearchCyclePlanner(),
         )
-        self.lifecycle_store = FactorLifecycleStore(getattr(config, "output_dir", "./output"))
+        self.research_knowledge = ResearchKnowledgeStore(self.settings.output_dir)
+        self.lifecycle_store = FactorLifecycleStore(self.settings.output_dir)
         self.generator = FactorGenerator(
             llm_provider=llm_provider or MockProvider(),
             prompt_builder=PromptBuilder(),
@@ -697,30 +164,31 @@ class RalphLoop:
         self.evaluation_kernel = EvaluationKernel(
             protocol=self.protocol,
             geometry=self.geometry,
-            research_config=getattr(config, "research", None),
+            research_config=self.settings.research,
         )
         self.pipeline = ValidationPipeline(
             data_tensor=data_tensor,
             returns=returns,
-            target_panels=getattr(config, "target_panels", None),
-            target_horizons=getattr(config, "target_horizons", None),
+            target_panels=dict(self.settings.target_panels or {}),
+            target_horizons=dict(self.settings.target_horizons or {}),
             library=self.library,
-            ic_threshold=getattr(config, "ic_threshold", 0.04),
-            icir_threshold=getattr(config, "icir_threshold", 0.5),
-            replacement_ic_min=getattr(config, "replacement_ic_min", 0.10),
-            replacement_ic_ratio=getattr(config, "replacement_ic_ratio", 1.3),
-            fast_screen_assets=getattr(config, "fast_screen_assets", 100),
-            num_workers=getattr(config, "num_workers", 1),
-            research_config=getattr(config, "research", None),
-            benchmark_mode=getattr(config, "benchmark_mode", "paper"),
-            redundancy_metric=getattr(config, "redundancy_metric", "spearman"),
+            ic_threshold=self.settings.ic_threshold,
+            icir_threshold=self.settings.icir_threshold,
+            replacement_ic_min=self.settings.replacement_ic_min,
+            replacement_ic_ratio=self.settings.replacement_ic_ratio,
+            fast_screen_assets=self.settings.fast_screen_assets,
+            num_workers=self.settings.num_workers,
+            research_config=self.settings.research,
+            benchmark_mode=self.settings.benchmark_mode,
+            redundancy_metric=self.settings.redundancy_metric,
             evaluation_kernel=self.evaluation_kernel,
         )
-        self.pipeline.signal_failure_policy = getattr(config, "signal_failure_policy", "reject")
-        self.reporter = MiningReporter(getattr(config, "output_dir", "./output"))
+        self.pipeline.signal_failure_policy = self.settings.signal_failure_policy
+        self.reporter = MiningReporter(self.settings.output_dir)
         self.budget = BudgetTracker()
-        self.signal_failure_policy = getattr(config, "signal_failure_policy", "reject")
+        self.signal_failure_policy = self.settings.signal_failure_policy
         self._loop_services = LoopExecutionService(self)
+        self._artifact_service = MiningArtifactService(self)
 
         # Session state
         self.iteration = 0
@@ -765,10 +233,10 @@ class RalphLoop:
         FactorLibrary
             The constructed factor library L.
         """
-        target_size = target_size or getattr(self.config, "target_library_size", 110)
-        max_iterations = max_iterations or getattr(self.config, "max_iterations", 200)
-        batch_size = getattr(self.config, "batch_size", 40)
-        output_dir = getattr(self.config, "output_dir", "./output")
+        target_size = target_size or self.settings.target_library_size
+        max_iterations = max_iterations or self.settings.max_iterations
+        batch_size = self.settings.batch_size
+        output_dir = self.settings.output_dir
 
         # Resume from existing checkpoint if requested
         if resume:
@@ -896,52 +364,8 @@ class RalphLoop:
     # ------------------------------------------------------------------
 
     def _run_iteration(self, batch_size: int) -> dict[str, Any]:
-        """Execute one iteration of the Ralph Loop.
-
-        Returns
-        -------
-        dict
-            Iteration statistics.
-        """
-        t0 = time.time()
-        payload = self._loop_services.new_payload(batch_size)
-        self._loop_services.run_stage_chain(payload, ("retrieve", "generate"))
-        self.budget.record_llm_call()
-
-        if not payload.candidates:
-            logger.warning("Iteration %d: generator produced 0 candidates", self.iteration)
-            return self._loop_services.empty_stats()
-
-        self._loop_services.run_stage_chain(payload, ("evaluate", "library_update"))
-
-        provenance_library_state = {
-            **payload.library_state,
-            "diagnostics": self.library.get_diagnostics(),
-        }
-
-        self._attach_factor_provenance(
-            payload.admitted_results,
-            library_state=provenance_library_state,
-            memory_signal=payload.memory_signal,
-            phase2_summary={},
-            generator_family=self._generator_family(),
-        )
-
-        self._loop_services.run_stage_chain(payload, ("distill",))
-
-        # Build stats
-        elapsed = time.time() - t0
-        self.budget.record_compute(elapsed)
-        stats = self._loop_services.build_stats(payload, elapsed)
-        telemetry = self._loop_services.build_telemetry(
-            payload,
-            stats,
-            elapsed,
-            candidates_generated=len(payload.candidates),
-        )
-        self._loop_services.log_telemetry(telemetry)
-
-        return stats
+        """Execute one canonical iteration using the Ralph stage composition."""
+        return self._loop_services.execute_iteration(batch_size)
 
     def _stage_retrieve(
         self,
@@ -960,6 +384,7 @@ class RalphLoop:
             payload.library_state,
             batch_size=payload.batch_size,
             extras={"dataset_contract": self.dataset_contract.to_dict()},
+            research_archetypes=payload.memory_signal.get("research_archetypes"),
         )
         candidates = self.generator.generate_batch(
             memory_signal=payload.prompt_context,
@@ -1207,7 +632,7 @@ class RalphLoop:
             if not checkpoint_dir.name.startswith("checkpoint"):
                 checkpoint_dir = checkpoint_dir / f"checkpoint_iter{self.iteration}"
         else:
-            output_dir = getattr(self.config, "output_dir", "./output")
+            output_dir = self.settings.output_dir
             checkpoint_dir = Path(output_dir) / "checkpoint"
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1429,68 +854,13 @@ class RalphLoop:
         output_dir: str,
         artifact_paths: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        """Build and cache the current run manifest."""
-        if self._session is None:
-            return {}
-
-        config_summary = self._serialize_config()
-        dataset_summary = {
-            "data_tensor_shape": list(self.data_tensor.shape),
-            "returns_shape": list(self.returns.shape),
-            "memory_version": self.memory.version,
-            "library_size": self.library.size,
-            "library_diagnostics": self.library.get_diagnostics(),
-        }
-        if isinstance(self.config, dict):
-            benchmark_mode = str(self.config.get("benchmark_mode", "paper"))
-            target_stack = list(self.config.get("target_stack", []))
-        else:
-            benchmark_mode = str(getattr(self.config, "benchmark_mode", "paper"))
-            target_stack = list(getattr(self.config, "target_stack", []) or [])
-
-        pipeline_targets = getattr(self.pipeline, "target_panels", None) or {}
-        if pipeline_targets:
-            target_stack = [
-                name for name in pipeline_targets.keys() if name and name != "paper"
-            ] or target_stack
-
-        manifest = build_run_manifest(
-            run_id=self._session.session_id,
-            session_id=self._session.session_id,
-            loop_type=self._loop_type(),
-            benchmark_mode=benchmark_mode,
-            created_at=self._session.start_time,
-            updated_at=datetime.now().isoformat(),
-            iteration=self.iteration,
-            library_size=self.library.size,
+        return self._artifact_service.refresh_manifest(
             output_dir=output_dir,
-            config_summary=config_summary,
-            dataset_summary=dataset_summary,
-            phase2_features=self._phase2_features(),
-            target_stack=target_stack,
-            artifact_paths=artifact_paths or {},
-            notes=[],
+            artifact_paths=artifact_paths,
         )
-        self._run_manifest = manifest.to_dict()
-        return self._run_manifest
 
     def _persist_run_manifest(self, path: Path) -> None:
-        """Write the current run manifest to disk and mirror it into the session."""
-        if self._session is None:
-            return
-
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if not self._run_manifest:
-            self._refresh_run_manifest(
-                output_dir=str(path.parent.parent),
-                artifact_paths={"run_manifest": str(path)},
-            )
-        self._run_manifest.setdefault("artifact_paths", {})["run_manifest"] = str(path)
-        with open(path, "w") as f:
-            json.dump(self._run_manifest, f, indent=2, default=str)
-
-        self._session.run_manifest_path = str(path)
-        self._session.run_manifest = self._run_manifest
+        self._artifact_service.persist_manifest(path)
 
     def _attach_factor_provenance(
         self,
@@ -1501,68 +871,13 @@ class RalphLoop:
         phase2_summary: dict[str, Any],
         generator_family: str | None = None,
     ) -> None:
-        """Stamp provenance onto library factors that survived admission."""
-        if not admitted_results or self._session is None:
-            return
-
-        run_manifest = self._run_manifest or self._refresh_run_manifest(
-            output_dir=getattr(self.config, "output_dir", "./output"),
-            artifact_paths={},
+        self._artifact_service.attach_factor_provenance(
+            admitted_results,
+            library_state=library_state,
+            memory_signal=memory_signal,
+            phase2_summary=phase2_summary,
+            generator_family=generator_family,
         )
-
-        for rank, result in enumerate(admitted_results, start=1):
-            if not result.admitted:
-                continue
-
-            factor = None
-            for candidate in reversed(self.library.list_factors()):
-                if candidate.name == result.factor_name and candidate.formula == result.formula:
-                    factor = candidate
-                    break
-            if factor is None:
-                continue
-
-            factor.provenance = build_factor_provenance(
-                run_manifest=run_manifest,
-                factor_name=factor.name,
-                formula=factor.formula,
-                factor_category=factor.category,
-                factor_id=factor.id,
-                iteration=self.iteration,
-                batch_number=factor.batch_number,
-                candidate_rank=rank,
-                generator_family=generator_family or self._generator_family(),
-                memory_signal=memory_signal,
-                library_state=library_state,
-                evaluation={
-                    "ic_mean": factor.ic_mean,
-                    "ic_paper_mean": factor.ic_paper_mean,
-                    "ic_abs_mean": factor.ic_abs_mean,
-                    "icir": factor.icir,
-                    "ic_paper_icir": factor.ic_paper_icir,
-                    "ic_win_rate": factor.ic_win_rate,
-                    "max_correlation": factor.max_correlation,
-                    "research_metrics": factor.research_metrics,
-                },
-                admission={
-                    "admitted": True,
-                    "stage_passed": result.stage_passed,
-                    "replaced": result.replaced,
-                    "correlated_with": result.correlated_with,
-                    "rejection_reason": result.rejection_reason,
-                },
-                phase2=phase2_summary,
-                target_stack=run_manifest.get("target_stack", []),
-                research_metrics=factor.research_metrics,
-                parent_formula=result.parent_formula,
-                parent_ic_paper_mean=result.parent_ic_paper_mean,
-                edit_type=result.edit_type,
-                edit_motif=result.edit_motif,
-                secondary_parent_formula=result.secondary_parent_formula,
-                draft_rationale=True,
-                llm_provider=getattr(self, "llm", None) or getattr(self.generator, "llm", None),
-                use_llm_rationale=False,
-            ).to_dict()
 
     def _generator_family(self) -> str:
         """Return the active candidate generator label for provenance."""

@@ -1,54 +1,46 @@
-"""Financial operators for factor expression evaluation.
+"""Operator registry and execution APIs loaded only when requested."""
 
-Exports the central registry and all operator category modules.
-"""
+from __future__ import annotations
 
-from factorminer.operators.auto_inventor import (
-    OperatorInventor,
-    ProposedOperator,
-    ValidationResult,
-)
-from factorminer.operators.custom import (
-    CustomOperator,
-    CustomOperatorStore,
-)
-from factorminer.operators.gpu_backend import (
-    DeviceManager,
-    batch_execute,
-    device_manager,
-    to_numpy,
-    to_tensor,
-    torch_available,
-)
-from factorminer.operators.registry import (
-    OPERATOR_REGISTRY,
-    execute_operator,
-    get_impl,
-    get_operator,
-    implemented_operators,
-    list_operators,
-)
+from factorminer._lazy_exports import public_dir, resolve_export
 
-__all__ = [
-    # Registry
-    "OPERATOR_REGISTRY",
-    "execute_operator",
-    "get_impl",
-    "get_operator",
-    "implemented_operators",
-    "list_operators",
-    # GPU
-    "DeviceManager",
-    "batch_execute",
-    "device_manager",
-    "to_numpy",
-    "to_tensor",
-    "torch_available",
-    # Auto-inventor
-    "OperatorInventor",
-    "ProposedOperator",
-    "ValidationResult",
-    # Custom operators
-    "CustomOperator",
-    "CustomOperatorStore",
-]
+_EXPORTS = {
+    **{
+        name: "factorminer.operators.registry"
+        for name in (
+            "OPERATOR_REGISTRY",
+            "execute_operator",
+            "get_impl",
+            "get_operator",
+            "implemented_operators",
+            "list_operators",
+        )
+    },
+    **{
+        name: "factorminer.operators.gpu_backend"
+        for name in (
+            "DeviceManager",
+            "batch_execute",
+            "device_manager",
+            "to_numpy",
+            "to_tensor",
+            "torch_available",
+        )
+    },
+    **{
+        name: "factorminer.operators.auto_inventor"
+        for name in ("OperatorInventor", "ProposedOperator", "ValidationResult")
+    },
+    "CustomOperator": "factorminer.operators.custom",
+    "CustomOperatorStore": "factorminer.operators.custom",
+}
+
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str):
+    return resolve_export(globals(), name, _EXPORTS)
+
+
+def __dir__() -> list[str]:
+    return public_dir(globals(), _EXPORTS)

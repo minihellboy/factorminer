@@ -565,7 +565,7 @@ def observation_from_arrays(
     cheap intervention-robustness proxy when none is supplied, and pairwise
     library dependence for novelty.
     """
-    from factorminer.architecture.dependence import SpearmanDependenceMetric
+    from factorminer.domain.dependence import SpearmanDependenceMetric
     from factorminer.evaluation.metrics import compute_factor_stats
 
     signals = np.asarray(signals, dtype=np.float64)

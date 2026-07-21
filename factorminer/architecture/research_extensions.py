@@ -9,8 +9,8 @@ from typing import Any
 import numpy as np
 from scipy.stats import rankdata
 
-from factorminer.architecture.dependence import DistanceCorrelationMetric
 from factorminer.architecture.families import FactorFamilyDiscovery, infer_family
+from factorminer.domain.dependence import DistanceCorrelationMetric
 
 try:  # pragma: no cover - optional import guarded for portability
     from sklearn.feature_selection import mutual_info_regression

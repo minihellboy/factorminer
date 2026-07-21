@@ -61,7 +61,13 @@ class PaperProtocol:
     artifact_schema: ArtifactSchema = field(default_factory=ArtifactSchema)
 
     @classmethod
-    def from_config(cls, cfg: Any) -> PaperProtocol:
+    def from_config(
+        cls,
+        cfg: Any,
+        *,
+        benchmark_mode: str | None = None,
+        signal_failure_policy: str | None = None,
+    ) -> PaperProtocol:
         raw_targets = list(getattr(getattr(cfg, "data", None), "targets", []) or [])
         if not raw_targets:
             raw_targets = [
@@ -103,11 +109,15 @@ class PaperProtocol:
             replacement_ic_min=float(getattr(mining_cfg, "replacement_ic_min", 0.10)),
             replacement_ic_ratio=float(getattr(mining_cfg, "replacement_ic_ratio", 1.3)),
             benchmark_mode=str(
-                getattr(benchmark_cfg, "mode", getattr(cfg, "benchmark_mode", "paper"))
+                benchmark_mode
+                if benchmark_mode is not None
+                else getattr(benchmark_cfg, "mode", getattr(cfg, "benchmark_mode", "paper"))
             ),
             evaluation_backend=str(getattr(eval_cfg, "backend", getattr(cfg, "backend", "numpy"))),
             signal_failure_policy=str(
-                getattr(
+                signal_failure_policy
+                if signal_failure_policy is not None
+                else getattr(
                     eval_cfg,
                     "signal_failure_policy",
                     getattr(cfg, "signal_failure_policy", "reject"),

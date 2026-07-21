@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -103,6 +103,102 @@ class EvaluationDataset:
         if target_name in self.target_panels:
             return self.target_panels[target_name]
         return self.returns
+
+
+def build_runtime_dataset_from_arrays(
+    data: Mapping[str, np.ndarray],
+    returns: np.ndarray,
+    *,
+    feature_order: Sequence[str] | None = None,
+    target_panels: Mapping[str, np.ndarray] | None = None,
+    target_specs: Mapping[str, TargetSpec] | None = None,
+    default_target: str = "target",
+    split_indices: Mapping[str, Sequence[int] | np.ndarray] | None = None,
+    timestamps: Sequence | np.ndarray | None = None,
+    asset_ids: Sequence | np.ndarray | None = None,
+) -> EvaluationDataset:
+    """Build the canonical runtime dataset from aligned numerical panels.
+
+    This is the array-native counterpart to :func:`load_runtime_dataset` and
+    is used by synthetic benchmarks and programmatic callers.  All feature and
+    target panels must share the canonical ``(assets, periods)`` orientation.
+    """
+    returns_array = np.asarray(returns, dtype=np.float64)
+    if returns_array.ndim != 2:
+        raise ValueError(
+            f"returns must have shape (assets, periods); got {returns_array.shape}"
+        )
+    asset_count, period_count = returns_array.shape
+
+    ordered_features = list(feature_order or data.keys())
+    if not ordered_features:
+        raise ValueError("at least one feature panel is required")
+    missing = [name for name in ordered_features if name not in data]
+    if missing:
+        raise ValueError(f"feature_order contains missing panels: {missing}")
+
+    data_dict: dict[str, np.ndarray] = {}
+    for name in ordered_features:
+        panel = np.asarray(data[name], dtype=np.float64)
+        if panel.shape != returns_array.shape:
+            raise ValueError(
+                f"feature {name!r} has shape {panel.shape}; expected {returns_array.shape}"
+            )
+        data_dict[str(name)] = panel
+    data_tensor = np.stack([data_dict[name] for name in ordered_features], axis=2)
+
+    targets = {
+        str(name): np.asarray(panel, dtype=np.float64)
+        for name, panel in (target_panels or {default_target: returns_array}).items()
+    }
+    if default_target not in targets:
+        raise ValueError(f"default target {default_target!r} is not present in target_panels")
+    for name, panel in targets.items():
+        if panel.shape != returns_array.shape:
+            raise ValueError(
+                f"target {name!r} has shape {panel.shape}; expected {returns_array.shape}"
+            )
+
+    timestamp_array = (
+        np.arange(period_count) if timestamps is None else np.asarray(timestamps)
+    )
+    asset_array = np.arange(asset_count) if asset_ids is None else np.asarray(asset_ids)
+    if timestamp_array.shape != (period_count,):
+        raise ValueError(
+            f"timestamps must have length {period_count}; got {timestamp_array.shape}"
+        )
+    if asset_array.shape != (asset_count,):
+        raise ValueError(f"asset_ids must have length {asset_count}; got {asset_array.shape}")
+
+    partitions = split_indices or {"full": np.arange(period_count)}
+    splits: dict[str, DatasetSplit] = {}
+    for name, raw_indices in partitions.items():
+        indices = np.asarray(raw_indices, dtype=np.int64)
+        if indices.ndim != 1:
+            raise ValueError(f"split {name!r} indices must be one-dimensional")
+        if indices.size and (int(indices.min()) < 0 or int(indices.max()) >= period_count):
+            raise ValueError(f"split {name!r} contains out-of-range period indices")
+        splits[str(name)] = DatasetSplit(
+            name=str(name),
+            indices=indices,
+            timestamps=timestamp_array[indices],
+            returns=returns_array[:, indices],
+            target_returns={target: panel[:, indices] for target, panel in targets.items()},
+            default_target=default_target,
+        )
+
+    return EvaluationDataset(
+        data_dict=data_dict,
+        data_tensor=data_tensor,
+        returns=returns_array,
+        timestamps=timestamp_array,
+        asset_ids=asset_array,
+        splits=splits,
+        processed_df=pd.DataFrame(),
+        target_panels=targets,
+        target_specs=dict(target_specs or {}),
+        default_target=default_target,
+    )
 
 
 @dataclass

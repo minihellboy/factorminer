@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import copy
 import hashlib
 import json
 import logging
-import math
 import time
 import warnings
-from collections.abc import Iterable
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -18,28 +15,56 @@ import numpy as np
 import pandas as pd
 
 from factorminer.architecture import PaperProtocol
-from factorminer.benchmark.catalogs import (
-    ALPHA101_CLASSIC,
-    CandidateEntry,
-    build_alpha101_adapted,
-    build_alphaagent_style,
-    build_alphaforge_style,
-    build_factor_miner_catalog,
-    build_gplearn_style,
-    build_random_exploration,
-    dedupe_entries,
-    entries_from_library,
+from factorminer.benchmark.contracts import (
+    BenchmarkManifest,
+    BenchmarkRuntimeContract,
+    StrategyGridBenchmarkContract,
+    StressBenchmarkContract,
+    WalkForwardBenchmarkContract,
 )
-from factorminer.core.factor_library import Factor, FactorLibrary
+from factorminer.benchmark.datasets import (
+    _base_path,
+    _cfg_with_overrides,
+    _clone_cfg,
+    _factors_from_entries,
+    _get_baseline_entries,
+    build_benchmark_library,
+    load_benchmark_dataset,
+)
+from factorminer.benchmark.frozen_evaluation import (
+    _default_capacity_levels,
+    _extract_volume_panel,
+    evaluate_frozen_set,
+    select_frozen_top_k,
+)
+from factorminer.benchmark.reporting import _ensure_dir, _save_manifest, _write_json
+from factorminer.benchmark.speed import (
+    SpeedBenchmark as SpeedBenchmark,
+)
+from factorminer.benchmark.speed import (
+    _build_mock_data_dict as _build_mock_data_dict,
+)
+from factorminer.benchmark.statistics import (
+    AblationResult,
+    BenchmarkResult,
+    MethodResult,
+    StatisticalComparisonTests,
+)
+from factorminer.benchmark.statistics import (
+    DMTestResult as DMTestResult,
+)
+from factorminer.benchmark.statistics import (
+    OperatorSpeedResult as OperatorSpeedResult,
+)
+from factorminer.benchmark.statistics import (
+    PipelineSpeedResult as PipelineSpeedResult,
+)
 from factorminer.core.library_io import load_library
 from factorminer.core.session import MiningSession
 from factorminer.evaluation.metrics import METRIC_VERSION
 from factorminer.evaluation.runtime import (
     EvaluationDataset,
-    FactorEvaluationArtifact,
-    compute_correlation_matrix,
     evaluate_factors,
-    load_runtime_dataset,
 )
 from factorminer.operators.c_backend import backend_available as c_backend_available
 
@@ -56,136 +81,6 @@ RUNTIME_LOOP_BASELINES = {
     "helix_no_causal",
     "helix_no_canonicalize",
 }
-
-
-@dataclass
-class BenchmarkManifest:
-    """Serializable description of one benchmark run."""
-
-    benchmark_name: str
-    mode: str
-    seed: int
-    metric_version: str
-    baseline: str
-    freeze_universe: str
-    report_universes: list[str]
-    train_period: list[str]
-    test_period: list[str]
-    freeze_top_k: int
-    signal_failure_policy: str
-    default_target: str
-    target_stack: list[str]
-    primary_objective: str
-    dataset_hashes: dict[str, str]
-    artifact_paths: dict[str, str]
-    runtime_contract: dict[str, Any] = field(default_factory=dict)
-    baseline_provenance: dict[str, dict[str, Any]] = field(default_factory=dict)
-    warnings: list[str] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class WalkForwardBenchmarkContract:
-    """Canonical train/test freeze contract used by the benchmark runtime."""
-
-    freeze_universe: str
-    report_universes: list[str]
-    train_period: list[str]
-    test_period: list[str]
-    freeze_top_k: int
-    fit_split: str = "train"
-    eval_split: str = "test"
-    default_target: str = "paper"
-    signal_failure_policy: str = "reject"
-    dataset_contract: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        return _json_safe(asdict(self))
-
-
-@dataclass(frozen=True)
-class StressBenchmarkContract:
-    """Canonical transaction-cost and capacity stress contract."""
-
-    cost_bps: list[float]
-    capacity_levels: list[float]
-    base_capacity_usd: float
-    net_icir_threshold: float
-    ic_degradation_limit: float
-
-    def to_dict(self) -> dict[str, Any]:
-        return _json_safe(asdict(self))
-
-
-@dataclass(frozen=True)
-class StrategyGridBenchmarkContract:
-    """Canonical strategy grid for benchmark ablations."""
-
-    baseline: str
-    enabled: bool
-    memory_policies: list[str]
-    dependence_metrics: list[str]
-    backends: list[str]
-    selected_memory_policy: str | None = None
-    selected_dependence_metric: str | None = None
-    selected_backend: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return _json_safe(asdict(self))
-
-
-@dataclass(frozen=True)
-class BenchmarkRuntimeContract:
-    """Complete runtime benchmark contract emitted to manifests/results."""
-
-    paper_protocol: dict[str, Any]
-    walk_forward: WalkForwardBenchmarkContract
-    stress: StressBenchmarkContract
-    strategy_grid: StrategyGridBenchmarkContract
-    runtime_manifest: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        return _json_safe(
-            {
-                "paper_protocol": self.paper_protocol,
-                "walk_forward": self.walk_forward.to_dict(),
-                "stress": self.stress.to_dict(),
-                "strategy_grid": self.strategy_grid.to_dict(),
-                "runtime_manifest": self.runtime_manifest,
-            }
-        )
-
-
-def _clone_cfg(cfg):
-    cloned = copy.deepcopy(cfg)
-    cloned._raw = copy.deepcopy(getattr(cfg, "_raw", {}))
-    return cloned
-
-
-def _cfg_with_overrides(cfg, universe: str, mode: str | None = None):
-    cloned = _clone_cfg(cfg)
-    cloned.data.universe = universe
-    if mode is not None:
-        cloned.benchmark.mode = mode
-    if cloned.benchmark.mode == "paper":
-        cloned.evaluation.signal_failure_policy = "reject"
-        cloned.research.enabled = False
-        cloned.phase2.causal.enabled = False
-        cloned.phase2.regime.enabled = False
-        cloned.phase2.capacity.enabled = False
-        cloned.phase2.significance.enabled = False
-        cloned.phase2.debate.enabled = False
-        cloned.phase2.auto_inventor.enabled = False
-        cloned.phase2.helix.enabled = False
-    else:
-        cloned.research.enabled = True
-    return cloned
-
-
-def _data_hash(df: pd.DataFrame) -> str:
-    sample = df.sort_values(["datetime", "asset_id"]).reset_index(drop=True)
-    digest = hashlib.sha256()
-    digest.update(pd.util.hash_pandas_object(sample, index=True).values.tobytes())
-    return digest.hexdigest()
 
 
 def _json_safe(value: Any) -> Any:
@@ -342,12 +237,6 @@ def _runtime_manifest_value(
         return {}
     value = runtime_manifests.get(baseline, {})
     return dict(value) if isinstance(value, dict) else {}
-
-
-def _default_capacity_levels() -> list[float]:
-    from factorminer.evaluation.capacity import CapacityConfig as RuntimeCapacityConfig
-
-    return list(RuntimeCapacityConfig().capacity_levels)
 
 
 def _safe_len(value: Any) -> int:
@@ -605,62 +494,7 @@ def _build_phase2_runtime_kwargs(cfg) -> dict[str, Any]:
     }
 
 
-def _extract_volume_panel(dataset: EvaluationDataset) -> np.ndarray | None:
-    """Best-effort extraction of a dollar-volume panel for Helix capacity checks."""
-    for key in ("$amt", "$volume"):
-        panel = dataset.data_dict.get(key)
-        if panel is not None and np.any(np.isfinite(panel)):
-            return np.asarray(panel, dtype=np.float64)
-    return None
-
-
-def _split_volume_panel(
-    dataset: EvaluationDataset,
-    split_name: str,
-) -> np.ndarray | None:
-    """Align the available volume panel to one dataset split."""
-    panel = _extract_volume_panel(dataset)
-    if panel is None:
-        return None
-    split = dataset.get_split(split_name)
-    if panel.ndim != 2 or panel.shape[1] < len(split.indices):
-        return None
-    return np.asarray(panel[:, split.indices], dtype=np.float64)
-
-
-def _capacity_pressure_summary(
-    *,
-    factor_name: str,
-    signals: np.ndarray,
-    returns: np.ndarray,
-    volume: np.ndarray,
-    capacity_levels: list[float],
-) -> dict[str, Any]:
-    """Compute a compact capacity-stress summary for one factor/composite."""
-    from factorminer.evaluation.capacity import CapacityConfig as RuntimeCapacityConfig
-    from factorminer.evaluation.capacity import CapacityEstimator
-
-    cap_cfg = RuntimeCapacityConfig(capacity_levels=list(capacity_levels))
-    estimate = CapacityEstimator(
-        np.asarray(returns, dtype=np.float64).T,
-        np.asarray(volume, dtype=np.float64),
-        cap_cfg,
-    ).estimate(
-        factor_name,
-        np.asarray(signals, dtype=np.float64).T,
-    )
-    return {
-        "factor_name": factor_name,
-        "max_capacity_usd": float(estimate.max_capacity_usd),
-        "break_even_cost_bps": float(estimate.break_even_cost_bps),
-        "capacity_curve": {
-            str(capital): float(degradation)
-            for capital, degradation in estimate.capacity_curve.items()
-        },
-    }
-
-
-def _build_runtime_loop_config(
+def _prepare_runtime_loop(
     cfg,
     *,
     output_dir: Path,
@@ -668,113 +502,60 @@ def _build_runtime_loop_config(
     mock: bool,
     runtime_manifest: dict[str, Any],
 ):
-    """Build the flat loop config consumed by RalphLoop/HelixLoop."""
-    from factorminer.core.config import MiningConfig as LoopMiningConfig
+    """Apply benchmark overrides to a canonical config and build run state."""
+    from factorminer.application.runtime_context import build_run_context
 
-    target_library_size = int(
-        runtime_manifest.get(
-            "target_library_size",
-            getattr(cfg.mining, "target_library_size", 110),
-        )
+    mining_fields = (
+        "target_library_size",
+        "batch_size",
+        "max_iterations",
+        "ic_threshold",
+        "icir_threshold",
+        "correlation_threshold",
+        "replacement_ic_min",
+        "replacement_ic_ratio",
     )
-    max_iterations = int(
-        runtime_manifest.get(
-            "max_iterations",
-            getattr(cfg.mining, "max_iterations", 200),
-        )
+    evaluation_fields = (
+        "fast_screen_assets",
+        "num_workers",
+        "backend",
+        "gpu_device",
+        "redundancy_metric",
+        "signal_failure_policy",
     )
-    ic_threshold = float(
-        runtime_manifest.get(
-            "ic_threshold",
-            getattr(cfg.mining, "ic_threshold", 0.04),
+    for name in mining_fields:
+        if name in runtime_manifest:
+            setattr(cfg.mining, name, runtime_manifest[name])
+    for name in evaluation_fields:
+        if name in runtime_manifest:
+            setattr(cfg.evaluation, name, runtime_manifest[name])
+    if "memory_policy" in runtime_manifest:
+        cfg.memory.policy = str(runtime_manifest["memory_policy"])
+    if "memory_regime_lookback_window" in runtime_manifest:
+        cfg.memory.regime_lookback_window = int(
+            runtime_manifest["memory_regime_lookback_window"]
         )
-    )
-    icir_threshold = float(
-        runtime_manifest.get(
-            "icir_threshold",
-            getattr(cfg.mining, "icir_threshold", 0.5),
-        )
-    )
-    correlation_threshold = float(
-        runtime_manifest.get(
-            "correlation_threshold",
-            getattr(cfg.mining, "correlation_threshold", 0.5),
-        )
-    )
-    replacement_ic_min = float(
-        runtime_manifest.get(
-            "replacement_ic_min",
-            getattr(cfg.mining, "replacement_ic_min", 0.10),
-        )
-    )
-    replacement_ic_ratio = float(
-        runtime_manifest.get(
-            "replacement_ic_ratio",
-            getattr(cfg.mining, "replacement_ic_ratio", 1.3),
-        )
-    )
 
     if runtime_manifest.get("relax_thresholds", mock):
-        ic_threshold = min(ic_threshold, 0.0)
-        icir_threshold = min(icir_threshold, -1.0)
-        correlation_threshold = max(correlation_threshold, 1.1)
+        cfg.mining.ic_threshold = min(float(cfg.mining.ic_threshold), 0.0)
+        cfg.mining.icir_threshold = min(float(cfg.mining.icir_threshold), -1.0)
+        cfg.mining.correlation_threshold = max(
+            float(cfg.mining.correlation_threshold), 1.1
+        )
 
-    loop_cfg = LoopMiningConfig(
-        target_library_size=target_library_size,
-        batch_size=int(runtime_manifest.get("batch_size", getattr(cfg.mining, "batch_size", 40))),
-        max_iterations=max_iterations,
-        ic_threshold=ic_threshold,
-        icir_threshold=icir_threshold,
-        correlation_threshold=correlation_threshold,
-        replacement_ic_min=replacement_ic_min,
-        replacement_ic_ratio=replacement_ic_ratio,
-        fast_screen_assets=int(
-            runtime_manifest.get(
-                "fast_screen_assets",
-                getattr(cfg.evaluation, "fast_screen_assets", 100),
-            )
-        ),
-        num_workers=int(
-            runtime_manifest.get("num_workers", getattr(cfg.evaluation, "num_workers", 1))
-        ),
-        output_dir=str(output_dir),
-        backend=str(runtime_manifest.get("backend", getattr(cfg.evaluation, "backend", "numpy"))),
-        gpu_device=str(
-            runtime_manifest.get("gpu_device", getattr(cfg.evaluation, "gpu_device", "cuda:0"))
-        ),
-        redundancy_metric=str(
-            runtime_manifest.get(
-                "redundancy_metric",
-                getattr(cfg.evaluation, "redundancy_metric", "spearman"),
-            )
-        ),
-        signal_failure_policy=str(
-            runtime_manifest.get(
-                "signal_failure_policy",
-                "synthetic" if mock else getattr(cfg.evaluation, "signal_failure_policy", "reject"),
-            )
-        ),
-        memory_policy=str(
-            runtime_manifest.get(
-                "memory_policy",
-                getattr(getattr(cfg, "memory", None), "policy", "paper"),
-            )
-        ),
-        memory_regime_lookback_window=int(
-            runtime_manifest.get(
-                "memory_regime_lookback_window",
-                getattr(getattr(cfg, "memory", None), "regime_lookback_window", 60),
-            )
-        ),
+    signal_policy = str(
+        runtime_manifest.get(
+            "signal_failure_policy",
+            "synthetic" if mock else cfg.evaluation.signal_failure_policy,
+        )
     )
-
-    loop_cfg.research = cfg.research
-    loop_cfg.benchmark_mode = str(getattr(cfg.benchmark, "mode", "paper"))
-    loop_cfg.target_panels = dataset.target_panels
-    loop_cfg.target_horizons = {
-        name: max(int(spec.holding_bars), 1) for name, spec in dataset.target_specs.items()
-    }
-    return loop_cfg
+    return build_run_context(
+        cfg,
+        output_dir=output_dir,
+        dataset=dataset,
+        signal_failure_policy=signal_policy,
+        benchmark_mode=str(cfg.benchmark.mode),
+    )
 
 
 def _cfg_for_runtime_baseline(cfg, baseline: str):
@@ -925,7 +706,7 @@ def _run_runtime_mining_loop(
     loop_type = _real_mining_loop_type(baseline, runtime_manifest)
     runtime_output_dir = _ensure_dir(output_dir / "benchmark" / "table1" / baseline / "runtime")
     runtime_cfg = _cfg_for_runtime_baseline(cfg, baseline)
-    loop_cfg = _build_runtime_loop_config(
+    run_context = _prepare_runtime_loop(
         runtime_cfg,
         output_dir=runtime_output_dir,
         dataset=dataset,
@@ -941,21 +722,23 @@ def _run_runtime_mining_loop(
 
         phase2_kwargs = _build_phase2_runtime_kwargs(runtime_cfg)
         loop = HelixLoop(
-            config=loop_cfg,
+            config=runtime_cfg,
             data_tensor=dataset.data_tensor,
             returns=dataset.returns,
             llm_provider=provider,
             volume=_extract_volume_panel(dataset),
+            run_context=run_context,
             **phase2_kwargs,
         )
     else:
         from factorminer.core.ralph_loop import RalphLoop
 
         loop = RalphLoop(
-            config=loop_cfg,
+            config=runtime_cfg,
             data_tensor=dataset.data_tensor,
             returns=dataset.returns,
             llm_provider=provider,
+            run_context=run_context,
         )
 
     checkpoint_interval = int(runtime_manifest.get("checkpoint_interval", 0 if mock else 1))
@@ -964,8 +747,8 @@ def _run_runtime_mining_loop(
     if runtime_manifest.get("checkpoint_path"):
         loop.load_session(str(runtime_manifest["checkpoint_path"]))
 
-    target_size = int(runtime_manifest.get("target_library_size", loop_cfg.target_library_size))
-    max_iterations = int(runtime_manifest.get("max_iterations", loop_cfg.max_iterations))
+    target_size = int(runtime_cfg.mining.target_library_size)
+    max_iterations = int(runtime_cfg.mining.max_iterations)
     library = loop.run(target_size=target_size, max_iterations=max_iterations)
     provenance = _runtime_loop_provenance(
         baseline=baseline,
@@ -986,462 +769,6 @@ def _run_runtime_mining_loop(
         "target_library_size": target_size,
         "max_iterations": max_iterations,
     }
-
-
-def load_benchmark_dataset(
-    cfg,
-    *,
-    data_path: str | None = None,
-    raw_df: pd.DataFrame | None = None,
-    universe: str | None = None,
-    mock: bool = False,
-) -> tuple[EvaluationDataset, str]:
-    """Load one universe into the canonical runtime dataset."""
-    if universe is None:
-        universe = cfg.data.universe
-
-    if raw_df is None:
-        if mock:
-            from factorminer.data.mock_data import MockConfig, generate_mock_data
-
-            mock_shape = getattr(cfg.benchmark, "mock_panel_shape", None)
-            if mock_shape is None:
-                num_periods = 12_200
-                num_assets = 64 if universe.lower() == "binance" else 80
-            else:
-                num_periods = int(mock_shape[0])
-                num_assets = int(mock_shape[1])
-            mock_cfg = MockConfig(
-                num_assets=num_assets,
-                num_periods=num_periods,
-                frequency="10min",
-                start_date="2024-01-02 09:30:00",
-                universe=universe,
-                plant_alpha=True,
-                seed=cfg.benchmark.seed,
-            )
-            raw_df = generate_mock_data(mock_cfg)
-        else:
-            path = data_path
-            if path is None:
-                path = getattr(cfg, "_raw", {}).get("data_path")
-            if path is None:
-                raise ValueError("No data path specified for benchmark run")
-            from factorminer.data.loader import load_market_data
-
-            raw_df = load_market_data(path, universe=universe)
-
-    dataset_cfg = _cfg_with_overrides(cfg, universe)
-    return load_runtime_dataset(raw_df, dataset_cfg), _data_hash(raw_df)
-
-
-def _factors_from_entries(entries: Iterable[CandidateEntry]) -> list[Factor]:
-    return [
-        Factor(
-            id=idx + 1,
-            name=entry.name,
-            formula=entry.formula,
-            category=entry.category,
-            ic_mean=0.0,
-            icir=0.0,
-            ic_win_rate=0.0,
-            max_correlation=0.0,
-            batch_number=0,
-        )
-        for idx, entry in enumerate(entries)
-    ]
-
-
-def _get_baseline_entries(
-    baseline: str,
-    seed: int,
-    *,
-    factor_miner_library_path: str | None = None,
-    factor_miner_no_memory_library_path: str | None = None,
-) -> list[CandidateEntry]:
-    if baseline == "alpha101_classic":
-        return dedupe_entries(ALPHA101_CLASSIC)
-    if baseline == "alpha101_adapted":
-        return dedupe_entries(build_alpha101_adapted())
-    if baseline == "random_exploration":
-        return dedupe_entries(build_random_exploration(seed))
-    if baseline == "gplearn":
-        return dedupe_entries(build_gplearn_style(seed))
-    if baseline == "alphaforge_style":
-        return dedupe_entries(build_alphaforge_style())
-    if baseline == "alphaagent_style":
-        return dedupe_entries(build_alphaagent_style())
-    if baseline == "factor_miner":
-        if factor_miner_library_path:
-            return dedupe_entries(
-                entries_from_library(load_library(_base_path(factor_miner_library_path)))
-            )
-        return dedupe_entries(build_factor_miner_catalog())
-    if baseline == "factor_miner_no_memory":
-        if factor_miner_no_memory_library_path:
-            return dedupe_entries(
-                entries_from_library(load_library(_base_path(factor_miner_no_memory_library_path)))
-            )
-        return dedupe_entries(build_random_exploration(seed + 101, count=200))
-    raise KeyError(f"Unknown benchmark baseline: {baseline}")
-
-
-def _base_path(path: str) -> str:
-    p = Path(path)
-    return str(p.with_suffix("")) if p.suffix == ".json" else str(p)
-
-
-def build_benchmark_library(
-    artifacts: Iterable[FactorEvaluationArtifact],
-    cfg,
-    *,
-    split_name: str = "train",
-    ic_threshold: float | None = None,
-    correlation_threshold: float | None = None,
-) -> tuple[FactorLibrary, dict[str, int]]:
-    """Build a library from candidate artifacts under the paper admission rules."""
-    ic_threshold = cfg.mining.ic_threshold if ic_threshold is None else ic_threshold
-    correlation_threshold = (
-        cfg.mining.correlation_threshold if correlation_threshold is None else correlation_threshold
-    )
-    library = FactorLibrary(
-        correlation_threshold=correlation_threshold,
-        ic_threshold=ic_threshold,
-        dependence_metric=getattr(cfg.evaluation, "redundancy_metric", "spearman"),
-    )
-
-    stats = {
-        "succeeded": 0,
-        "admitted": 0,
-        "replaced": 0,
-        "threshold_rejections": 0,
-        "correlation_rejections": 0,
-    }
-
-    ordered = [artifact for artifact in artifacts if artifact.succeeded]
-    ordered.sort(
-        key=lambda artifact: artifact.split_stats[split_name]["ic_paper_mean"],
-        reverse=True,
-    )
-    stats["succeeded"] = len(ordered)
-
-    for artifact in ordered:
-        split_stats = artifact.split_stats[split_name]
-        candidate_ic = float(split_stats["ic_paper_mean"])
-        candidate_signals = artifact.split_signals[split_name]
-        if candidate_ic < ic_threshold:
-            stats["threshold_rejections"] += 1
-            continue
-
-        max_corr = (
-            library._max_correlation_with_library(candidate_signals)  # noqa: SLF001
-            if library.size
-            else 0.0
-        )
-        factor = Factor(
-            id=0,
-            name=artifact.name,
-            formula=artifact.formula,
-            category=artifact.category,
-            ic_mean=float(split_stats["ic_mean"]),
-            ic_paper_mean=candidate_ic,
-            ic_abs_mean=float(split_stats["ic_abs_mean"]),
-            icir=float(split_stats["icir"]),
-            ic_paper_icir=float(split_stats["ic_paper_icir"]),
-            ic_win_rate=float(split_stats["ic_win_rate"]),
-            max_correlation=max_corr,
-            batch_number=0,
-            signals=candidate_signals,
-        )
-        admitted, _ = library.check_admission(candidate_ic, candidate_signals)
-        if admitted:
-            library.admit_factor(factor)
-            stats["admitted"] += 1
-            continue
-
-        replace, replace_id, _ = library.check_replacement(
-            candidate_ic,
-            candidate_signals,
-            ic_min=cfg.mining.replacement_ic_min,
-            ic_ratio=cfg.mining.replacement_ic_ratio,
-        )
-        if replace and replace_id is not None:
-            library.replace_factor(replace_id, factor)
-            stats["replaced"] += 1
-            continue
-
-        stats["correlation_rejections"] += 1
-
-    return library, stats
-
-
-def select_frozen_top_k(
-    artifacts: Iterable[FactorEvaluationArtifact],
-    library: FactorLibrary,
-    *,
-    top_k: int,
-    split_name: str = "train",
-    min_ic: float = 0.05,
-    min_icir: float = 0.5,
-) -> list[FactorEvaluationArtifact]:
-    """Freeze the paper Top-K set from train-split recomputed metrics."""
-    admitted_formulas = {factor.formula for factor in library.list_factors()}
-    succeeded = [artifact for artifact in artifacts if artifact.succeeded]
-    admitted = [
-        artifact
-        for artifact in succeeded
-        if artifact.formula in admitted_formulas
-        and artifact.split_stats[split_name]["ic_paper_mean"] >= min_ic
-        and artifact.split_stats[split_name]["ic_paper_icir"] >= min_icir
-    ]
-    admitted.sort(
-        key=lambda artifact: artifact.split_stats[split_name]["ic_paper_mean"],
-        reverse=True,
-    )
-    selected: list[FactorEvaluationArtifact] = admitted[:top_k]
-    selected_formulas = {artifact.formula for artifact in selected}
-
-    if len(selected) < top_k:
-        remainder = [
-            artifact for artifact in succeeded if artifact.formula not in selected_formulas
-        ]
-        remainder.sort(
-            key=lambda artifact: artifact.split_stats[split_name]["ic_paper_mean"],
-            reverse=True,
-        )
-        selected.extend(remainder[: top_k - len(selected)])
-
-    return selected
-
-
-def _abs_icir_from_series(ic_series: np.ndarray) -> float:
-    valid = ic_series[np.isfinite(ic_series)]
-    if len(valid) < 3:
-        return 0.0
-    std = float(np.std(valid, ddof=1))
-    if std < 1e-12:
-        return 0.0
-    return abs(float(np.mean(valid))) / std
-
-
-def _normalize_backtest_stats(stats: dict) -> dict[str, float]:
-    ic_series = np.asarray(stats.get("ic_series", []), dtype=np.float64)
-    valid_ic = ic_series[np.isfinite(ic_series)]
-    signed_ic = float(stats.get("ic_mean", 0.0))
-    paper_ic = abs(signed_ic)
-    return {
-        "metric_version": METRIC_VERSION,
-        "ic": paper_ic,
-        "ic_mean": signed_ic,
-        "ic_paper_mean": paper_ic,
-        "ic_abs_mean": float(np.mean(np.abs(valid_ic))) if valid_ic.size else 0.0,
-        "icir": _abs_icir_from_series(ic_series),
-        "ic_win_rate": float(stats.get("ic_win_rate", 0.0)),
-        "long_short": float(stats.get("ls_return", 0.0)),
-        "monotonicity": float(stats.get("monotonicity", 0.0)),
-        "turnover": float(stats.get("avg_turnover", 0.0)),
-    }
-
-
-def _avg_abs_rho(artifacts: list[FactorEvaluationArtifact], split_name: str) -> float:
-    if len(artifacts) < 2:
-        return 0.0
-    corr = np.abs(compute_correlation_matrix(artifacts, split_name))
-    upper = corr[np.triu_indices_from(corr, k=1)]
-    return float(np.mean(upper)) if upper.size else 0.0
-
-
-def _weighted_composite(
-    factor_signals: dict[int, np.ndarray],
-    weights: dict[int, float],
-) -> np.ndarray:
-    ordered = [(fid, factor_signals[fid], weights.get(fid, 0.0)) for fid in factor_signals]
-    if not ordered:
-        raise ValueError("Cannot build weighted composite from zero factors")
-    total = sum(abs(weight) for _, _, weight in ordered)
-    if total < 1e-12:
-        total = float(len(ordered))
-        ordered = [(fid, signal, 1.0) for fid, signal, _ in ordered]
-    composite = np.zeros_like(ordered[0][1], dtype=np.float64)
-    for _, signal, weight in ordered:
-        composite += signal * (weight / total)
-    return composite
-
-
-def evaluate_frozen_set(
-    frozen: list[FactorEvaluationArtifact],
-    dataset: EvaluationDataset,
-    *,
-    split_name: str = "test",
-    fit_split: str = "train",
-    cost_bps: list[float] | None = None,
-    capacity_levels: list[float] | None = None,
-) -> dict:
-    """Evaluate one frozen factor set on one universe."""
-    if cost_bps is None:
-        cost_bps = [1.0, 4.0, 7.0, 10.0, 11.0]
-    if capacity_levels is None:
-        capacity_levels = _default_capacity_levels()
-
-    factors = _factors_from_entries(
-        CandidateEntry(
-            name=artifact.name,
-            formula=artifact.formula,
-            category=artifact.category,
-        )
-        for artifact in frozen
-    )
-    artifacts = evaluate_factors(factors, dataset, signal_failure_policy="reject")
-    succeeded = [artifact for artifact in artifacts if artifact.succeeded]
-
-    result = {
-        "factor_count": len(succeeded),
-        "library": {
-            "ic": 0.0,
-            "icir": 0.0,
-            "avg_abs_rho": 0.0,
-        },
-        "combinations": {},
-        "selections": {},
-        "stress": {
-            "cost_bps": [float(value) for value in cost_bps],
-            "capacity_levels": [float(value) for value in capacity_levels],
-        },
-        "warnings": [],
-    }
-    if not succeeded:
-        result["warnings"].append("No frozen factors recomputed successfully on this universe")
-        return result
-
-    result["library"] = {
-        "ic": float(
-            np.mean([artifact.split_stats[split_name]["ic_paper_mean"] for artifact in succeeded])
-        ),
-        "icir": float(
-            np.mean([artifact.split_stats[split_name]["ic_paper_icir"] for artifact in succeeded])
-        ),
-        "metric_version": METRIC_VERSION,
-        "avg_abs_rho": _avg_abs_rho(succeeded, split_name),
-    }
-
-    artifact_map = {artifact.factor_id: artifact for artifact in succeeded}
-    fit_signals = {
-        artifact.factor_id: artifact.split_signals[fit_split].T for artifact in succeeded
-    }
-    eval_signals = {
-        artifact.factor_id: artifact.split_signals[split_name].T for artifact in succeeded
-    }
-    fit_returns = dataset.get_split(fit_split).returns.T
-    eval_returns = dataset.get_split(split_name).returns.T
-    eval_volume = _split_volume_panel(dataset, split_name)
-
-    from factorminer.evaluation.combination import FactorCombiner
-    from factorminer.evaluation.portfolio import PortfolioBacktester
-    from factorminer.evaluation.selection import FactorSelector
-
-    combiner = FactorCombiner()
-    backtester = PortfolioBacktester()
-    selector = FactorSelector()
-
-    fit_ic_values = {
-        artifact.factor_id: artifact.split_stats[fit_split]["ic_mean"] for artifact in succeeded
-    }
-
-    combos = {
-        "equal_weight": combiner.equal_weight(eval_signals),
-        "ic_weighted": combiner.ic_weighted(eval_signals, fit_ic_values),
-        "orthogonal": combiner.orthogonal(eval_signals),
-    }
-    for name, composite in combos.items():
-        stats = backtester.quintile_backtest(composite, eval_returns)
-        result["combinations"][name] = _normalize_backtest_stats(stats)
-        result["combinations"][name]["ic_series"] = _json_safe(
-            np.asarray(stats.get("ic_series", []), dtype=np.float64).tolist()
-        )
-        result["combinations"][name]["turnover_series"] = _json_safe(
-            np.asarray(stats.get("turnover_series", []), dtype=np.float64).tolist()
-        )
-        result["combinations"][name]["cost_pressure"] = {
-            str(cost): _normalize_backtest_stats(
-                backtester.quintile_backtest(
-                    composite, eval_returns, transaction_cost_bps=float(cost)
-                )
-            )
-            for cost in cost_bps
-        }
-        if eval_volume is not None:
-            result["combinations"][name]["capacity_pressure"] = _capacity_pressure_summary(
-                factor_name=name,
-                signals=composite,
-                returns=eval_returns,
-                volume=eval_volume,
-                capacity_levels=capacity_levels,
-            )
-
-    selection_specs = {}
-    try:
-        selection_specs["lasso"] = selector.lasso_selection(fit_signals, fit_returns)
-    except Exception as exc:
-        result["warnings"].append(f"lasso unavailable: {exc}")
-    try:
-        selection_specs["forward_stepwise"] = selector.forward_stepwise(fit_signals, fit_returns)
-    except Exception as exc:
-        result["warnings"].append(f"forward_stepwise unavailable: {exc}")
-    try:
-        selection_specs["xgboost"] = selector.xgboost_selection(fit_signals, fit_returns)
-    except Exception as exc:
-        result["warnings"].append(f"xgboost unavailable: {exc}")
-
-    for name, ranking in selection_specs.items():
-        if not ranking:
-            result["selections"][name] = {"factor_count": 0}
-            continue
-        selected_ids = [factor_id for factor_id, _ in ranking]
-        selected_eval = {factor_id: eval_signals[factor_id] for factor_id in selected_ids}
-        if name == "lasso":
-            weights = {factor_id: score for factor_id, score in ranking}
-            composite = _weighted_composite(selected_eval, weights)
-        elif name == "xgboost":
-            weights = {
-                factor_id: score
-                * np.sign(artifact_map[factor_id].split_stats[fit_split]["ic_mean"] or 1.0)
-                for factor_id, score in ranking
-            }
-            composite = _weighted_composite(selected_eval, weights)
-        else:
-            signs = {
-                factor_id: np.sign(artifact_map[factor_id].split_stats[fit_split]["ic_mean"] or 1.0)
-                for factor_id in selected_ids
-            }
-            composite = _weighted_composite(selected_eval, signs)
-        stats = backtester.quintile_backtest(composite, eval_returns)
-        result["selections"][name] = {
-            "factor_count": len(selected_ids),
-            **_normalize_backtest_stats(stats),
-            "ic_series": _json_safe(
-                np.asarray(stats.get("ic_series", []), dtype=np.float64).tolist()
-            ),
-            "turnover_series": _json_safe(
-                np.asarray(stats.get("turnover_series", []), dtype=np.float64).tolist()
-            ),
-        }
-
-    return result
-
-
-def _ensure_dir(path: Path) -> Path:
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def _write_json(path: Path, payload: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as fp:
-        json.dump(_json_safe(payload), fp, indent=2, sort_keys=False, allow_nan=False)
-
-
-def _save_manifest(path: Path, manifest: BenchmarkManifest) -> None:
-    _write_json(path, asdict(manifest))
 
 
 def _strategy_ablation_raw_config(cfg) -> dict[str, Any]:
@@ -2301,488 +1628,8 @@ def run_runtime_mining_benchmark(
 
 
 # ---------------------------------------------------------------------------
-# Consolidated Phase-2 reporting compatibility
+# Consolidated Phase-2 reporting
 # ---------------------------------------------------------------------------
-
-_LEGACY_RUNTIME_MESSAGE = (
-    "factorminer.benchmark.helix_benchmark is legacy; use "
-    "factorminer.benchmark.runtime for the canonical benchmark path"
-)
-
-
-@dataclass
-class MethodResult:
-    """Flattened metrics for one method in a comparison report."""
-
-    method: str
-    library_ic: float = 0.0
-    library_icir: float = 0.0
-    avg_abs_rho: float = 0.0
-    ew_ic: float = 0.0
-    ew_icir: float = 0.0
-    icw_ic: float = 0.0
-    icw_icir: float = 0.0
-    lasso_ic: float = 0.0
-    lasso_icir: float = 0.0
-    xgb_ic: float = 0.0
-    xgb_icir: float = 0.0
-    n_factors: int = 0
-    admission_rate: float = 0.0
-    elapsed_seconds: float = 0.0
-    avg_turnover: float = 0.0
-    ic_series: np.ndarray | None = field(default=None, repr=False)
-    run_id: int = 0
-
-    def to_dict(self) -> dict[str, Any]:
-        payload = asdict(self)
-        payload.pop("ic_series", None)
-        return payload
-
-
-@dataclass
-class DMTestResult:
-    """Diebold-Mariano comparison result."""
-
-    dm_statistic: float
-    p_value: float
-    is_significant: bool
-    direction: str
-    n_obs: int
-
-
-@dataclass
-class AblationResult:
-    """Flattened Phase-2 ablation report."""
-
-    configs: list[str]
-    results: dict[str, MethodResult]
-    contributions: pd.DataFrame | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "configs": self.configs,
-            "results": {name: result.to_dict() for name, result in self.results.items()},
-        }
-
-
-@dataclass
-class OperatorSpeedResult:
-    """Compatibility container for operator timing results."""
-
-    operator_timings_ms: dict[str, float]
-    n_assets: int
-    n_periods: int
-    n_repeats: int
-
-
-@dataclass
-class PipelineSpeedResult:
-    """Compatibility container for pipeline timing results."""
-
-    total_seconds: float
-    candidates_per_second: float
-    n_candidates: int
-
-
-@dataclass
-class BenchmarkResult:
-    """Report-oriented projection of canonical runtime benchmark artifacts."""
-
-    methods: list[str]
-    factor_library_metrics: pd.DataFrame
-    combination_metrics: pd.DataFrame
-    selection_metrics: pd.DataFrame
-    speed_metrics: pd.DataFrame
-    statistical_tests: dict[str, Any]
-    ablation_result: AblationResult | None = None
-    raw_method_results: dict[str, list[MethodResult]] = field(default_factory=dict)
-    turnover_metrics: pd.DataFrame = field(default_factory=pd.DataFrame)
-    cost_pressure_metrics: pd.DataFrame = field(default_factory=pd.DataFrame)
-    runtime_artifacts: dict[str, Any] = field(default_factory=dict)
-
-    @staticmethod
-    def _metric(frame: pd.DataFrame, method: str, column: str) -> float:
-        if frame.empty or column not in frame.columns:
-            return 0.0
-        row = frame[frame["method"] == method]
-        if row.empty or pd.isna(row.iloc[0][column]):
-            return 0.0
-        return float(row.iloc[0][column])
-
-    def to_markdown_table(self) -> str:
-        """Render the comparison in the historical GitHub table shape."""
-        lines = [
-            "| Method | IC (%) | ICIR | Avg|rho| | EW IC (%) | EW ICIR | "
-            "ICW IC (%) | ICW ICIR | Las IC (%) | XGB IC (%) |",
-            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
-        ]
-        for method in self.methods:
-            lines.append(
-                "| "
-                + " | ".join(
-                    [
-                        method,
-                        f"{self._metric(self.factor_library_metrics, method, 'ic_pct'):.2f}",
-                        f"{self._metric(self.factor_library_metrics, method, 'icir'):.3f}",
-                        f"{self._metric(self.factor_library_metrics, method, 'avg_abs_rho'):.3f}",
-                        f"{self._metric(self.combination_metrics, method, 'ew_ic_pct'):.2f}",
-                        f"{self._metric(self.combination_metrics, method, 'ew_icir'):.3f}",
-                        f"{self._metric(self.combination_metrics, method, 'icw_ic_pct'):.2f}",
-                        f"{self._metric(self.combination_metrics, method, 'icw_icir'):.3f}",
-                        f"{self._metric(self.selection_metrics, method, 'lasso_ic_pct'):.2f}",
-                        f"{self._metric(self.selection_metrics, method, 'xgb_ic_pct'):.2f}",
-                    ]
-                )
-                + " |"
-            )
-        return "\n".join(lines) + "\n"
-
-    def to_latex_table(self) -> str:
-        """Render a compact Table-1-style LaTeX table."""
-        lines = [
-            r"\begin{table}[htbp]",
-            r"\centering",
-            r"\caption{HelixFactor vs FactorMiner Runtime Benchmark}",
-            r"\begin{tabular}{lrrrrrrrr}",
-            r"\toprule",
-            r"Method & IC(\%) & ICIR & Avg$|\rho|$ & EW IC(\%) & EW ICIR & ICW IC(\%) & ICW ICIR & Sel. IC(\%) \\",
-            r"\midrule",
-        ]
-        for method in self.methods:
-            selected = max(
-                self._metric(self.selection_metrics, method, "lasso_ic_pct"),
-                self._metric(self.selection_metrics, method, "xgb_ic_pct"),
-            )
-            lines.append(
-                " & ".join(
-                    [
-                        method.replace("_", r"\_"),
-                        f"{self._metric(self.factor_library_metrics, method, 'ic_pct'):.2f}",
-                        f"{self._metric(self.factor_library_metrics, method, 'icir'):.3f}",
-                        f"{self._metric(self.factor_library_metrics, method, 'avg_abs_rho'):.3f}",
-                        f"{self._metric(self.combination_metrics, method, 'ew_ic_pct'):.2f}",
-                        f"{self._metric(self.combination_metrics, method, 'ew_icir'):.3f}",
-                        f"{self._metric(self.combination_metrics, method, 'icw_ic_pct'):.2f}",
-                        f"{self._metric(self.combination_metrics, method, 'icw_icir'):.3f}",
-                        f"{selected:.2f}",
-                    ]
-                )
-                + r" \\"
-            )
-        lines.extend([r"\bottomrule", r"\end{tabular}", r"\end{table}"])
-        return "\n".join(lines)
-
-    def plot_comparison(self, save_path: str) -> None:
-        """Plot the main comparison metrics."""
-        import matplotlib.pyplot as plt
-
-        columns = [
-            (self.factor_library_metrics, "ic_pct", "IC (%)"),
-            (self.factor_library_metrics, "icir", "ICIR"),
-            (self.combination_metrics, "ew_ic_pct", "EW IC (%)"),
-            (self.combination_metrics, "icw_ic_pct", "ICW IC (%)"),
-        ]
-        fig, axes = plt.subplots(1, len(columns), figsize=(16, 5))
-        for axis, (frame, column, title) in zip(axes, columns, strict=True):
-            values = [self._metric(frame, method, column) for method in self.methods]
-            axis.bar(range(len(values)), values)
-            axis.set_xticks(range(len(values)))
-            axis.set_xticklabels([m.replace("_", "\n") for m in self.methods], fontsize=7)
-            axis.set_title(title)
-            axis.grid(axis="y", alpha=0.3)
-        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-        fig.tight_layout()
-        fig.savefig(save_path, dpi=150, bbox_inches="tight")
-        plt.close(fig)
-
-    def generate_full_report(self, save_path: str) -> None:
-        """Write a self-contained HTML report from the canonical result frames."""
-        sections = [
-            ("Factor Library Metrics", self.factor_library_metrics),
-            ("Factor Combination Metrics", self.combination_metrics),
-            ("Factor Selection Metrics", self.selection_metrics),
-            ("Speed Metrics", self.speed_metrics),
-        ]
-        if not self.turnover_metrics.empty:
-            sections.append(("Turnover", self.turnover_metrics))
-        if not self.cost_pressure_metrics.empty:
-            sections.append(("Cost Pressure", self.cost_pressure_metrics))
-        body = "".join(
-            f"<h2>{title}</h2>{frame.to_html(index=False, float_format=lambda x: f'{x:.4f}')}"
-            for title, frame in sections
-        )
-        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-        Path(save_path).write_text(
-            "<!doctype html><meta charset='utf-8'><title>FactorMiner Benchmark</title>"
-            "<style>body{font-family:sans-serif;margin:40px}table{border-collapse:collapse}"
-            "th,td{padding:6px 10px;border:1px solid #ddd}</style>"
-            f"<h1>FactorMiner Runtime Benchmark</h1>{body}",
-            encoding="utf-8",
-        )
-
-
-class StatisticalComparisonTests:
-    """Paired statistical comparisons used by Phase-2 reports."""
-
-    def __init__(self, seed: int = 42) -> None:
-        self._rng = np.random.RandomState(seed)
-
-    @staticmethod
-    def _paired_valid_series(
-        series_1: np.ndarray,
-        series_2: np.ndarray,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        length = min(len(series_1), len(series_2))
-        left = np.asarray(series_1[:length], dtype=np.float64)
-        right = np.asarray(series_2[:length], dtype=np.float64)
-        valid = np.isfinite(left) & np.isfinite(right)
-        return left[valid], right[valid]
-
-    def diebold_mariano_test(
-        self,
-        ic_series_1: np.ndarray,
-        ic_series_2: np.ndarray,
-        h: int = 1,
-    ) -> DMTestResult:
-        """Compare squared IC loss with a Newey-West variance estimate."""
-        from scipy.stats import norm
-
-        series_1, series_2 = self._paired_valid_series(ic_series_1, ic_series_2)
-        if len(series_1) < 5:
-            return DMTestResult(0.0, 1.0, False, "no_difference", len(series_1))
-        differential = series_1**2 - series_2**2
-        if np.allclose(differential, 0.0):
-            return DMTestResult(0.0, 1.0, False, "no_difference", len(differential))
-        mean = float(np.mean(differential))
-        variance = float(np.var(differential, ddof=0))
-        for lag in range(1, max(h - 1, 0) + 1):
-            covariance = float(
-                np.mean((differential[lag:] - mean) * (differential[:-lag] - mean))
-            )
-            variance += 2.0 * (1.0 - lag / h) * covariance
-        if variance <= 0.0 or not np.isfinite(variance):
-            return DMTestResult(0.0, 1.0, False, "no_difference", len(differential))
-        statistic = mean / math.sqrt(variance / len(differential))
-        p_value = 2.0 * (1.0 - float(norm.cdf(abs(statistic))))
-        direction = "no_difference"
-        if abs(statistic) >= 1.96:
-            direction = "ralph_better" if mean > 0 else "helix_better"
-        return DMTestResult(
-            float(statistic),
-            float(p_value),
-            bool(p_value < 0.05),
-            direction,
-            len(differential),
-        )
-
-    def paired_t_test(self, series_1: np.ndarray, series_2: np.ndarray) -> dict[str, Any]:
-        from scipy.stats import ttest_rel
-
-        left, right = self._paired_valid_series(series_1, series_2)
-        if len(left) < 5:
-            return {"t_stat": 0.0, "p_value": 1.0, "mean_diff": 0.0, "n": len(left)}
-        statistic, p_value = ttest_rel(left, right)
-        if not np.isfinite(statistic) or not np.isfinite(p_value):
-            return {"t_stat": 0.0, "p_value": 1.0, "mean_diff": 0.0, "n": len(left)}
-        return {
-            "t_stat": float(statistic),
-            "p_value": float(p_value),
-            "mean_diff": float(np.mean(left - right)),
-            "n": len(left),
-        }
-
-    def bootstrap_ic_difference_ci(
-        self,
-        series_1: np.ndarray,
-        series_2: np.ndarray,
-        n_bootstrap: int = 1000,
-        block_size: int = 20,
-    ) -> tuple[float, float]:
-        left, right = self._paired_valid_series(series_1, series_2)
-        if len(left) < 5:
-            return 0.0, 0.0
-        difference = left - right
-        block_size = max(1, min(block_size, len(difference) // 2))
-        block_count = math.ceil(len(difference) / block_size)
-        means = np.empty(n_bootstrap)
-        for index in range(n_bootstrap):
-            starts = self._rng.randint(
-                0,
-                len(difference) - block_size + 1,
-                size=block_count,
-            )
-            sampled = np.concatenate(
-                [np.arange(start, start + block_size) for start in starts]
-            )[: len(difference)]
-            means[index] = float(np.mean(difference[sampled]))
-        return float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))
-
-    def wilcoxon_test(self, series_1: np.ndarray, series_2: np.ndarray) -> dict[str, Any]:
-        from scipy.stats import wilcoxon
-
-        left, right = self._paired_valid_series(series_1, series_2)
-        if len(left) < 5:
-            return {"statistic": 0.0, "p_value": 1.0, "n": len(left)}
-        try:
-            statistic, p_value = wilcoxon(left, right, alternative="two-sided")
-        except ValueError:
-            statistic, p_value = 0.0, 1.0
-        return {"statistic": float(statistic), "p_value": float(p_value), "n": len(left)}
-
-    def run_all_tests(self, ic_helix: np.ndarray, ic_ralph: np.ndarray) -> dict[str, Any]:
-        dm = self.diebold_mariano_test(ic_helix, ic_ralph)
-        t_test = self.paired_t_test(ic_helix, ic_ralph)
-        lower, upper = self.bootstrap_ic_difference_ci(ic_helix, ic_ralph)
-        wilcoxon_result = self.wilcoxon_test(ic_helix, ic_ralph)
-        helix, ralph = self._paired_valid_series(ic_helix, ic_ralph)
-        mean_difference = float(np.mean(helix - ralph)) if len(helix) else 0.0
-        return {
-            "diebold_mariano": {
-                "dm_stat": dm.dm_statistic,
-                "p_value": dm.p_value,
-                "significant": dm.is_significant,
-                "direction": dm.direction,
-                "n_obs": dm.n_obs,
-            },
-            "paired_t_test": t_test,
-            "bootstrap_ci_95": {
-                "lower": lower,
-                "upper": upper,
-                "excludes_zero": lower > 0 or upper < 0,
-            },
-            "wilcoxon": wilcoxon_result,
-            "mean_ic_difference": mean_difference,
-            "helix_outperforms": mean_difference > 0,
-        }
-
-
-def _build_mock_data_dict(
-    n_assets: int = 100,
-    n_periods: int = 500,
-    seed: int = 42,
-) -> dict[str, np.ndarray]:
-    """Build the historical matrix dictionary through the shared data pipeline."""
-    from factorminer.data.mock_data import MockConfig, generate_mock_data
-    from factorminer.data.preprocessor import preprocess
-
-    raw = generate_mock_data(
-        MockConfig(
-            num_assets=n_assets,
-            num_periods=n_periods,
-            frequency="10min",
-            plant_alpha=True,
-            alpha_strength=0.04,
-            alpha_assets_frac=0.4,
-            seed=seed,
-        )
-    )
-    processed = preprocess(raw)
-    assets = sorted(processed["asset_id"].unique())
-    period_count = int(processed.groupby("asset_id").size().min())
-    feature_map = {
-        "$open": "open",
-        "$high": "high",
-        "$low": "low",
-        "$close": "close",
-        "$volume": "volume",
-        "$amt": "amount",
-        "$vwap": "vwap",
-        "$returns": "returns",
-    }
-    data: dict[str, np.ndarray] = {}
-    for feature, column in feature_map.items():
-        if column not in processed.columns:
-            continue
-        pivot = processed.pivot(index="asset_id", columns="datetime", values=column)
-        data[feature] = pivot.loc[assets].iloc[:, :period_count].values.astype(np.float64)
-    close = data["$close"]
-    forward_returns = np.roll(close, -1, axis=1) / close - 1.0
-    forward_returns[:, -1] = np.nan
-    data["forward_returns"] = forward_returns
-    return data
-
-
-class SpeedBenchmark:
-    """Compatibility adapter over the canonical operator runtime."""
-
-    def __init__(self, seed: int = 42) -> None:
-        self.seed = seed
-
-    def run_operator_benchmark(
-        self,
-        n_assets: int = 500,
-        n_periods: int = 2000,
-        n_repeats: int = 5,
-    ) -> OperatorSpeedResult:
-        from factorminer.operators.registry import execute_operator
-
-        assets = min(n_assets, 50)
-        periods = min(n_periods, 100)
-        left = np.random.RandomState(self.seed).randn(assets, periods)
-        right = np.random.RandomState(self.seed + 1).randn(assets, periods)
-        runners = {
-            "Add": lambda: execute_operator("Add", left, right, backend="numpy"),
-            "Mean": lambda: execute_operator(
-                "Mean", left, params={"window": 20}, backend="numpy"
-            ),
-            "Corr": lambda: execute_operator(
-                "Corr", left, right, params={"window": 20}, backend="numpy"
-            ),
-            "CsRank": lambda: execute_operator("CsRank", left, backend="numpy"),
-        }
-        timings = {
-            name: _time_callable(runner, repeats=n_repeats) for name, runner in runners.items()
-        }
-        return OperatorSpeedResult(timings, n_assets, n_periods, n_repeats)
-
-    def run_full_pipeline_benchmark(
-        self,
-        n_candidates: int = 200,
-        data: dict[str, np.ndarray] | None = None,
-    ) -> PipelineSpeedResult:
-        from factorminer.core.parser import try_parse
-        from factorminer.evaluation.metrics import compute_ic, compute_ic_mean
-
-        inputs = data or _build_mock_data_dict(n_assets=100, n_periods=200, seed=self.seed)
-        returns = inputs.get("forward_returns", inputs["$close"])
-        entries = build_random_exploration(seed=self.seed, count=n_candidates)
-        start = time.perf_counter()
-        succeeded = 0
-        for entry in entries[:n_candidates]:
-            tree = try_parse(entry.formula)
-            if tree is None:
-                continue
-            try:
-                compute_ic_mean(compute_ic(tree.evaluate(inputs), returns))
-            except Exception:
-                continue
-            succeeded += 1
-        elapsed = time.perf_counter() - start
-        return PipelineSpeedResult(
-            elapsed,
-            succeeded / max(elapsed, 1e-6),
-            n_candidates,
-        )
-
-    def generate_speed_table(
-        self,
-        op_result: OperatorSpeedResult,
-        pipeline_result: PipelineSpeedResult,
-    ) -> str:
-        rows = [
-            r"\begin{tabular}{lrr}",
-            r"\toprule",
-            "Task & Time (ms) & Type \\\\",
-        ]
-        rows.extend(
-            f"{name} & {milliseconds:.2f} & operator \\\\"
-            for name, milliseconds in op_result.operator_timings_ms.items()
-        )
-        rows.append(
-            f"Pipeline & {pipeline_result.total_seconds * 1000:.2f} & pipeline \\\\"
-        )
-        rows.extend([r"\bottomrule", r"\end{tabular}"])
-        return "\n".join(rows)
 
 
 def _reported_universe(payload: dict[str, Any], cfg) -> dict[str, Any]:
@@ -3075,23 +1922,3 @@ def run_phase2_ablation_study(
                 }
             )
     return AblationResult(configs=configs, results=results, contributions=pd.DataFrame(rows))
-
-
-class HelixBenchmark:
-    """Deprecated facade that delegates all execution to this runtime module."""
-
-    def __init__(self, seed: int = 42) -> None:
-        warnings.warn(_LEGACY_RUNTIME_MESSAGE, DeprecationWarning, stacklevel=2)
-        self.seed = seed
-
-    def run_runtime_comparison(self, cfg, output_dir: Path, **kwargs):
-        return run_phase2_comparison(cfg, output_dir, **kwargs)
-
-    def run_runtime_ablation_study(self, cfg, output_dir: Path, **kwargs):
-        return run_phase2_ablation_study(cfg, output_dir, **kwargs)
-
-    def run_comparison(self, *args, **kwargs):
-        raise RuntimeError(
-            "The dictionary-only legacy comparison was removed; use "
-            "run_table1_benchmark or run_phase2_comparison with a runtime config."
-        )

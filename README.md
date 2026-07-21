@@ -28,6 +28,8 @@ operate an autonomous account.
 | Policy-based memory | Paper, none, KG, family-, regime-, and edit-aware policies |
 | Runtime evaluation | Formula recomputation on the supplied dataset; saved summaries are not trusted as truth |
 | Benchmark runtime | Top-K freeze, memory/strategy ablations, CPCV/PBO, cost pressure, and efficiency |
+| Research knowledge | Persistent screened sources and hypotheses with bounded retrieval and outcome attribution |
+| Evidence packs | Immutable, content-addressed factor evidence with dataset/config/code hashes and integrity verification |
 | Research extensions | EDGAR/futures data, crowding, capacity, sensitivity, model-risk, and provenance artifacts |
 | Agent gateway | MCP server plus a plugin and managed-agent reference integration |
 
@@ -135,6 +137,15 @@ research ingestion, RFT dataset export, sealed search, model co-optimization,
 and MCP transports. Use `uv run factorminer --help` and command-level `--help`
 as the authoritative command reference.
 
+Research ingestion persists both eligible and rejected source decisions. An
+eligible source produces a content-addressed hypothesis that mining can retrieve
+without placing raw documents in prompts:
+
+```bash
+uv run factorminer -o output ingest-research path/to/note.txt --mock
+uv run factorminer -o output verify-evidence
+```
+
 ## Architecture
 
 ```mermaid
@@ -142,9 +153,11 @@ flowchart LR
     D["Market data"] --> C["Dataset contract"]
     C --> L["Ralph / Helix stages"]
     M["Memory policy"] --> L
+    K["Research knowledge"] --> L
     L --> E["Evaluation kernel"]
     E --> A["Admission service"]
     A --> F["Factor library"]
+    A --> P["Provenance + evidence pack"]
     F --> R["Runtime analysis"]
     F --> B["Runtime benchmarks"]
     C --> R
@@ -164,19 +177,21 @@ dependency direction.
 ```text
 factorminer/
 ├── factorminer/
+│   ├── application/    typed execution context and workflow contracts
 │   ├── architecture/   contracts, policies, stages, reusable services
 │   ├── core/           loops, DSL parser, expression trees, library, I/O
+│   ├── domain/         dependency-free numerical contracts
 │   ├── agent/          providers, prompts, generation, debate
 │   ├── data/           loaders, preprocessing, connectors, tensor building
 │   ├── evaluation/     recomputation, metrics, validation, reports
-│   ├── benchmark/      canonical runtime benchmarks and compatibility shim
+│   ├── benchmark/      contracts, datasets, runners, statistics, reports
 │   ├── memory/         stores, retrieval, KG, embeddings
 │   ├── operators/      typed operator specs and execution backends
 │   ├── mcp/            agent-facing MCP server
 │   └── tests/          regression and contract coverage
 ├── integrations/       plugin and managed-agent reference deployments
 ├── scripts/            demos, standalone runners, repository validation
-├── docs/               architecture, research, reproducibility, security
+├── docs/               architecture, reproducibility, security
 └── data/               documented public onboarding sample
 ```
 
@@ -202,7 +217,7 @@ and deployment notes are in the
 
 | Document | Owns |
 | --- | --- |
-| [Architecture](docs/architecture.md) | Runtime contracts, dependency direction, package ownership, debt |
+| [Architecture](docs/architecture.md) | Runtime contracts, dependency direction, and package ownership |
 | [Reproducibility](docs/reproducibility.md) | Data contracts, metrics, baseline provenance, public and paper-scale workflows |
 | [Security](docs/security.md) | Connectors, MCP, model/content boundaries, persistence, secrets |
 | [Licensing](LICENSING.md) | Which files are MIT vs. BUSL-1.1, and why |
@@ -213,6 +228,7 @@ and deployment notes are in the
 
 ```bash
 uv run ruff check .
+uv run python scripts/check_architecture.py
 uv run python scripts/check.py
 uv run pytest -q factorminer/tests
 uv build
