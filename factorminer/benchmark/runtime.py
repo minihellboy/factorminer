@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import time
-import warnings
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -117,6 +116,8 @@ from factorminer.benchmark.statistics import (
     BenchmarkResult,
     MethodResult,
     StatisticalComparisonTests,
+    aggregate_method_results,
+    method_result_dispersion,
 )
 from factorminer.benchmark.statistics import (
     DMTestResult as DMTestResult,
@@ -1061,15 +1062,17 @@ def run_phase2_comparison(
     n_target_factors: int = 40,
     n_runs: int = 1,
 ) -> tuple[BenchmarkResult, dict[str, Any]]:
-    """Build the Phase-2 report entirely from canonical Table-1 artifacts."""
-    if n_runs != 1:
-        warnings.warn(
-            "run_phase2_comparison now executes one provenance-complete runtime run per method",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-    runtime_cfg = _clone_cfg(cfg)
-    runtime_cfg.mining.target_library_size = n_target_factors
+    """Build the Phase-2 report entirely from canonical Table-1 artifacts.
+
+    ``n_runs > 1`` repeats the full runtime comparison with per-run seeds
+    (``benchmark.seed + run_id``) into ``run_<id>`` subdirectories. Frames
+    then carry across-seed means, ``raw_method_results`` carries the full
+    per-run lists, and ``statistical_tests`` gains a ``seed_distribution``
+    summary. ``n_runs = 1`` is byte-identical to the previous behavior.
+    """
+    n_runs = int(n_runs)
+    if n_runs < 1:
+        raise ValueError("n_runs must be at least 1")
     methods = baseline_methods or [
         "random_exploration",
         "alpha101_classic",
@@ -1077,24 +1080,48 @@ def run_phase2_comparison(
         "ralph_loop",
         "helix_phase2",
     ]
-    table1 = run_table1_benchmark(
-        runtime_cfg,
-        output_dir,
-        data_path=data_path,
-        raw_df=raw_df,
-        mock=mock,
-        baseline_names=methods,
-        use_runtime_loops=True,
-    )
+    base_seed = int(getattr(cfg.benchmark, "seed", 42))
+    seeds: list[int] = []
+    run_roots: list[Path] = []
+    per_run_tables: list[dict[str, Any]] = []
+    per_run_results: dict[str, list[MethodResult]] = {method: [] for method in methods}
+    for run_id in range(n_runs):
+        runtime_cfg = _clone_cfg(cfg)
+        runtime_cfg.mining.target_library_size = n_target_factors
+        seed = base_seed + run_id
+        runtime_cfg.benchmark.seed = seed
+        seeds.append(seed)
+        run_dir = output_dir if n_runs == 1 else output_dir / f"run_{run_id}"
+        table1 = run_table1_benchmark(
+            runtime_cfg,
+            run_dir,
+            data_path=data_path,
+            raw_df=raw_df,
+            mock=mock,
+            baseline_names=methods,
+            use_runtime_loops=True,
+        )
+        per_run_tables.append(table1)
+        run_roots.append(run_dir)
+        for method in methods:
+            run_result = _method_result_from_runtime_payload(
+                method, table1[method], runtime_cfg
+            )
+            run_result.run_id = run_id
+            per_run_results[method].append(run_result)
+
     method_results = {
-        method: _method_result_from_runtime_payload(method, table1[method], runtime_cfg)
-        for method in methods
+        method: aggregate_method_results(per_run_results[method]) for method in methods
     }
     library_frame, combination_frame, selection_frame = _comparison_frames(
         methods,
         method_results,
     )
-    efficiency = run_efficiency_benchmark(runtime_cfg, output_dir)
+    if n_runs > 1:
+        library_frame["n_runs"] = n_runs
+    report_cfg = _clone_cfg(cfg)
+    report_cfg.mining.target_library_size = n_target_factors
+    efficiency = run_efficiency_benchmark(report_cfg, output_dir)
     speed_rows: list[dict[str, Any]] = []
     for backend, timings in efficiency.get("operator_level_ms", {}).items():
         for name, milliseconds in timings.items():
@@ -1104,68 +1131,99 @@ def run_phase2_comparison(
                 )
     speed_frame = pd.DataFrame(speed_rows)
 
-    runtime_payloads: dict[str, list[dict[str, Any]]] = {}
+    runtime_payloads: dict[str, list[dict[str, Any]]] = {method: [] for method in methods}
     turnover_rows: list[dict[str, Any]] = []
     cost_rows: list[dict[str, Any]] = []
-    for method in methods:
-        payload = table1[method]
-        evaluation = _reported_universe(payload, runtime_cfg)
-        combinations = evaluation.get("combinations", {})
-        projected = {
-            "method": method,
-            "run_id": 0,
-            "frozen_top_k": payload.get("frozen_top_k", []),
-            "library": evaluation.get("library", {}),
-            "combinations": combinations,
-            "selections": evaluation.get("selections", {}),
-            "provenance": payload.get("provenance", {}),
-        }
-        runtime_payloads[method] = [projected]
-        turnover_rows.append(
-            {
+    for run_id, run_table in enumerate(per_run_tables):
+        for method in methods:
+            payload = run_table[method]
+            evaluation = _reported_universe(payload, report_cfg)
+            combinations = evaluation.get("combinations", {})
+            projected = {
                 "method": method,
-                "run_id": 0,
-                **{
-                    f"{name}_turnover": float(metrics.get("turnover", 0.0) or 0.0)
-                    for name, metrics in combinations.items()
-                },
+                "run_id": run_id,
+                "frozen_top_k": payload.get("frozen_top_k", []),
+                "library": evaluation.get("library", {}),
+                "combinations": combinations,
+                "selections": evaluation.get("selections", {}),
+                "provenance": payload.get("provenance", {}),
             }
-        )
-        for combination, metrics in combinations.items():
-            for cost_bps, cost_metrics in metrics.get("cost_pressure", {}).items():
-                cost_rows.append(
-                    {
-                        "method": method,
-                        "run_id": 0,
-                        "combination": combination,
-                        "cost_bps": float(cost_bps),
-                        **{
-                            key: cost_metrics.get(key, 0.0)
-                            for key in ("ic", "icir", "turnover", "long_short", "monotonicity")
-                        },
-                    }
-                )
+            runtime_payloads[method].append(projected)
+            turnover_rows.append(
+                {
+                    "method": method,
+                    "run_id": run_id,
+                    **{
+                        f"{name}_turnover": float(metrics.get("turnover", 0.0) or 0.0)
+                        for name, metrics in combinations.items()
+                    },
+                }
+            )
+            for combination, metrics in combinations.items():
+                for cost_bps, cost_metrics in metrics.get("cost_pressure", {}).items():
+                    cost_rows.append(
+                        {
+                            "method": method,
+                            "run_id": run_id,
+                            "combination": combination,
+                            "cost_bps": float(cost_bps),
+                            **{
+                                key: cost_metrics.get(key, 0.0)
+                                for key in ("ic", "icir", "turnover", "long_short", "monotonicity")
+                            },
+                        }
+                    )
 
     statistical_tests: dict[str, Any] = {}
-    helix = method_results.get("helix_phase2")
-    ralph = method_results.get("ralph_loop")
-    if (
-        helix is not None
-        and ralph is not None
-        and helix.ic_series is not None
-        and ralph.ic_series is not None
-    ):
-        statistical_tests = StatisticalComparisonTests(runtime_cfg.benchmark.seed).run_all_tests(
-            helix.ic_series,
-            ralph.ic_series,
-        )
+    helix_runs = per_run_results.get("helix_phase2", [])
+    ralph_runs = per_run_results.get("ralph_loop", [])
+    paired_tests: list[dict[str, Any]] = []
+    if helix_runs and ralph_runs:
+        for run_id, (helix, ralph) in enumerate(
+            zip(helix_runs, ralph_runs, strict=True)
+        ):
+            if helix.ic_series is None or ralph.ic_series is None:
+                continue
+            paired_tests.append(
+                {
+                    "run_id": run_id,
+                    "seed": seeds[run_id],
+                    "tests": StatisticalComparisonTests(seeds[run_id]).run_all_tests(
+                        helix.ic_series,
+                        ralph.ic_series,
+                    ),
+                }
+            )
+    if n_runs == 1 and paired_tests:
+        statistical_tests = paired_tests[0]["tests"]
+    elif paired_tests:
+        statistical_tests["paired_tests_by_run"] = paired_tests
+    if n_runs > 1:
+        statistical_tests["seed_distribution"] = {
+            "n_runs": n_runs,
+            "seeds": seeds,
+            "methods": {
+                method: method_result_dispersion(per_run_results[method])
+                for method in methods
+            },
+        }
 
-    artifacts = {
-        "runtime_root": str((output_dir / "benchmark").resolve()),
+    artifacts: dict[str, Any] = {
+        "runtime_root": str((run_roots[0] / "benchmark").resolve()),
         "runtime_payloads": runtime_payloads,
-        "table1": table1,
+        "table1": per_run_tables[0],
         "efficiency": efficiency,
     }
+    if n_runs > 1:
+        artifacts.update(
+            {
+                "runtime_roots": [
+                    str((root / "benchmark").resolve()) for root in run_roots
+                ],
+                "n_runs": n_runs,
+                "seeds": seeds,
+            }
+        )
     result = BenchmarkResult(
         methods=methods,
         factor_library_metrics=library_frame,
@@ -1173,7 +1231,7 @@ def run_phase2_comparison(
         selection_metrics=selection_frame,
         speed_metrics=speed_frame,
         statistical_tests=statistical_tests,
-        raw_method_results={method: [result] for method, result in method_results.items()},
+        raw_method_results={method: list(per_run_results[method]) for method in methods},
         turnover_metrics=pd.DataFrame(turnover_rows),
         cost_pressure_metrics=pd.DataFrame(cost_rows),
         runtime_artifacts=artifacts,
@@ -1192,11 +1250,18 @@ def run_phase2_ablation_study(
     n_target_factors: int = 40,
     n_runs: int = 1,
 ) -> AblationResult:
-    """Run Phase-2 variants through the canonical runtime-loop benchmark."""
-    if n_runs != 1:
-        warnings.warn("Phase-2 ablations now run once per variant", RuntimeWarning, stacklevel=2)
-    runtime_cfg = _clone_cfg(cfg)
-    runtime_cfg.mining.target_library_size = n_target_factors
+    """Run Phase-2 variants through the canonical runtime-loop benchmark.
+
+    ``n_runs > 1`` repeats every variant with per-run seeds
+    (``benchmark.seed + run_id``) into ``run_<id>`` subdirectories; the
+    contribution deltas are computed per run against that run's ``full``
+    variant, then reported as across-run means with ``*_std`` columns.
+    ``n_runs = 1`` matches the previous behavior exactly.
+    """
+    n_runs = int(n_runs)
+    if n_runs < 1:
+        raise ValueError("n_runs must be at least 1")
+    base_seed = int(getattr(cfg.benchmark, "seed", 42))
     configs = configs_to_run or [
         "full",
         "no_debate",
@@ -1217,41 +1282,58 @@ def run_phase2_ablation_study(
         "no_significance": "helix_no_significance",
         "no_memory": "helix_no_memory",
     }
-    results: dict[str, MethodResult] = {}
+    per_run_results: dict[str, list[MethodResult]] = {}
     for config_name in configs:
         if config_name not in baselines:
             logger.warning("Unknown runtime ablation config: %s", config_name)
             continue
         baseline = baselines[config_name]
-        payload = run_table1_benchmark(
-            runtime_cfg,
-            output_dir / "runtime_ablation" / config_name,
-            data_path=data_path,
-            raw_df=raw_df,
-            mock=mock,
-            baseline_names=[baseline],
-            use_runtime_loops=True,
-        )[baseline]
-        result = _method_result_from_runtime_payload(config_name, payload, runtime_cfg)
-        results[config_name] = result
+        for run_id in range(n_runs):
+            runtime_cfg = _clone_cfg(cfg)
+            runtime_cfg.mining.target_library_size = n_target_factors
+            runtime_cfg.benchmark.seed = base_seed + run_id
+            config_dir = output_dir / "runtime_ablation" / config_name
+            run_dir = config_dir if n_runs == 1 else config_dir / f"run_{run_id}"
+            payload = run_table1_benchmark(
+                runtime_cfg,
+                run_dir,
+                data_path=data_path,
+                raw_df=raw_df,
+                mock=mock,
+                baseline_names=[baseline],
+                use_runtime_loops=True,
+            )[baseline]
+            run_result = _method_result_from_runtime_payload(config_name, payload, runtime_cfg)
+            run_result.run_id = run_id
+            per_run_results.setdefault(config_name, []).append(run_result)
 
+    results: dict[str, MethodResult] = {
+        name: aggregate_method_results(items) for name, items in per_run_results.items()
+    }
+
+    delta_fields = (
+        ("delta_library_ic", "library_ic"),
+        ("delta_library_icir", "library_icir"),
+        ("delta_ew_ic", "ew_ic"),
+        ("delta_icw_ic", "icw_ic"),
+        ("delta_lasso_ic", "lasso_ic"),
+        ("delta_xgb_ic", "xgb_ic"),
+        ("delta_turnover", "avg_turnover"),
+    )
     rows: list[dict[str, Any]] = []
-    full = results.get("full")
-    if full is not None:
-        for config_name, result in results.items():
+    full_runs = per_run_results.get("full")
+    if full_runs:
+        for config_name, items in per_run_results.items():
             if config_name == "full":
                 continue
-            rows.append(
-                {
-                    "config": config_name,
-                    "method": result.method,
-                    "delta_library_ic": result.library_ic - full.library_ic,
-                    "delta_library_icir": result.library_icir - full.library_icir,
-                    "delta_ew_ic": result.ew_ic - full.ew_ic,
-                    "delta_icw_ic": result.icw_ic - full.icw_ic,
-                    "delta_lasso_ic": result.lasso_ic - full.lasso_ic,
-                    "delta_xgb_ic": result.xgb_ic - full.xgb_ic,
-                    "delta_turnover": result.avg_turnover - full.avg_turnover,
-                }
-            )
+            row: dict[str, Any] = {"config": config_name, "method": items[0].method}
+            for column, attribute in delta_fields:
+                deltas = [
+                    float(getattr(item, attribute)) - float(getattr(full_runs[i], attribute))
+                    for i, item in enumerate(items)
+                ]
+                row[column] = float(np.mean(deltas))
+                if n_runs > 1:
+                    row[f"{column}_std"] = float(np.std(deltas, ddof=1))
+            rows.append(row)
     return AblationResult(configs=configs, results=results, contributions=pd.DataFrame(rows))
