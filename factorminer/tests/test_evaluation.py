@@ -15,7 +15,9 @@ from factorminer.evaluation.metrics import (
     compute_ic_win_rate,
     compute_icir,
     compute_pairwise_correlation,
+    compute_pearson_ic,
     compute_quintile_returns,
+    compute_rank_ic,
     compute_turnover,
 )
 
@@ -102,6 +104,17 @@ class TestIC:
         returns = np.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]], dtype=np.float64)
         ic_series = compute_ic(signals, returns)
         assert np.all(np.isnan(ic_series))
+
+    def test_pearson_ic_and_rank_ic_are_explicitly_distinct(self):
+        signals = np.tile(np.array([1.0, 2.0, 3.0, 4.0, 100.0])[:, None], (1, 4))
+        returns = np.tile(np.array([1.0, 2.0, 3.0, 4.0, 5.0])[:, None], (1, 4))
+
+        pearson = compute_pearson_ic(signals, returns)
+        rank = compute_rank_ic(signals, returns)
+
+        np.testing.assert_allclose(rank, 1.0)
+        assert np.all(pearson < 0.8)
+        np.testing.assert_allclose(compute_ic(signals, returns), rank)
 
 
 # ---------------------------------------------------------------------------
@@ -311,3 +324,13 @@ class TestFactorStats:
         returns = rng.normal(0, 0.01, (M, T))
         stats = compute_factor_stats(signals, returns)
         assert stats["ic_series"].shape == (T,)
+
+    def test_factor_stats_labels_legacy_rankic_and_explicit_pearson(self, rng):
+        signals = rng.normal(size=(20, 12))
+        returns = rng.normal(size=(20, 12))
+
+        stats = compute_factor_stats(signals, returns)
+
+        assert stats["ic_definition"] == "spearman_rank"
+        np.testing.assert_allclose(stats["ic_series"], stats["rank_ic_series"])
+        assert stats["pearson_ic_series"].shape == stats["rank_ic_series"].shape

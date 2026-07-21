@@ -14,10 +14,79 @@ from scipy.stats import rankdata
 # Information Coefficient
 # ---------------------------------------------------------------------------
 
-def compute_ic(signals: np.ndarray, returns: np.ndarray) -> np.ndarray:
-    """Compute IC_t = Corr_rank(s_t, r_{t+1}) for each time period.
 
-    Uses Spearman rank correlation computed cross-sectionally at each t.
+def _validate_panel_pair(signals: np.ndarray, returns: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Return two aligned floating-point ``(assets, periods)`` panels."""
+    signal_panel = np.asarray(signals, dtype=np.float64)
+    return_panel = np.asarray(returns, dtype=np.float64)
+    if signal_panel.ndim != 2 or return_panel.ndim != 2:
+        raise ValueError("signals and returns must both be 2-D (assets, periods) panels")
+    if signal_panel.shape != return_panel.shape:
+        raise ValueError(
+            f"signals and returns must have identical shapes; got "
+            f"{signal_panel.shape} and {return_panel.shape}"
+        )
+    return signal_panel, return_panel
+
+
+def _compute_cross_sectional_correlation(
+    signals: np.ndarray,
+    returns: np.ndarray,
+    *,
+    rank: bool,
+    min_assets: int = 5,
+) -> np.ndarray:
+    """Compute a Pearson correlation, optionally after ranking each cross-section."""
+    signal_panel, return_panel = _validate_panel_pair(signals, returns)
+    _, period_count = signal_panel.shape
+    series = np.full(period_count, np.nan, dtype=np.float64)
+
+    for period in range(period_count):
+        signal = signal_panel[:, period]
+        forward_return = return_panel[:, period]
+        valid = np.isfinite(signal) & np.isfinite(forward_return)
+        if int(valid.sum()) < min_assets:
+            continue
+        x = signal[valid]
+        y = forward_return[valid]
+        if rank:
+            x = rankdata(x)
+            y = rankdata(y)
+        x_centered = x - x.mean()
+        y_centered = y - y.mean()
+        denominator = np.sqrt(
+            np.dot(x_centered, x_centered) * np.dot(y_centered, y_centered)
+        )
+        series[period] = (
+            float(np.dot(x_centered, y_centered) / denominator)
+            if denominator > 1e-12
+            else 0.0
+        )
+    return series
+
+
+def compute_pearson_ic(signals: np.ndarray, returns: np.ndarray) -> np.ndarray:
+    """Compute cross-sectional Pearson IC for each period.
+
+    This is the conventional *linear* Information Coefficient. It is kept
+    separate from :func:`compute_rank_ic` because the two answer different
+    questions and are reported separately by Qlib/AlphaBench-style tooling.
+    """
+    return _compute_cross_sectional_correlation(signals, returns, rank=False)
+
+
+def compute_rank_ic(signals: np.ndarray, returns: np.ndarray) -> np.ndarray:
+    """Compute cross-sectional Spearman RankIC for each period."""
+    return _compute_cross_sectional_correlation(signals, returns, rank=True)
+
+
+def compute_ic(signals: np.ndarray, returns: np.ndarray) -> np.ndarray:
+    """Compute the historical FactorMiner IC field (Spearman RankIC).
+
+    ``compute_ic`` is retained as a compatibility alias. FactorMiner has
+    historically used Spearman correlation for fields named ``ic_*``. New
+    code should call :func:`compute_rank_ic` or :func:`compute_pearson_ic`
+    explicitly and label the result accordingly.
 
     Parameters
     ----------
@@ -29,38 +98,17 @@ def compute_ic(signals: np.ndarray, returns: np.ndarray) -> np.ndarray:
     Returns
     -------
     np.ndarray, shape (T,)
-        Spearman rank correlation per period.  NaN where fewer than 5
+        Spearman rank correlation per period. NaN where fewer than 5
         valid (non-NaN) asset pairs exist.
     """
-    M, T = signals.shape
-    ic_series = np.full(T, np.nan, dtype=np.float64)
-
-    for t in range(T):
-        s = signals[:, t]
-        r = returns[:, t]
-        valid = ~(np.isnan(s) | np.isnan(r))
-        n = valid.sum()
-        if n < 5:
-            continue
-        rs = rankdata(s[valid])
-        rr = rankdata(r[valid])
-        # Pearson correlation on ranks = Spearman
-        rs_m = rs - rs.mean()
-        rr_m = rr - rr.mean()
-        denom = np.sqrt((rs_m ** 2).sum() * (rr_m ** 2).sum())
-        if denom < 1e-12:
-            ic_series[t] = 0.0
-        else:
-            ic_series[t] = (rs_m * rr_m).sum() / denom
-
-    return ic_series
+    return compute_rank_ic(signals, returns)
 
 
 def compute_ic_vectorized(signals: np.ndarray, returns: np.ndarray) -> np.ndarray:
-    """Fully vectorized IC computation (faster for large M, T).
+    """Compatibility implementation of FactorMiner's Spearman RankIC.
 
-    Ranks are computed per-column, then Pearson correlation on ranks
-    is computed without Python-level loops over T.
+    Ranks are computed per-column, then Pearson correlation on ranks is
+    computed with the same numerical contract as :func:`compute_rank_ic`.
 
     Parameters
     ----------
@@ -71,6 +119,7 @@ def compute_ic_vectorized(signals: np.ndarray, returns: np.ndarray) -> np.ndarra
     -------
     np.ndarray, shape (T,)
     """
+    signals, returns = _validate_panel_pair(signals, returns)
     M, T = signals.shape
     ic_series = np.full(T, np.nan, dtype=np.float64)
 
@@ -251,7 +300,9 @@ def compute_quintile_returns(
     """
     M, T = signals.shape
     # Accumulate per-quintile return sums
-    quintile_returns = {q: [] for q in range(1, n_quantiles + 1)}
+    quintile_returns: dict[int, list[float]] = {
+        q: [] for q in range(1, n_quantiles + 1)
+    }
 
     for t in range(T):
         s = signals[:, t]
@@ -370,23 +421,53 @@ def compute_factor_stats(
     Returns
     -------
     dict
-        Keys: ic_mean, ic_paper_mean, ic_abs_mean, icir, ic_paper_icir, ic_win_rate,
-              Q1..Q5, long_short, monotonicity, turnover
+        Historical ``ic_*`` keys remain Spearman RankIC for compatibility.
+        Explicit ``rank_ic_*`` and ``pearson_ic_*`` keys prevent metric-name
+        ambiguity in new benchmark artifacts.
     """
-    ic_series = compute_ic(signals, returns)
-    valid_ic = ic_series[~np.isnan(ic_series)]
+    rank_ic_series = compute_rank_ic(signals, returns)
+    pearson_ic_series = compute_pearson_ic(signals, returns)
+    valid_rank_ic = rank_ic_series[~np.isnan(rank_ic_series)]
+    valid_pearson_ic = pearson_ic_series[~np.isnan(pearson_ic_series)]
 
     stats: dict = {
         "metric_version": METRIC_VERSION,
-        "ic_series": ic_series,
-        "ic_mean": compute_ic_mean(ic_series),
-        "ic_paper_mean": compute_ic_paper_mean(ic_series),
-        "ic_abs_mean": compute_ic_abs_mean(ic_series),
-        "icir": compute_icir(ic_series),
-        "ic_paper_icir": compute_ic_paper_icir(ic_series),
-        "ic_win_rate": compute_ic_win_rate(ic_series),
-        "ic_std": float(np.std(valid_ic, ddof=1)) if len(valid_ic) > 2 else 0.0,
-        "n_periods": int((~np.isnan(ic_series)).sum()),
+        "ic_definition": "spearman_rank",
+        "ic_series": rank_ic_series,
+        "ic_mean": compute_ic_mean(rank_ic_series),
+        "ic_paper_mean": compute_ic_paper_mean(rank_ic_series),
+        "ic_abs_mean": compute_ic_abs_mean(rank_ic_series),
+        "icir": compute_icir(rank_ic_series),
+        "ic_paper_icir": compute_ic_paper_icir(rank_ic_series),
+        "ic_win_rate": compute_ic_win_rate(rank_ic_series),
+        "ic_std": (
+            float(np.std(valid_rank_ic, ddof=1)) if len(valid_rank_ic) > 2 else 0.0
+        ),
+        "n_periods": int((~np.isnan(rank_ic_series)).sum()),
+        "rank_ic_series": rank_ic_series,
+        "rank_ic_mean": compute_ic_mean(rank_ic_series),
+        "rank_ic_paper_mean": compute_ic_paper_mean(rank_ic_series),
+        "rank_ic_abs_mean": compute_ic_abs_mean(rank_ic_series),
+        "rank_icir": compute_icir(rank_ic_series),
+        "rank_ic_paper_icir": compute_ic_paper_icir(rank_ic_series),
+        "rank_ic_win_rate": compute_ic_win_rate(rank_ic_series),
+        "rank_ic_std": (
+            float(np.std(valid_rank_ic, ddof=1)) if len(valid_rank_ic) > 2 else 0.0
+        ),
+        "rank_ic_n_periods": int((~np.isnan(rank_ic_series)).sum()),
+        "pearson_ic_series": pearson_ic_series,
+        "pearson_ic_mean": compute_ic_mean(pearson_ic_series),
+        "pearson_ic_paper_mean": compute_ic_paper_mean(pearson_ic_series),
+        "pearson_ic_abs_mean": compute_ic_abs_mean(pearson_ic_series),
+        "pearson_icir": compute_icir(pearson_ic_series),
+        "pearson_ic_paper_icir": compute_ic_paper_icir(pearson_ic_series),
+        "pearson_ic_win_rate": compute_ic_win_rate(pearson_ic_series),
+        "pearson_ic_std": (
+            float(np.std(valid_pearson_ic, ddof=1))
+            if len(valid_pearson_ic) > 2
+            else 0.0
+        ),
+        "pearson_ic_n_periods": int((~np.isnan(pearson_ic_series)).sum()),
     }
 
     # Quintile analysis

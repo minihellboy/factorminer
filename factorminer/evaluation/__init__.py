@@ -10,6 +10,8 @@ _EXPORTS = {
         for name in (
             "METRIC_VERSION",
             "compute_ic",
+            "compute_rank_ic",
+            "compute_pearson_ic",
             "compute_ic_vectorized",
             "compute_icir",
             "compute_ic_mean",
@@ -145,6 +147,20 @@ _EXPORTS = {
             "RiskPortfolioConfig",
             "RiskPortfolioResult",
             "construct_portfolio",
+        )
+    },
+    **{
+        name: "factorminer.evaluation.industry_evidence"
+        for name in (
+            "INDUSTRY_EVIDENCE_VERSION",
+            "IndustryEvidenceConfig",
+            "HACMeanTestResult",
+            "ICMetricSummary",
+            "RiskResidualizationResult",
+            "IndustryEvidenceReport",
+            "compute_hac_mean_test",
+            "residualize_against_risk_exposures",
+            "evaluate_industry_evidence",
         )
     },
 }

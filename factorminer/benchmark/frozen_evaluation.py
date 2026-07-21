@@ -137,12 +137,17 @@ def _normalize_backtest_stats(stats: dict) -> dict[str, float]:
     paper_ic = abs(signed_ic)
     return {
         "metric_version": METRIC_VERSION,
+        "ic_definition": "spearman_rank",
         "ic": paper_ic,
         "ic_mean": signed_ic,
         "ic_paper_mean": paper_ic,
         "ic_abs_mean": float(np.mean(np.abs(valid_ic))) if valid_ic.size else 0.0,
         "icir": _abs_icir_from_series(ic_series),
         "ic_win_rate": float(stats.get("ic_win_rate", 0.0)),
+        "rank_ic_mean": float(stats.get("rank_ic_mean", signed_ic)),
+        "rank_icir": float(stats.get("rank_icir", stats.get("icir", 0.0))),
+        "pearson_ic_mean": float(stats.get("pearson_ic_mean", 0.0)),
+        "pearson_icir": float(stats.get("pearson_icir", 0.0)),
         "long_short": float(stats.get("ls_return", 0.0)),
         "monotonicity": float(stats.get("monotonicity", 0.0)),
         "turnover": float(stats.get("avg_turnover", 0.0)),
@@ -205,6 +210,10 @@ def evaluate_frozen_set(
         "library": {
             "ic": 0.0,
             "icir": 0.0,
+            "rank_ic": 0.0,
+            "rank_icir": 0.0,
+            "pearson_ic": 0.0,
+            "pearson_icir": 0.0,
             "avg_abs_rho": 0.0,
         },
         "combinations": {},
@@ -227,6 +236,27 @@ def evaluate_frozen_set(
             np.mean([artifact.split_stats[split_name]["ic_paper_icir"] for artifact in succeeded])
         ),
         "metric_version": METRIC_VERSION,
+        "ic_definition": "spearman_rank",
+        "rank_ic": float(
+            np.mean(
+                [artifact.split_stats[split_name]["rank_ic_paper_mean"] for artifact in succeeded]
+            )
+        ),
+        "rank_icir": float(
+            np.mean(
+                [artifact.split_stats[split_name]["rank_ic_paper_icir"] for artifact in succeeded]
+            )
+        ),
+        "pearson_ic": float(
+            np.mean(
+                [artifact.split_stats[split_name]["pearson_ic_paper_mean"] for artifact in succeeded]
+            )
+        ),
+        "pearson_icir": float(
+            np.mean(
+                [artifact.split_stats[split_name]["pearson_ic_paper_icir"] for artifact in succeeded]
+            )
+        ),
         "avg_abs_rho": _avg_abs_rho(succeeded, split_name),
     }
 
