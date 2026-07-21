@@ -8,11 +8,14 @@ factor statistics used by the validation pipeline.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 from scipy.stats import rankdata
 
 # ---------------------------------------------------------------------------
 # Information Coefficient
 # ---------------------------------------------------------------------------
+
+_EVALUATION_BLOCK_SIZE = 128
 
 
 def _validate_panel_pair(signals: np.ndarray, returns: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -29,6 +32,13 @@ def _validate_panel_pair(signals: np.ndarray, returns: np.ndarray) -> tuple[np.n
     return signal_panel, return_panel
 
 
+def _column_average_ranks(values: np.ndarray) -> np.ndarray:
+    """Return average ranks per column while retaining missing entries."""
+    return pd.DataFrame(values).rank(method="average", na_option="keep").to_numpy(
+        dtype=np.float64, copy=False
+    )
+
+
 def _compute_cross_sectional_correlation(
     signals: np.ndarray,
     returns: np.ndarray,
@@ -38,26 +48,49 @@ def _compute_cross_sectional_correlation(
 ) -> np.ndarray:
     """Compute a Pearson correlation, optionally after ranking each cross-section."""
     signal_panel, return_panel = _validate_panel_pair(signals, returns)
-    _, period_count = signal_panel.shape
-    series = np.full(period_count, np.nan, dtype=np.float64)
+    series = np.full(signal_panel.shape[1], np.nan, dtype=np.float64)
+    for start in range(0, signal_panel.shape[1], _EVALUATION_BLOCK_SIZE):
+        stop = start + _EVALUATION_BLOCK_SIZE
+        left_block = signal_panel[:, start:stop]
+        right_block = return_panel[:, start:stop]
+        valid = np.isfinite(left_block) & np.isfinite(right_block)
+        observations = valid.sum(axis=0)
 
-    for period in range(period_count):
-        signal = signal_panel[:, period]
-        forward_return = return_panel[:, period]
-        valid = np.isfinite(signal) & np.isfinite(forward_return)
-        if int(valid.sum()) < min_assets:
-            continue
-        x = signal[valid]
-        y = forward_return[valid]
+        left = np.where(valid, left_block, np.nan)
+        right = np.where(valid, right_block, np.nan)
         if rank:
-            x = rankdata(x)
-            y = rankdata(y)
-        x_centered = x - x.mean()
-        y_centered = y - y.mean()
-        denominator = np.sqrt(np.dot(x_centered, x_centered) * np.dot(y_centered, y_centered))
-        series[period] = (
-            float(np.dot(x_centered, y_centered) / denominator) if denominator > 1e-12 else 0.0
+            left = _column_average_ranks(left)
+            right = _column_average_ranks(right)
+
+        left_values = np.where(valid, left, 0.0)
+        right_values = np.where(valid, right, 0.0)
+        left_mean = np.divide(
+            left_values.sum(axis=0),
+            observations,
+            out=np.zeros_like(observations, dtype=np.float64),
+            where=observations > 0,
         )
+        right_mean = np.divide(
+            right_values.sum(axis=0),
+            observations,
+            out=np.zeros_like(observations, dtype=np.float64),
+            where=observations > 0,
+        )
+        left_centered = np.where(valid, left - left_mean, 0.0)
+        right_centered = np.where(valid, right - right_mean, 0.0)
+        numerator = np.sum(left_centered * right_centered, axis=0)
+        denominator = np.sqrt(
+            np.sum(left_centered**2, axis=0) * np.sum(right_centered**2, axis=0)
+        )
+        correlation = np.divide(
+            numerator,
+            denominator,
+            out=np.zeros_like(numerator),
+            where=denominator > 1e-12,
+        )
+        usable = observations >= min_assets
+        series_block = series[start:stop]
+        series_block[usable] = correlation[usable]
     return series
 
 
@@ -115,31 +148,7 @@ def compute_ic_vectorized(signals: np.ndarray, returns: np.ndarray) -> np.ndarra
     -------
     np.ndarray, shape (T,)
     """
-    signals, returns = _validate_panel_pair(signals, returns)
-    M, T = signals.shape
-    ic_series = np.full(T, np.nan, dtype=np.float64)
-
-    # Mask invalid entries
-    invalid = ~np.isfinite(signals) | ~np.isfinite(returns)
-
-    # Rank each column independently (replace NaN with very large value to push to end)
-    big = 1e18
-    sig_filled = np.where(invalid, big, signals)
-    ret_filled = np.where(invalid, big, returns)
-
-    for t in range(T):
-        valid = ~invalid[:, t]
-        n = valid.sum()
-        if n < 5:
-            continue
-        rs = rankdata(sig_filled[valid, t])
-        rr = rankdata(ret_filled[valid, t])
-        rs_m = rs - rs.mean()
-        rr_m = rr - rr.mean()
-        denom = np.sqrt((rs_m**2).sum() * (rr_m**2).sum())
-        ic_series[t] = (rs_m * rr_m).sum() / denom if denom > 1e-12 else 0.0
-
-    return ic_series
+    return compute_rank_ic(signals, returns)
 
 
 # ---------------------------------------------------------------------------
@@ -247,29 +256,11 @@ def compute_pairwise_correlation(
     float
         Average cross-sectional Spearman correlation.
     """
-    M, T = signals_a.shape
-    corrs = []
-
-    for t in range(T):
-        a = signals_a[:, t]
-        b = signals_b[:, t]
-        valid = np.isfinite(a) & np.isfinite(b)
-        n = valid.sum()
-        if n < 5:
-            continue
-        ra = rankdata(a[valid])
-        rb = rankdata(b[valid])
-        ra_m = ra - ra.mean()
-        rb_m = rb - rb.mean()
-        denom = np.sqrt((ra_m**2).sum() * (rb_m**2).sum())
-        if denom < 1e-12:
-            corrs.append(0.0)
-        else:
-            corrs.append(float((ra_m * rb_m).sum() / denom))
-
-    if not corrs:
+    correlations = compute_rank_ic(signals_a, signals_b)
+    valid = correlations[np.isfinite(correlations)]
+    if valid.size == 0:
         return 0.0
-    return float(np.mean(corrs))
+    return float(np.mean(valid))
 
 
 # ---------------------------------------------------------------------------
@@ -297,42 +288,57 @@ def compute_quintile_returns(
         Keys: Q1..Q{n}, long_short, monotonicity.
         Q1 is lowest signal quintile, Q{n} is highest.
     """
-    M, T = signals.shape
-    # Accumulate per-quintile return sums
-    quintile_returns: dict[int, list[float]] = {q: [] for q in range(1, n_quantiles + 1)}
-
-    for t in range(T):
-        s = signals[:, t]
-        r = returns[:, t]
-        eligible = np.isfinite(s)
-        n = int(eligible.sum())
-        if n < n_quantiles:
-            continue
-        s_valid = s[eligible]
-        r_eligible = r[eligible]
-        # Assign quintile labels via rank
-        ranks = rankdata(s_valid)
-        # Map to quintile: ceil(rank / n * n_quantiles), clamped
-        q_labels = np.clip(
-            np.ceil(ranks / n * n_quantiles).astype(int),
-            1,
-            n_quantiles,
+    signals, returns = _validate_panel_pair(signals, returns)
+    _, period_count = signals.shape
+    n_quantiles = int(n_quantiles)
+    result: dict = {}
+    return_sums = np.zeros(n_quantiles, dtype=np.float64)
+    return_counts = np.zeros(n_quantiles, dtype=np.int64)
+    for start in range(0, period_count, _EVALUATION_BLOCK_SIZE):
+        stop = start + _EVALUATION_BLOCK_SIZE
+        signal_block = signals[:, start:stop]
+        return_block = returns[:, start:stop]
+        eligible = np.isfinite(signal_block)
+        eligible_count = eligible.sum(axis=0)
+        ranks = _column_average_ranks(np.where(eligible, signal_block, np.nan))
+        quantile_labels = np.ceil(
+            np.divide(
+                ranks,
+                eligible_count,
+                out=np.full_like(ranks, np.nan),
+                where=eligible_count > 0,
+            )
+            * n_quantiles
         )
-        for q in range(1, n_quantiles + 1):
-            mask = q_labels == q
-            bucket_returns = r_eligible[mask]
-            if mask.any() and np.all(np.isfinite(bucket_returns)):
-                quintile_returns[q].append(float(np.mean(bucket_returns)))
+        quantile_labels = np.clip(quantile_labels, 1, n_quantiles)
+        usable_period = eligible_count >= n_quantiles
 
-    result = {}
-    means = {}
+        for q in range(1, n_quantiles + 1):
+            members = quantile_labels == q
+            has_members = members.any(axis=0)
+            finite_returns = np.all(
+                np.where(members, np.isfinite(return_block), True), axis=0
+            )
+            take = usable_period & has_members & finite_returns
+            totals = np.where(members, return_block, 0.0).sum(axis=0)
+            counts = members.sum(axis=0)
+            period_returns = np.divide(
+                totals,
+                counts,
+                out=np.zeros(signal_block.shape[1], dtype=np.float64),
+                where=counts > 0,
+            )
+            return_sums[q - 1] += period_returns[take].sum()
+            return_counts[q - 1] += np.count_nonzero(take)
+
+    means: dict[int, float] = {}
     for q in range(1, n_quantiles + 1):
-        key = f"Q{q}"
-        if quintile_returns[q]:
-            means[q] = float(np.mean(quintile_returns[q]))
-        else:
-            means[q] = 0.0
-        result[key] = means[q]
+        means[q] = (
+            float(return_sums[q - 1] / return_counts[q - 1])
+            if return_counts[q - 1]
+            else 0.0
+        )
+        result[f"Q{q}"] = means[q]
 
     # Long-short: top quintile minus bottom quintile
     result["long_short"] = means[n_quantiles] - means[1]
