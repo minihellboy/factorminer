@@ -1,3 +1,8 @@
+# SPDX-License-Identifier: BUSL-1.1
+# SPDX-FileCopyrightText: 2026 FactorMiner Team
+# Licensed under the Business Source License 1.1, NOT the repository's
+# default MIT license. See /LICENSE-BUSL and /LICENSING.md for full terms.
+
 """Offline RFT dataset export for external GRPO/Verl-style trainers.
 
 QuantEvolver (arXiv:2605.15412) converts mining backtest scores into GRPO/RFT

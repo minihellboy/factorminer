@@ -180,11 +180,62 @@ def check_marketplace_sources() -> None:
             err(f"marketplace: {name} source -> {source} (no plugin.json)")
 
 
+# Authoritative BUSL-1.1 module list. Must match the table in LICENSING.md
+# and the SPDX header actually present in each file -- both directions are
+# checked so the license boundary cannot silently drift.
+BUSL_MODULES = [
+    "factorminer/architecture/sealed_joint_search.py",
+    "factorminer/architecture/_sealed_evaluator_panel.py",
+    "factorminer/architecture/island_model.py",
+    "factorminer/architecture/rft_export.py",
+    "factorminer/architecture/model_stage.py",
+    "factorminer/evaluation/crowding.py",
+    "factorminer/evaluation/capacity.py",
+    "factorminer/evaluation/model_zoo.py",
+    "factorminer/evaluation/mrm_pack.py",
+]
+BUSL_HEADER = "SPDX-License-Identifier: BUSL-1.1"
+
+
+def _has_busl_header(path: Path) -> bool:
+    global checked
+    checked += 1
+    head = "\n".join(path.read_text(encoding="utf-8").splitlines()[:6])
+    return BUSL_HEADER in head
+
+
+def check_busl_license_boundary() -> None:
+    global checked
+    licensing_doc = (ROOT / "LICENSING.md").read_text(encoding="utf-8")
+    for rel_path in BUSL_MODULES:
+        path = ROOT / rel_path
+        checked += 1
+        if not path.exists():
+            err(f"busl: {rel_path}: listed in scripts/check.py but file does not exist")
+            continue
+        if not _has_busl_header(path):
+            err(f"busl: {rel_path}: listed as BUSL-1.1 but missing the SPDX header")
+        if rel_path not in licensing_doc:
+            err(f"busl: {rel_path}: missing from the LICENSING.md module table")
+
+    busl_set = set(BUSL_MODULES)
+    for path in sorted((ROOT / "factorminer").rglob("*.py")):
+        rel_path = rel(path)
+        if "__pycache__" in rel_path or rel_path in busl_set:
+            continue
+        if _has_busl_header(path):
+            err(
+                f"busl: {rel_path}: carries a BUSL-1.1 SPDX header but is not in "
+                "scripts/check.py BUSL_MODULES or LICENSING.md"
+            )
+
+
 def main() -> int:
     check_json_files()
     check_frontmatter()
     check_managed_agents()
     check_marketplace_sources()
+    check_busl_license_boundary()
 
     if errors:
         print(f"FAIL - {len(errors)} issue(s) across {checked} check(s):", file=sys.stderr)
