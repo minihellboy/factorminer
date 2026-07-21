@@ -25,18 +25,23 @@ updates:
       time: "06:15"
       timezone: Europe/Berlin
     groups:
-      python-dependencies:
+      routine-python-updates:
+        # Keep broad numerical, LLM, plotting, native, and model-stack updates
+        # isolated. This group is limited to routine framework/tooling changes.
         patterns:
-          - "*"
-        # Native and accelerator stacks require individual compatibility review.
-        exclude-patterns:
-          - cupy-cuda12x
-          - faiss-cpu
-          - sentence-transformers
-          - tokenizers
-          - torch
-          - transformers
-          - xgboost
+          - click
+          - mcp
+          - mypy
+          - pydantic-settings
+          - pytest
+          - pytest-cov
+          - python-multipart
+          - ruff
+          - starlette
+          - tqdm
+        update-types:
+          - minor
+          - patch
     commit-message:
       prefix: build
     open-pull-requests-limit: 3
