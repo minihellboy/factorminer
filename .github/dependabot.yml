@@ -18,6 +18,7 @@ updates:
 
   - package-ecosystem: uv
     directory: /
+    versioning-strategy: lockfile-only
     schedule:
       interval: weekly
       day: monday
@@ -27,6 +28,15 @@ updates:
       python-dependencies:
         patterns:
           - "*"
+        # Native and accelerator stacks require individual compatibility review.
+        exclude-patterns:
+          - cupy-cuda12x
+          - faiss-cpu
+          - sentence-transformers
+          - tokenizers
+          - torch
+          - transformers
+          - xgboost
     commit-message:
       prefix: build
     open-pull-requests-limit: 3
