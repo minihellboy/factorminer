@@ -20,7 +20,11 @@ from factorminer.architecture.partner_review import (
     validate_review_assertions,
     validate_structured_feedback,
 )
-from factorminer.architecture.research_receipt import EvidenceTier, ExternalResearchReceipt
+from factorminer.architecture.research_receipt import (
+    EvidenceTier,
+    ExternalResearchReceipt,
+    derive_release_id,
+)
 from factorminer.benchmark.reporting import file_sha256
 
 
@@ -59,7 +63,16 @@ def _load_private_receipt(release_dir: Path) -> tuple[ExternalResearchReceipt, P
     receipt_path = release_dir / "receipt.json"
     if not receipt_path.is_file():
         raise FileNotFoundError(f"receipt is missing: {receipt_path}")
-    receipt = ExternalResearchReceipt.from_dict(json.loads(receipt_path.read_text()))
+    payload = json.loads(receipt_path.read_text())
+    if not isinstance(payload, dict):
+        raise ValueError("receipt.json must contain a JSON object")
+    receipt = ExternalResearchReceipt.from_dict(payload)
+    if receipt.to_dict() != payload:
+        raise ValueError("receipt schema round-trip changed the serialized payload")
+    if receipt.release_id != derive_release_id(receipt):
+        raise ValueError("receipt release ID does not match its content")
+    if release_dir.name != receipt.release_id:
+        raise ValueError("receipt release ID does not match its directory")
     if receipt.evidence_tier != EvidenceTier.PRIVATE_PARTNER_OBSERVED:
         raise ValueError("partner review requests require a private_partner_observed receipt")
     return receipt, receipt_path
@@ -147,6 +160,19 @@ def acknowledge_partner_review(
 
 
 def parse_partner_review_request(payload: dict[str, Any]) -> PartnerReviewRequest:
+    expected_fields = {
+        "schema_version",
+        "review_id",
+        "receipt_release_id",
+        "receipt_sha256",
+        "partner_pseudonym",
+        "requested_assertions",
+        "requested_at",
+        "expires_at",
+        "instructions",
+    }
+    if set(payload) != expected_fields:
+        raise ValueError("partner review request fields do not match schema")
     request = PartnerReviewRequest(
         schema_version=int(payload["schema_version"]),
         review_id=str(payload["review_id"]),
@@ -165,6 +191,22 @@ def parse_partner_review_request(payload: dict[str, Any]) -> PartnerReviewReques
 
 
 def parse_partner_acknowledgment(payload: dict[str, Any]) -> PartnerReviewAcknowledgment:
+    expected_fields = {
+        "schema_version",
+        "acknowledgment_id",
+        "review_id",
+        "receipt_release_id",
+        "receipt_sha256",
+        "reviewer_pseudonym",
+        "assertions",
+        "reviewed_at",
+        "publication_consent",
+        "structured_feedback",
+        "signature_scheme",
+        "signature",
+    }
+    if set(payload) != expected_fields:
+        raise ValueError("partner acknowledgment fields do not match schema")
     acknowledgment = PartnerReviewAcknowledgment(
         schema_version=int(payload["schema_version"]),
         acknowledgment_id=str(payload["acknowledgment_id"]),

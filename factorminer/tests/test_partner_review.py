@@ -17,6 +17,8 @@ from factorminer.architecture.research_receipt import (
 )
 from factorminer.benchmark.partner_review import (
     acknowledge_partner_review,
+    parse_partner_acknowledgment,
+    parse_partner_review_request,
     prepare_partner_review,
     verify_partner_acknowledgment,
 )
@@ -197,7 +199,7 @@ def test_receipt_change_after_request_invalidates_acknowledgment(tmp_path) -> No
         request, acknowledgment, release_dir=release_dir, key_hex="55" * 32
     )
     assert passed is False
-    assert "receipt content changed after the review request" in mismatches
+    assert "receipt release ID does not match its content" in mismatches
 
 
 def test_partner_review_feedback_is_bounded_and_non_narrative(tmp_path) -> None:
@@ -215,6 +217,50 @@ def test_partner_review_feedback_is_bounded_and_non_narrative(tmp_path) -> None:
             publication_consent="private",
             key_hex="ab" * 32,
             structured_feedback={"free_text": "confidential narrative"},
+        )
+
+
+def test_partner_review_parsers_reject_unsigned_top_level_narrative(tmp_path) -> None:
+    release_dir = _release(tmp_path)
+    now = datetime(2026, 7, 21, tzinfo=UTC)
+    request = prepare_partner_review(
+        release_dir,
+        partner_pseudonym="partner-01",
+        requested_assertions=("protocol_observed",),
+        now=now,
+    )
+    acknowledgment = acknowledge_partner_review(
+        request,
+        reviewer_pseudonym="reviewer-01",
+        assertions=("protocol_observed",),
+        publication_consent="anonymous",
+        key_hex="ab" * 32,
+        now=now,
+    )
+
+    request_payload = request.to_dict()
+    request_payload["producer_claim"] = "unsigned narrative"
+    with pytest.raises(ValueError, match="request fields do not match schema"):
+        parse_partner_review_request(request_payload)
+
+    acknowledgment_payload = acknowledgment.to_dict()
+    acknowledgment_payload["endorsement"] = "unsigned partner quote"
+    with pytest.raises(ValueError, match="acknowledgment fields do not match schema"):
+        parse_partner_acknowledgment(acknowledgment_payload)
+
+
+def test_partner_review_rejects_receipt_with_invalid_content_address(tmp_path) -> None:
+    release_dir = _release(tmp_path)
+    receipt_path = release_dir / "receipt.json"
+    payload = json.loads(receipt_path.read_text())
+    payload["seed"] = 999
+    receipt_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="release ID does not match its content"):
+        prepare_partner_review(
+            release_dir,
+            partner_pseudonym="partner-01",
+            requested_assertions=("protocol_observed",),
         )
 
 

@@ -39,7 +39,9 @@ class HostedWorker:
 
     def _job_directory(self, job: JobRecord) -> Path:
         path = self.service.resolve_tenant_path(
-            job.tenant_id, Path("jobs") / job.job_id, must_exist=False
+            job.tenant_id,
+            Path("jobs") / job.job_id / f"attempt-{job.attempt:03d}",
+            must_exist=False,
         )
         path.mkdir(parents=True, exist_ok=True)
         return path
@@ -255,9 +257,15 @@ class HostedWorker:
         result = {
             "returncode": returncode,
             "elapsed_seconds": elapsed_seconds,
-            "stdout": (Path("jobs") / job.job_id / "stdout.log").as_posix(),
-            "stderr": (Path("jobs") / job.job_id / "stderr.log").as_posix(),
-            "output": (Path("jobs") / job.job_id / "output").as_posix(),
+            "stdout": (
+                Path("jobs") / job.job_id / f"attempt-{job.attempt:03d}" / "stdout.log"
+            ).as_posix(),
+            "stderr": (
+                Path("jobs") / job.job_id / f"attempt-{job.attempt:03d}" / "stderr.log"
+            ).as_posix(),
+            "output": (
+                Path("jobs") / job.job_id / f"attempt-{job.attempt:03d}" / "output"
+            ).as_posix(),
         }
         return self.service.store.finish_job(
             job.job_id,

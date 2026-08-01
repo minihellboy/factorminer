@@ -224,6 +224,17 @@ def test_prepare_rejects_invalid_ohlc_bounds(tmp_path: Path) -> None:
         prepare_public_dataset(lock_path, tmp_path / "prepared", cache_dir=cache, offline=True)
 
 
+def test_lock_rejects_invalid_target_horizon(tmp_path: Path) -> None:
+    content = _archive_bytes(tmp_path)
+    lock_path = _lock(tmp_path, content)
+    payload = json.loads(lock_path.read_text())
+    payload["target"]["holding_bars"] = 0
+    lock_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="holding_bars must be at least 1"):
+        load_public_dataset_lock(lock_path)
+
+
 def test_verifier_rejects_manifest_path_escape(tmp_path: Path) -> None:
     content = _archive_bytes(tmp_path)
     lock_path = _lock(tmp_path, content)

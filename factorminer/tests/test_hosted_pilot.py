@@ -193,9 +193,10 @@ def test_worker_runs_allowlisted_job_and_records_artifacts_usage_and_audit(tmp_p
     assert result.state == JobState.SUCCEEDED, result.error
     artifacts = service.list_artifacts(principal_a, submitted.job_id)
     paths = {item["path"] for item in artifacts}
-    assert f"jobs/{submitted.job_id}/stdout.log" in paths
+    stdout_path = f"jobs/{submitted.job_id}/attempt-001/stdout.log"
+    assert stdout_path in paths
     stdout = service.read_text_artifact(
-        principal_a, submitted.job_id, f"jobs/{submitted.job_id}/stdout.log"
+        principal_a, submitted.job_id, stdout_path
     )
     assert '"status": "valid"' in stdout["text"]
     usage = service.usage(principal_a)
@@ -257,6 +258,38 @@ def test_worker_claim_respects_per_tenant_active_job_quota(tmp_path: Path) -> No
     claimed = service.store.claim_job(worker_id="worker-a", lease_seconds=30)
     assert claimed is not None
     assert service.store.claim_job(worker_id="worker-b", lease_seconds=30) is None
+
+
+def test_recovered_job_attempt_uses_isolated_artifact_directory(tmp_path: Path) -> None:
+    service, _, _, principal_a, _ = _service(tmp_path)
+    service.put_input("tenant-a", _market_csv(tmp_path / "a.csv"))
+    service.submit_job(
+        principal_a,
+        kind="validate_data",
+        parameters={"input_path": "inputs/a.csv"},
+        idempotency_key="recover-attempt",
+    )
+    first = service.store.claim_job(worker_id="worker-old", lease_seconds=30)
+    assert first is not None and first.attempt == 1
+    worker = HostedWorker(service, worker_id="worker-old")
+    first_dir = worker._job_directory(first)
+    (first_dir / "orphan.log").write_text("old attempt")
+
+    expired = (datetime.now(UTC) - timedelta(seconds=1)).isoformat()
+    with sqlite3.connect(service.store.path) as connection:
+        connection.execute(
+            "UPDATE jobs SET lease_expires_at = ? WHERE job_id = ?",
+            (expired, first.job_id),
+        )
+    assert service.store.recover_expired_leases() == 1
+    second = service.store.claim_job(worker_id="worker-new", lease_seconds=30)
+    assert second is not None and second.attempt == 2
+    second_dir = HostedWorker(service, worker_id="worker-new")._job_directory(second)
+
+    assert first_dir.name == "attempt-001"
+    assert second_dir.name == "attempt-002"
+    assert first_dir != second_dir
+    assert (first_dir / "orphan.log").read_text() == "old attempt"
 
 
 def test_consent_required_aggregate_is_k_anonymous_and_revocable(tmp_path: Path) -> None:

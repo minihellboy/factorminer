@@ -153,6 +153,16 @@ def load_public_dataset_lock(path: str | Path) -> PublicDatasetLock:
         raise ValueError("public dataset target has an unsupported price_pair")
     if not str(lock.target.get("name", "")).strip():
         raise ValueError("public dataset target requires a name")
+    for field in ("entry_delay_bars", "holding_bars"):
+        value = lock.target.get(field)
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise ValueError(f"public dataset target {field} must be an integer")
+    if int(lock.target["entry_delay_bars"]) < 0:
+        raise ValueError("public dataset target entry_delay_bars must be non-negative")
+    if int(lock.target["holding_bars"]) < 1:
+        raise ValueError("public dataset target holding_bars must be at least 1")
+    if lock.target.get("return_transform") not in {"simple", "log"}:
+        raise ValueError("public dataset target has an unsupported return_transform")
     if tuple(sorted(set(lock.assets))) != lock.assets:
         raise ValueError("public dataset assets must be unique and sorted")
     expected_pairs = {(archive.asset_id, archive.period) for archive in lock.archives}

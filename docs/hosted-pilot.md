@@ -24,6 +24,11 @@ SQLite provides durable pilot coordination on one host, not horizontally
 scaled consensus. Do not run multiple machines against a network-mounted SQLite
 file.
 
+Each retry writes to an attempt-scoped job directory. If a crashed worker leaves
+an orphaned subprocess, a recovered attempt cannot corrupt or replace its
+artifacts. The process supervisor or OS/container boundary must still reap
+orphaned process groups and enforce CPU and memory limits.
+
 Request-rate checks and daily compute reservations are serialized in the same
 database transactions that admit the corresponding event or job, preventing
 parallel submissions from bypassing those application quotas. Retention removes

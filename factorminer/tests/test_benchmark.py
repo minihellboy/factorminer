@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 from click.testing import CliRunner
 
 from factorminer.benchmark.phase2_reporting import (
@@ -33,6 +34,7 @@ from factorminer.core.library_io import save_library
 from factorminer.core.session import MiningSession
 from factorminer.evaluation.runtime import DatasetSplit, EvaluationDataset, FactorEvaluationArtifact
 from factorminer.utils.config import load_config
+from scripts import run_phase2_benchmark as phase2_script
 
 
 def _artifact(
@@ -529,6 +531,35 @@ def test_phase2_split_derivation_has_disjoint_purged_three_way_windows():
     assert train_end < validation_start < validation_end < test_start
     assert validation_start - train_end == pd.Timedelta(days=2)
     assert test_start - validation_end == pd.Timedelta(days=2)
+
+
+def test_phase2_split_derivation_sizes_purge_to_target_horizon():
+    dates = pd.date_range("2024-01-01", periods=30, freq="D", tz="UTC")
+    raw = pd.DataFrame({"datetime": dates})
+
+    train, validation, test = _derive_split_periods(raw, purge_bars=3)
+
+    train_end = pd.Timestamp(train[1])
+    validation_start = pd.Timestamp(validation[0])
+    validation_end = pd.Timestamp(validation[1])
+    test_start = pd.Timestamp(test[0])
+    assert validation_start - train_end == pd.Timedelta(days=4)
+    assert test_start - validation_end == pd.Timedelta(days=4)
+
+
+def test_phase2_runner_rejects_mock_data_receipt_substitution(monkeypatch):
+    monkeypatch.setattr(
+        phase2_script,
+        "_parse_args",
+        lambda: SimpleNamespace(
+            mock=True,
+            data="prepared/market_data.csv",
+            dataset_manifest="prepared/dataset_manifest.json",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="--mock cannot be combined"):
+        phase2_script.main()
 
 
 def test_diebold_mariano_handles_identical_series_without_nan_direction():

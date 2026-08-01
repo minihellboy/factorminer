@@ -208,6 +208,8 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
+    if args.mock and (args.data is not None or args.dataset_manifest is not None):
+        raise ValueError("--mock cannot be combined with --data or --dataset-manifest")
     actual_mock = bool(args.mock or args.data is None)
     evidence_tier_value = args.evidence_tier or ("simulated" if actual_mock else "unverified")
     data_license_class = args.data_license_class or ("synthetic" if actual_mock else "unknown")
@@ -305,12 +307,23 @@ def main() -> None:
         )
         print(f"  Loaded in {time.perf_counter() - t0:.1f}s")
 
-    train_period, validation_period, test_period = _derive_split_periods(raw_df)
+    purge_bars = 1
+    if prepared_dataset_manifest is not None:
+        target_contract = dict(prepared_dataset_manifest["target"])
+        purge_bars = max(
+            1,
+            int(target_contract["entry_delay_bars"])
+            + int(target_contract["holding_bars"]),
+        )
+    train_period, validation_period, test_period = _derive_split_periods(
+        raw_df,
+        purge_bars=purge_bars,
+    )
     cfg_runtime = copy.deepcopy(cfg)
     cfg_runtime.data.train_period = train_period
     cfg_runtime.data.validation_period = validation_period
     cfg_runtime.data.test_period = test_period
-    cfg_runtime.data.purge_bars = 1
+    cfg_runtime.data.purge_bars = purge_bars
     cfg_runtime.data.embargo_bars = 0
     cfg_runtime.mining.target_library_size = args.n_factors
     cfg_runtime.mining.max_iterations = max(20, args.n_factors * 5)
@@ -326,7 +339,8 @@ def main() -> None:
     print(
         f"  Train: [{train_period[0]}, {train_period[1]}]  "
         f"Validation: [{validation_period[0]}, {validation_period[1]}]  "
-        f"Test: [{test_period[0]}, {test_period[1]}]  (purge=1, embargo=0 bars)"
+        f"Test: [{test_period[0]}, {test_period[1]}]  "
+        f"(purge={purge_bars}, embargo=0 bars)"
     )
 
     # ================================================================
@@ -611,7 +625,7 @@ def main() -> None:
             "train_period": train_period,
             "validation_period": validation_period,
             "test_period": test_period,
-            "purge_bars": 1,
+            "purge_bars": purge_bars,
             "embargo_bars": 0,
             "asset_class": cfg_runtime.data.asset_class,
             "universe": prepared_dataset_manifest["universe"],
@@ -625,7 +639,7 @@ def main() -> None:
             "train_period": train_period,
             "validation_period": validation_period,
             "test_period": test_period,
-            "purge_bars": 1,
+            "purge_bars": purge_bars,
             "embargo_bars": 0,
             "asset_class": cfg_runtime.data.asset_class,
             "universe": cfg_runtime.data.universe,

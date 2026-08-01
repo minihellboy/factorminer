@@ -141,19 +141,29 @@ def _build_phase2_manifest(
 
 def _derive_split_periods(
     raw_df: pd.DataFrame,
+    *,
+    purge_bars: int = 1,
 ) -> tuple[list[str], list[str], list[str]]:
-    """Derive train/validation/test windows with a one-period purge at boundaries."""
+    """Derive train/validation/test windows with horizon-sized boundary purges."""
     timestamps = pd.to_datetime(raw_df["datetime"]).sort_values().unique()
     if len(timestamps) < 10:
         raise ValueError("Need at least ten timestamps to derive purged three-way splits")
+    if not isinstance(purge_bars, int) or isinstance(purge_bars, bool) or purge_bars < 1:
+        raise ValueError("purge_bars must be a positive integer")
 
-    validation_start_idx = max(int(len(timestamps) * 0.60), 3)
-    test_start_idx = max(int(len(timestamps) * 0.80), validation_start_idx + 3)
-    test_start_idx = min(test_start_idx, len(timestamps) - 2)
+    validation_start_idx = max(int(len(timestamps) * 0.60), purge_bars + 1)
+    test_start_idx = max(
+        int(len(timestamps) * 0.80),
+        validation_start_idx + purge_bars + 1,
+    )
+    if test_start_idx >= len(timestamps):
+        raise ValueError(
+            "Dataset is too short for three non-empty windows and the requested purge"
+        )
     train_start = pd.Timestamp(timestamps[0]).isoformat()
-    train_end = pd.Timestamp(timestamps[validation_start_idx - 2]).isoformat()
+    train_end = pd.Timestamp(timestamps[validation_start_idx - purge_bars - 1]).isoformat()
     validation_start = pd.Timestamp(timestamps[validation_start_idx]).isoformat()
-    validation_end = pd.Timestamp(timestamps[test_start_idx - 2]).isoformat()
+    validation_end = pd.Timestamp(timestamps[test_start_idx - purge_bars - 1]).isoformat()
     test_start = pd.Timestamp(timestamps[test_start_idx]).isoformat()
     test_end = pd.Timestamp(timestamps[-1]).isoformat()
     return (
