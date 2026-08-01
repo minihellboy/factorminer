@@ -55,12 +55,14 @@ from factorminer.architecture import (
     PromptContextBuilder,
     ResearchCyclePlanner,
     RetrieveStage,
+    TrialLedger,
     build_memory_policy,
+    dataset_scope_identity,
 )
 from factorminer.core.factor_library import FactorLibrary
 from factorminer.core.library_io import load_library, save_library
 from factorminer.core.loop_services import LoopExecutionService
-from factorminer.core.provenance import infer_parent_lineage
+from factorminer.core.provenance import infer_parent_lineage, stable_digest
 from factorminer.core.session import MiningSession
 from factorminer.memory.defaults import create_default_memory
 from factorminer.memory.memory_store import ExperienceMemory
@@ -157,6 +159,22 @@ class RalphLoop:
         )
         self.research_knowledge = ResearchKnowledgeStore(self.settings.output_dir)
         self.lifecycle_store = FactorLifecycleStore(self.settings.output_dir)
+        self.trial_dataset_id = dataset_scope_identity(
+            self.dataset_contract.to_dict(),
+            data=data_tensor,
+            targets=dict(self.settings.target_panels or {"paper": returns}),
+        )
+        self.trial_campaign_id = stable_digest(
+            {
+                "dataset_id": self.trial_dataset_id,
+                "config": self._serialize_config(),
+                "loop_type": self._loop_type(),
+            }
+        )
+        self.trial_ledger = TrialLedger(
+            self.settings.output_dir,
+            campaign_id=self.trial_campaign_id,
+        )
         self.generator = FactorGenerator(
             llm_provider=llm_provider or MockProvider(),
             prompt_builder=PromptBuilder(),
@@ -263,10 +281,17 @@ class RalphLoop:
             artifact_paths={
                 "output_dir": output_dir,
                 "checkpoint_dir": str(Path(output_dir) / "checkpoint"),
+                "trial_ledger": str(Path(output_dir) / "global_trial_ledger.jsonl"),
             },
         )
         self._run_manifest["paper_protocol"] = self.protocol.runtime_contract()
         self._run_manifest["dataset_contract"] = self.dataset_contract.to_dict()
+        self._run_manifest["trial_accounting"] = {
+            "schema_version": "factor-trial-ledger-v1",
+            "campaign_id": self.trial_campaign_id,
+            "dataset_id": self.trial_dataset_id,
+            "target_name": self.dataset_contract.default_target,
+        }
         self._run_manifest["memory_policy"] = self.memory_policy.schema()
         self._persist_run_manifest(Path(output_dir) / "run_manifest.json")
 
@@ -346,6 +371,7 @@ class RalphLoop:
                     "session": str(Path(output_dir) / "session.json"),
                     "run_manifest": str(Path(output_dir) / "run_manifest.json"),
                     "session_log": str(Path(output_dir) / "session_log.json"),
+                    "trial_ledger": str(Path(output_dir) / "global_trial_ledger.jsonl"),
                 },
             )
             self._persist_run_manifest(Path(output_dir) / "run_manifest.json")
@@ -401,6 +427,7 @@ class RalphLoop:
         results = self.pipeline.evaluate_batch(payload.candidates)
         self._annotate_result_lineage(results, payload.library_state)
         self.lifecycle_store.record_batch_results(self.iteration, results)
+        self._record_trial_results(results)
         return results
 
     def _stage_library_update(
@@ -430,6 +457,15 @@ class RalphLoop:
         Returns the list of admitted results.
         """
         return self.admission_service.admit_results(results, iteration=self.iteration)
+
+    def _record_trial_results(self, results: list[EvaluationResult]) -> None:
+        """Commit every parsed candidate data contact to the global ledger."""
+        self.trial_ledger.record_batch_results(
+            iteration=self.iteration,
+            results=results,
+            dataset_id=self.trial_dataset_id,
+            target_name=self.dataset_contract.default_target,
+        )
 
     # ------------------------------------------------------------------
     # Trajectory builder for memory formation
@@ -657,6 +693,9 @@ class RalphLoop:
                     "session": str(checkpoint_dir / "session.json"),
                     "run_manifest": str(checkpoint_dir / "run_manifest.json"),
                     "loop_state": str(checkpoint_dir / "loop_state.json"),
+                    "trial_ledger": str(
+                        Path(checkpoint_dir.parent) / "global_trial_ledger.jsonl"
+                    ),
                 },
             )
             self._persist_run_manifest(checkpoint_dir / "run_manifest.json")

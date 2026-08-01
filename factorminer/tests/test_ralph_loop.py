@@ -493,6 +493,15 @@ class TestRalphLoopEndToEnd:
         assert isinstance(library, FactorLibrary)
         assert loop.iteration == 1
         assert loop.budget.llm_calls >= 1
+        assert loop.trial_ledger.path == Path(tmp_dir) / "global_trial_ledger.jsonl"
+        assert loop.trial_ledger.path.exists()
+        assert loop.trial_ledger.observations
+        family = loop.trial_ledger.build_inference_family(
+            dataset_id=loop.trial_dataset_id,
+            target_name=loop.dataset_contract.default_target,
+            periods=returns.shape[1],
+        )
+        assert family.raw_trial_count >= 1
 
     def test_multiple_iterations(self, test_config, synthetic_data, mock_provider, tmp_dir):
         test_config.max_iterations = 3

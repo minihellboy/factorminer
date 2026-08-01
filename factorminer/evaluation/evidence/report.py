@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 
+from factorminer.domain.trials import TrialInferenceFamily
 from factorminer.evaluation.evidence.inference import (
     compute_hac_mean_test,
     compute_ic_bundle,
@@ -46,7 +47,9 @@ def evaluate_industry_evidence(
     risk_weights: np.ndarray | None = None,
     exposure_names: Sequence[str] | None = None,
     family_ic_series: Mapping[str, np.ndarray] | None = None,
-    n_trials: int = 1,
+    n_trials: float = 1,
+    trial_family: TrialInferenceFamily | None = None,
+    focal_trial_hash: str | None = None,
     pbo_performance_matrix: np.ndarray | None = None,
     volume: np.ndarray | None = None,
     capacity_config: Any | None = None,
@@ -67,6 +70,15 @@ def evaluate_industry_evidence(
     ``validation_coverage``.
     """
     cfg = config or IndustryEvidenceConfig()
+    if trial_family is not None:
+        if family_ic_series is not None:
+            raise ValueError("provide trial_family or family_ic_series, not both")
+        if focal_trial_hash is None:
+            raise ValueError("focal_trial_hash is required with trial_family")
+        family_ic_series = trial_family.as_arrays()
+        if focal_trial_hash not in family_ic_series:
+            raise ValueError("focal_trial_hash is not present in the canonical trial family")
+        n_trials = trial_family.dsr_trial_count
     if n_trials < 1:
         raise ValueError("n_trials must be >= 1")
     signal_panel, return_panel = aligned_panels(signals, forward_returns)
@@ -85,6 +97,7 @@ def evaluate_industry_evidence(
     significance_config = SignificanceConfig(
         bootstrap_n_samples=cfg.bootstrap_n_samples,
         bootstrap_block_size=cfg.bootstrap_block_size,
+        bootstrap_method=cfg.bootstrap_method,
         bootstrap_confidence=cfg.bootstrap_confidence,
         fdr_level=cfg.fdr_level,
         seed=cfg.seed,
@@ -111,6 +124,19 @@ def evaluate_industry_evidence(
         },
         "fdr": None,
         "pbo": None,
+        "trial_accounting": (
+            {
+                "source": "canonical_global_trial_ledger",
+                "raw_trial_count": trial_family.raw_trial_count,
+                "effective_trial_count": trial_family.effective_trial_count,
+                "dsr_trial_count": trial_family.dsr_trial_count,
+                "campaign_id": trial_family.campaign_id,
+                "dataset_id": trial_family.dataset_id,
+                "target_name": trial_family.target_name,
+            }
+            if trial_family is not None
+            else {"source": "caller_declared", "dsr_trial_count": n_trials}
+        ),
     }
 
     if family_ic_series is not None:
@@ -118,7 +144,8 @@ def evaluate_industry_evidence(
             str(name): np.asarray(values, dtype=np.float64)
             for name, values in family_ic_series.items()
         }
-        family[factor_name] = rank_series
+        factor_fdr_key = focal_trial_hash or factor_name
+        family[factor_fdr_key] = rank_series
         p_values = {
             name: compute_hac_mean_test(
                 values,
@@ -131,8 +158,9 @@ def evaluate_industry_evidence(
         significance["fdr"] = {
             **asdict(fdr),
             "p_value_method": "two-sided Newey-West mean test",
-            "factor_adjusted_p_value": fdr.adjusted_p_values[factor_name],
-            "factor_significant": fdr.significant[factor_name],
+            "factor_adjusted_p_value": fdr.adjusted_p_values[factor_fdr_key],
+            "factor_significant": fdr.significant[factor_fdr_key],
+            "factor_family_key": factor_fdr_key,
         }
         warnings.append(
             "Benjamini-Hochberg is most defensible under independent or positively "

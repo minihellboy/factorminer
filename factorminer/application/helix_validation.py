@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 
 from factorminer.application.mining_budget import EvaluationResult
-from factorminer.evaluation.metrics import compute_ic
+from factorminer.architecture.trial_ledger import canonical_formula_identity
 
 logger = logging.getLogger(__name__)
 
@@ -219,41 +219,53 @@ class HelixValidationService:
         if self._bootstrap_tester is None or self._fdr_controller is None:
             return 0
 
-        # Compute IC series for each admitted candidate and gather p-values
-        ic_series_map: dict[str, np.ndarray] = {}
+        # Resolve admitted candidates to canonical identities, then test them
+        # against every canonical trial that has touched this dataset.
         result_map: dict[str, EvaluationResult] = {}
 
         for r in to_check:
             if not r.admitted or r.signals is None:
                 continue
             try:
-                ic_series = compute_ic(r.signals, self.returns)
-                ic_series_map[r.factor_name] = ic_series
-                result_map[r.factor_name] = r
+                canonical_hash = canonical_formula_identity(r.formula)[1]
+                result_map[canonical_hash] = r
             except Exception as exc:
                 logger.warning(
-                    "Helix: IC computation error for '%s': %s",
+                    "Helix: canonical identity error for '%s': %s",
                     r.factor_name,
                     exc,
                 )
 
-        if not ic_series_map:
+        if not result_map:
             return 0
 
         try:
+            family = self.trial_ledger.build_inference_family(
+                dataset_id=self.trial_dataset_id,
+                target_name=self.dataset_contract.default_target,
+                periods=int(self.returns.shape[1]),
+                estimate_effective=False,
+            )
+            ic_series_map = family.as_arrays()
             fdr_result = self._fdr_controller.batch_evaluate(ic_series_map, self._bootstrap_tester)
         except Exception as exc:
-            logger.warning("Helix: FDR batch evaluation failed: %s", exc)
-            return 0
+            reason = f"Significance: complete global trial family unavailable ({exc})"
+            logger.warning("Helix: %s", reason)
+            rejected = 0
+            for result in result_map.values():
+                if result.admitted:
+                    self.revoke(result, all_results, reason)
+                    rejected += 1
+            return rejected
 
         rejected = 0
-        for name, is_sig in fdr_result.significant.items():
+        for canonical_hash, result in result_map.items():
+            is_sig = fdr_result.significant.get(canonical_hash, False)
             if not is_sig:
-                r = result_map.get(name)
-                if r is not None and r.admitted:
-                    adj_p = fdr_result.adjusted_p_values.get(name, 1.0)
+                if result.admitted:
+                    adj_p = fdr_result.adjusted_p_values.get(canonical_hash, 1.0)
                     self.revoke(
-                        r,
+                        result,
                         all_results,
                         f"Significance: FDR-adjusted p={adj_p:.4f} > "
                         f"{getattr(self._significance_config, 'fdr_level', 0.05)}",
@@ -261,9 +273,49 @@ class HelixValidationService:
                     rejected += 1
                     logger.debug(
                         "Helix: significance rejection for '%s' (adj_p=%.4f)",
-                        name,
+                        result.factor_name,
                         adj_p,
                     )
+
+        if bool(getattr(self._significance_config, "deflated_sharpe_enabled", False)):
+            from factorminer.evaluation.portfolio import PortfolioBacktester
+            from factorminer.evaluation.significance import DeflatedSharpeCalculator
+
+            backtester = PortfolioBacktester()
+            dsr = DeflatedSharpeCalculator(self._significance_config)
+            for result in result_map.values():
+                if not result.admitted or result.signals is None:
+                    continue
+                try:
+                    portfolio = backtester.quintile_backtest(
+                        result.signals.T,
+                        self.returns.T,
+                    )
+                    ls_returns = np.asarray(portfolio["ls_net_series"], dtype=np.float64)
+                    dsr_result = dsr.compute(
+                        result.factor_name,
+                        ls_returns,
+                        n_trials=family.dsr_trial_count,
+                    )
+                except Exception as exc:
+                    self.revoke(
+                        result,
+                        all_results,
+                        f"Significance: ledger-fed DSR unavailable ({exc})",
+                    )
+                    rejected += 1
+                    continue
+                if not dsr_result.passes:
+                    self.revoke(
+                        result,
+                        all_results,
+                        "Significance: ledger-fed DSR failed "
+                        f"(DSR={dsr_result.deflated_sharpe:.3f}, "
+                        f"p={dsr_result.p_value:.4f}, "
+                        f"effective_trials={family.dsr_trial_count:.3f}, "
+                        f"raw_trials={family.raw_trial_count})",
+                    )
+                    rejected += 1
 
         return rejected
 

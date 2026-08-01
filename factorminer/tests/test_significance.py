@@ -13,6 +13,9 @@ from factorminer.evaluation.significance import (
     FDRController,
     FDRResult,
     SignificanceConfig,
+    SuperiorPredictiveAbilityTest,
+    estimate_effective_trials,
+    stationary_bootstrap_indices,
 )
 
 
@@ -272,3 +275,74 @@ def test_deflated_sharpe_uses_raw_not_excess_kurtosis(config):
     buggy_dsr = (sr - e_max_sr) / np.sqrt(buggy_var_correction)
     assert result.deflated_sharpe < buggy_dsr
     assert result.deflated_sharpe != pytest.approx(buggy_dsr, rel=1e-3)
+
+
+def test_stationary_bootstrap_indices_are_seeded_and_circular():
+    left = stationary_bootstrap_indices(100, 10, np.random.RandomState(17))
+    right = stationary_bootstrap_indices(100, 10, np.random.RandomState(17))
+    assert np.array_equal(left, right)
+    assert left.shape == (100,)
+    assert np.all((left >= 0) & (left < 100))
+    # Most adjacent positions belong to one geometric block.
+    continuation = left[1:] == (left[:-1] + 1) % 100
+    assert 0.75 < float(np.mean(continuation)) < 1.0
+
+
+def test_bootstrap_ic_supports_stationary_method():
+    cfg = SignificanceConfig(
+        bootstrap_n_samples=300,
+        bootstrap_block_size=12,
+        bootstrap_method="stationary",
+        seed=9,
+    )
+    rng = np.random.default_rng(9)
+    series = 0.04 + rng.normal(0.0, 0.02, 250)
+    result = BootstrapICTester(cfg).compute_ci("stationary", series)
+    assert result.bootstrap_method == "stationary"
+    assert result.ci_lower > 0.0
+
+
+def test_effective_trials_collapses_perfectly_correlated_aliases():
+    base = np.linspace(-1.0, 1.0, 200)
+    estimate = estimate_effective_trials(np.vstack([base, base, base]))
+    assert estimate.raw_trials == 3
+    assert estimate.average_pairwise_correlation == pytest.approx(1.0)
+    assert estimate.effective_trials == pytest.approx(1.0)
+    assert estimate.eigenvalue_effective_rank == pytest.approx(1.0)
+
+
+def test_effective_trials_retains_most_independent_trials():
+    matrix = np.random.default_rng(123).normal(size=(8, 500))
+    estimate = estimate_effective_trials(matrix)
+    assert 6.5 <= estimate.effective_trials <= 8.0
+    assert 6.5 <= estimate.eigenvalue_effective_rank <= 8.0
+
+
+def test_spa_and_reality_check_do_not_reject_exact_null():
+    result = SuperiorPredictiveAbilityTest(
+        bootstrap_samples=200,
+        mean_block_size=8,
+        seed=11,
+    ).compute(np.zeros((4, 120)))
+    assert result.observed_best_mean == 0.0
+    assert result.reality_check_p_value == 1.0
+    assert result.spa_consistent_p_value == 1.0
+    assert result.passes is False
+
+
+def test_spa_detects_one_persistent_superior_trial():
+    rng = np.random.default_rng(2026)
+    periods = 500
+    family = rng.normal(0.0, 0.01, size=(12, periods))
+    family[0] += 0.008
+    family[5:] -= 0.01
+    result = SuperiorPredictiveAbilityTest(
+        bootstrap_samples=500,
+        mean_block_size=10,
+        seed=2026,
+    ).compute(family)
+    assert result.best_trial_index == 0
+    assert result.passes is True
+    assert result.spa_lower_p_value <= result.spa_consistent_p_value
+    assert result.spa_consistent_p_value <= result.reality_check_p_value
+    assert result.spa_consistent_p_value < 0.05

@@ -26,6 +26,7 @@ class IndustryEvidenceConfig:
     primary_cost_bps: float = 10.0
     bootstrap_n_samples: int = 1000
     bootstrap_block_size: int = 20
+    bootstrap_method: str = "circular_block"
     bootstrap_confidence: float = 0.95
     fdr_level: float = 0.05
     seed: int = 42
@@ -46,6 +47,8 @@ class IndustryEvidenceConfig:
             raise ValueError("bootstrap_n_samples must be >= 1")
         if self.bootstrap_block_size < 1:
             raise ValueError("bootstrap_block_size must be >= 1")
+        if self.bootstrap_method not in {"circular_block", "stationary"}:
+            raise ValueError("bootstrap_method must be 'circular_block' or 'stationary'")
         if not 0.0 < self.bootstrap_confidence < 1.0:
             raise ValueError("bootstrap_confidence must be in (0, 1)")
         if not 0.0 < self.fdr_level < 1.0:

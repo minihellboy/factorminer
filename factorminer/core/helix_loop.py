@@ -280,6 +280,7 @@ class HelixLoop(RalphLoop):
         results = self.pipeline.evaluate_batch(payload.candidates)
         self._annotate_result_lineage(results, payload.library_state)
         self.lifecycle_store.record_batch_results(self.iteration, results)
+        self._record_trial_results(results)
         return results
 
     def _stage_library_update_helix(

@@ -342,6 +342,7 @@ phase2:
     enabled: false
     bootstrap_n_samples: 1000
     bootstrap_block_size: 20
+    bootstrap_method: circular_block
     fdr_level: 0.05
     deflated_sharpe_enabled: true
     min_deflated_sharpe: 0.0

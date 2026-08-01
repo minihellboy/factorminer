@@ -12,6 +12,7 @@ __all__ = [
     "HumanAttestation",
     "PearsonDependenceMetric",
     "SpearmanDependenceMetric",
+    "TrialInferenceFamily",
     "build_dependence_metric",
     "library_span_basis",
     "orthogonal_escape_score",
@@ -28,6 +29,10 @@ _ATTRIBUTE_MAP.update(
         name: ("factorminer.domain.evidence", name)
         for name in ("EvidencePack", "FrozenPayload", "HumanAttestation")
     }
+)
+_ATTRIBUTE_MAP["TrialInferenceFamily"] = (
+    "factorminer.domain.trials",
+    "TrialInferenceFamily",
 )
 
 

@@ -350,6 +350,7 @@ class SignificanceConfig:
     enabled: bool = False
     bootstrap_n_samples: int = 1000
     bootstrap_block_size: int = 20
+    bootstrap_method: str = "circular_block"
     fdr_level: float = 0.05
     deflated_sharpe_enabled: bool = True
     min_deflated_sharpe: float = 0.0
@@ -359,6 +360,8 @@ class SignificanceConfig:
             raise ValueError("bootstrap_n_samples must be >= 100")
         if self.bootstrap_block_size < 1:
             raise ValueError("bootstrap_block_size must be >= 1")
+        if self.bootstrap_method not in {"circular_block", "stationary"}:
+            raise ValueError("bootstrap_method must be 'circular_block' or 'stationary'")
         if not (0.0 < self.fdr_level < 1.0):
             raise ValueError("fdr_level must be in (0, 1)")
 

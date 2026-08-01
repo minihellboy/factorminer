@@ -29,6 +29,7 @@ class SignificanceConfig:
     bootstrap_n_samples: int = 1000
     bootstrap_block_size: int = 20
     bootstrap_confidence: float = 0.95
+    bootstrap_method: str = "circular_block"
     fdr_level: float = 0.05
     deflated_sharpe_enabled: bool = True
     min_deflated_sharpe: float = 0.0
@@ -76,6 +77,33 @@ class BootstrapCIResult:
     ic_std_boot: float
     ci_excludes_zero: bool
     ic_paper_mean: float = 0.0
+    bootstrap_method: str = "circular_block"
+
+
+def stationary_bootstrap_indices(
+    length: int,
+    mean_block_size: int,
+    rng: np.random.RandomState,
+) -> np.ndarray:
+    """Draw Politis-Romano stationary-bootstrap indices.
+
+    Blocks have geometrically distributed lengths with expectation
+    ``mean_block_size``.  The first index and every restart are uniform; a
+    non-restart advances circularly, preserving local serial dependence.
+    """
+    if length < 1:
+        raise ValueError("length must be >= 1")
+    if mean_block_size < 1:
+        raise ValueError("mean_block_size must be >= 1")
+    restart_probability = 1.0 / min(mean_block_size, length)
+    indices = np.empty(length, dtype=np.int64)
+    indices[0] = int(rng.randint(0, length))
+    for position in range(1, length):
+        if float(rng.random_sample()) < restart_probability:
+            indices[position] = int(rng.randint(0, length))
+        else:
+            indices[position] = (indices[position - 1] + 1) % length
+    return indices
 
 
 class BootstrapICTester:
@@ -130,6 +158,7 @@ class BootstrapICTester:
                 ic_std_boot=0.0,
                 ci_excludes_zero=False,
                 ic_paper_mean=0.0,
+                bootstrap_method=self._config.bootstrap_method,
             )
 
         ic_mean = float(np.mean(valid))
@@ -149,6 +178,7 @@ class BootstrapICTester:
             ic_std_boot=ic_std_boot,
             ci_excludes_zero=bool(ci_lower > 0 or ci_upper < 0),
             ic_paper_mean=abs(ic_mean),
+            bootstrap_method=self._config.bootstrap_method,
         )
 
     def compute_p_value(self, ic_series: np.ndarray) -> float:
@@ -205,12 +235,19 @@ class BootstrapICTester:
         boot_means = np.empty(n_samples, dtype=np.float64)
 
         for i in range(n_samples):
-            # Circular: any start is valid, blocks wrap modulo T so every
-            # observation is sampled with equal probability
-            starts = self._rng.randint(0, T, size=n_blocks)
-            indices = np.concatenate(
-                [np.arange(s, s + block_size) for s in starts]
-            )[:T] % T
+            if self._config.bootstrap_method == "stationary":
+                indices = stationary_bootstrap_indices(T, block_size, self._rng)
+            elif self._config.bootstrap_method == "circular_block":
+                # Circular: any start is valid, blocks wrap modulo T so every
+                # observation is sampled with equal probability.
+                starts = self._rng.randint(0, T, size=n_blocks)
+                indices = np.concatenate(
+                    [np.arange(s, s + block_size) for s in starts]
+                )[:T] % T
+            else:
+                raise ValueError(
+                    "bootstrap_method must be 'circular_block' or 'stationary'"
+                )
             boot_means[i] = series[indices].mean()
 
         return boot_means
@@ -336,7 +373,7 @@ class DeflatedSharpeResult:
     deflated_sharpe: float
     haircut: float
     p_value: float
-    n_trials: int
+    n_trials: float
     passes: bool
 
 
@@ -361,7 +398,7 @@ class DeflatedSharpeCalculator:
         self,
         factor_name: str,
         ls_returns: np.ndarray,
-        n_trials: int,
+        n_trials: float,
         annualization_factor: float = 252.0,
     ) -> DeflatedSharpeResult:
         """Compute the Deflated Sharpe Ratio for a factor's L/S returns.
@@ -450,7 +487,7 @@ class DeflatedSharpeCalculator:
         )
 
     @classmethod
-    def _expected_max_sr(cls, n_trials: int) -> float:
+    def _expected_max_sr(cls, n_trials: float) -> float:
         """E[max(SR)] approximation from Bailey & López de Prado (2014).
 
         E[max(SR)] ~ sqrt(2*ln(N)) * (1 - gamma / (2*ln(N))) + gamma / sqrt(2*ln(N))
@@ -464,6 +501,208 @@ class DeflatedSharpeCalculator:
 
 
 # ---------------------------------------------------------------------------
+# Correlation-adjusted trials and family-wide bootstrap tests
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class EffectiveTrialsEstimate:
+    """Correlation-adjusted independent-trial estimate for one family."""
+
+    raw_trials: int
+    effective_trials: float
+    average_pairwise_correlation: float
+    clipped_average_correlation: float
+    eigenvalue_effective_rank: float
+    method: str = "bailey_lopez_de_prado_average_correlation"
+
+
+def estimate_effective_trials(trial_series: np.ndarray) -> EffectiveTrialsEstimate:
+    """Estimate implied independent trials from cross-trial correlation.
+
+    The input orientation is ``(trials, periods)``.  Bailey and López de
+    Prado's interpolation ``rho + (1-rho) M`` is used for DSR.  Negative
+    average correlation is clipped at zero, conservatively preventing an
+    estimate larger than the number of canonical hypotheses.  The spectral
+    participation ratio is reported as a second geometry diagnostic.
+    """
+    matrix = np.asarray(trial_series, dtype=np.float64)
+    if matrix.ndim != 2 or matrix.shape[0] < 1 or matrix.shape[1] < 2:
+        raise ValueError("trial_series must have shape (trials >= 1, periods >= 2)")
+    raw_trials = int(matrix.shape[0])
+    if raw_trials == 1:
+        return EffectiveTrialsEstimate(1, 1.0, 1.0, 1.0, 1.0)
+
+    normalized = matrix.copy()
+    for row_index in range(raw_trials):
+        row = normalized[row_index]
+        finite = np.isfinite(row)
+        fill = float(np.mean(row[finite])) if np.any(finite) else 0.0
+        row[~finite] = fill
+
+    correlation = np.eye(raw_trials, dtype=np.float64)
+    variable = np.std(normalized, axis=1) > 1e-12
+    if np.count_nonzero(variable) >= 2:
+        variable_corr = np.corrcoef(normalized[variable])
+        variable_indices = np.flatnonzero(variable)
+        correlation[np.ix_(variable_indices, variable_indices)] = variable_corr
+    correlation = np.nan_to_num(correlation, nan=0.0, posinf=0.0, neginf=0.0)
+    np.fill_diagonal(correlation, 1.0)
+
+    off_diagonal = correlation[~np.eye(raw_trials, dtype=bool)]
+    average = float(np.mean(off_diagonal))
+    clipped = float(np.clip(average, 0.0, 1.0))
+    effective = float(clipped + (1.0 - clipped) * raw_trials)
+
+    eigenvalues = np.linalg.eigvalsh(correlation)
+    eigenvalues = np.clip(eigenvalues, 0.0, None)
+    eigen_sum = float(np.sum(eigenvalues))
+    eigen_square_sum = float(np.sum(eigenvalues**2))
+    effective_rank = (
+        eigen_sum**2 / eigen_square_sum if eigen_square_sum > 1e-15 else 1.0
+    )
+    effective_rank = float(np.clip(effective_rank, 1.0, raw_trials))
+
+    return EffectiveTrialsEstimate(
+        raw_trials=raw_trials,
+        effective_trials=effective,
+        average_pairwise_correlation=average,
+        clipped_average_correlation=clipped,
+        eigenvalue_effective_rank=effective_rank,
+    )
+
+
+@dataclass(frozen=True)
+class SuperiorPredictiveAbilityResult:
+    """White Reality Check and Hansen SPA results for one tried family."""
+
+    observed_best_mean: float
+    best_trial_index: int
+    reality_check_p_value: float
+    spa_consistent_p_value: float
+    spa_lower_p_value: float
+    p_value_upper: float
+    n_trials: int
+    n_periods: int
+    bootstrap_samples: int
+    mean_block_size: int
+    consistent_relevant_trials: int
+    passes: bool
+
+
+class SuperiorPredictiveAbilityTest:
+    """Stationary-bootstrap White Reality Check and Hansen SPA test.
+
+    ``performance_differentials`` has shape ``(trials, periods)`` and uses a
+    positive-is-better convention relative to the benchmark.  One shared
+    bootstrap index path is applied to all trials per replication, retaining
+    both serial dependence and cross-trial dependence.
+    """
+
+    def __init__(
+        self,
+        *,
+        bootstrap_samples: int = 1000,
+        mean_block_size: int | None = None,
+        alpha: float = 0.05,
+        seed: int = 42,
+    ) -> None:
+        if bootstrap_samples < 100:
+            raise ValueError("bootstrap_samples must be >= 100")
+        if mean_block_size is not None and mean_block_size < 1:
+            raise ValueError("mean_block_size must be >= 1")
+        if not 0.0 < alpha < 1.0:
+            raise ValueError("alpha must be in (0, 1)")
+        self.bootstrap_samples = bootstrap_samples
+        self.mean_block_size = mean_block_size
+        self.alpha = alpha
+        self.seed = seed
+
+    @staticmethod
+    def _stationary_long_run_variance(
+        differentials: np.ndarray,
+        mean_block_size: int,
+    ) -> np.ndarray:
+        periods = differentials.shape[1]
+        restart_probability = 1.0 / mean_block_size
+        demeaned = differentials - np.mean(differentials, axis=1, keepdims=True)
+        variances = np.sum(demeaned**2, axis=1) / periods
+        for lag in range(1, periods):
+            weight = (
+                (1.0 - lag / periods) * (1.0 - restart_probability) ** lag
+                + (lag / periods)
+                * (1.0 - restart_probability) ** (periods - lag)
+            )
+            covariance = np.sum(
+                demeaned[:, : periods - lag] * demeaned[:, lag:], axis=1
+            ) / periods
+            variances += 2.0 * weight * covariance
+        return np.clip(variances, np.finfo(np.float64).eps, None)
+
+    def compute(self, performance_differentials: np.ndarray) -> SuperiorPredictiveAbilityResult:
+        differentials = np.asarray(performance_differentials, dtype=np.float64)
+        if differentials.ndim != 2 or min(differentials.shape) < 1:
+            raise ValueError("performance_differentials must be two-dimensional")
+        if differentials.shape[1] < 10:
+            raise ValueError("SPA/Reality Check requires at least 10 periods")
+        if not np.all(np.isfinite(differentials)):
+            raise ValueError("performance_differentials must contain only finite values")
+
+        n_trials, periods = differentials.shape
+        block_size = self.mean_block_size or max(1, int(math.sqrt(periods)))
+        block_size = min(block_size, periods)
+        means = np.mean(differentials, axis=1)
+        variances = self._stationary_long_run_variance(differentials, block_size)
+        threshold = -np.sqrt(
+            (variances / periods) * 2.0 * np.log(np.log(periods))
+        )
+        consistent_relevant = means >= threshold
+
+        # White's least-favourable Reality Check recenters every trial. Hansen's
+        # consistent SPA leaves clearly inferior trials out of the bootstrap
+        # maximum; the lower bound excludes every sample-inferior trial.
+        upper_centers = means
+        consistent_centers = np.where(consistent_relevant, means, 0.0)
+        lower_centers = np.where(means >= 0.0, means, 0.0)
+
+        observed = float(np.max(means))
+        rng = np.random.RandomState(self.seed)
+        upper_exceedances = 0
+        consistent_exceedances = 0
+        lower_exceedances = 0
+        for _ in range(self.bootstrap_samples):
+            indices = stationary_bootstrap_indices(periods, block_size, rng)
+            resampled_means = np.mean(differentials[:, indices], axis=1)
+            upper_exceedances += int(np.max(resampled_means - upper_centers) >= observed)
+            consistent_exceedances += int(
+                np.max(resampled_means - consistent_centers) >= observed
+            )
+            lower_exceedances += int(np.max(resampled_means - lower_centers) >= observed)
+
+        denominator = self.bootstrap_samples + 1
+        upper_p = (upper_exceedances + 1) / denominator
+        consistent_p = (consistent_exceedances + 1) / denominator
+        lower_p = (lower_exceedances + 1) / denominator
+        return SuperiorPredictiveAbilityResult(
+            observed_best_mean=observed,
+            best_trial_index=int(np.argmax(means)),
+            reality_check_p_value=float(upper_p),
+            spa_consistent_p_value=float(consistent_p),
+            spa_lower_p_value=float(lower_p),
+            p_value_upper=float(upper_p),
+            n_trials=n_trials,
+            n_periods=periods,
+            bootstrap_samples=self.bootstrap_samples,
+            mean_block_size=block_size,
+            consistent_relevant_trials=int(np.count_nonzero(consistent_relevant)),
+            passes=bool(observed > 0.0 and consistent_p < self.alpha),
+        )
+
+
+RealityCheck = SuperiorPredictiveAbilityTest
+
+
+# ---------------------------------------------------------------------------
 # Convenience entry point
 # ---------------------------------------------------------------------------
 
@@ -471,8 +710,9 @@ def check_significance(
     factor_name: str,
     ic_series: np.ndarray,
     ls_returns: np.ndarray,
-    n_total_trials: int,
+    n_total_trials: float,
     config: SignificanceConfig | None = None,
+    trial_family: object | None = None,
 ) -> tuple[bool, str | None, dict]:
     """Run all significance checks on a single factor.
 
@@ -505,6 +745,18 @@ def check_significance(
         return True, None, {"skipped": True}
 
     details: dict = {}
+    if trial_family is not None:
+        from factorminer.domain.trials import TrialInferenceFamily
+
+        if not isinstance(trial_family, TrialInferenceFamily):
+            raise TypeError("trial_family must be a TrialInferenceFamily")
+        n_total_trials = trial_family.dsr_trial_count
+        details["trial_accounting"] = {
+            "source": "canonical_global_trial_ledger",
+            "raw_trial_count": trial_family.raw_trial_count,
+            "effective_trial_count": trial_family.effective_trial_count,
+            "dsr_trial_count": trial_family.dsr_trial_count,
+        }
 
     # -- Bootstrap IC CI / p-value --
     bt = BootstrapICTester(config)

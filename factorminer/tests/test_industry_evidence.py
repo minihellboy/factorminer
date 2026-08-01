@@ -7,6 +7,7 @@ import json
 import numpy as np
 import pytest
 
+from factorminer.domain.trials import TrialInferenceFamily
 from factorminer.evaluation.evidence import (
     INDUSTRY_EVIDENCE_VERSION,
     IndustryEvidenceConfig,
@@ -106,6 +107,42 @@ def test_evidence_report_composes_metrics_costs_risk_and_fdr():
     cost_curve = payload["portfolio"]["raw_signal"]["cost_curve"]
     assert cost_curve[1]["mean_net_return"] <= cost_curve[0]["mean_net_return"]
     json.dumps(payload, allow_nan=False)
+
+
+def test_evidence_report_uses_canonical_ledger_family_for_dsr_and_fdr():
+    rng = np.random.default_rng(41)
+    assets, periods = 60, 80
+    signals = rng.normal(size=(assets, periods))
+    returns = 0.001 * signals + rng.normal(0.0, 0.01, size=(assets, periods))
+    family = TrialInferenceFamily(
+        campaign_id="campaign-sha",
+        dataset_id="dataset-sha",
+        target_name="paper",
+        raw_trial_count=3,
+        effective_trial_count=2.25,
+        ic_series={
+            "focal-sha": tuple(rng.normal(0.0, 0.04, periods)),
+            "noise-a": tuple(rng.normal(0.0, 0.04, periods)),
+            "failed": (0.0,) * periods,
+        },
+    )
+    report = evaluate_industry_evidence(
+        "candidate",
+        signals,
+        returns,
+        config=IndustryEvidenceConfig(bootstrap_n_samples=50),
+        trial_family=family,
+        focal_trial_hash="focal-sha",
+    ).to_dict()
+
+    accounting = report["significance"]["trial_accounting"]
+    assert accounting["source"] == "canonical_global_trial_ledger"
+    assert accounting["raw_trial_count"] == 3
+    assert accounting["dsr_trial_count"] == pytest.approx(2.25)
+    assert report["significance"]["deflated_sharpe"]["n_trials"] == pytest.approx(2.25)
+    fdr = report["significance"]["fdr"]
+    assert fdr["factor_family_key"] == "focal-sha"
+    assert set(fdr["raw_p_values"]) == {"focal-sha", "noise-a", "failed"}
 
 
 def test_evidence_report_marks_inputs_it_cannot_infer():
