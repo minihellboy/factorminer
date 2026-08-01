@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -438,7 +438,7 @@ class Phase2Config:
     helix: HelixConfig = field(default_factory=HelixConfig)
 
     def validate(self) -> None:
-        for sub in [
+        subs: tuple[Any, ...] = (
             self.causal,
             self.regime,
             self.capacity,
@@ -446,7 +446,8 @@ class Phase2Config:
             self.debate,
             self.auto_inventor,
             self.helix,
-        ]:
+        )
+        for sub in subs:
             sub.validate()
 
 
@@ -759,9 +760,9 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     return data
 
 
-def _build_section(section_cls: type, raw: dict[str, Any]) -> Any:
+def _build_section(section_cls: type[Any], raw: dict[str, Any]) -> Any:
     """Instantiate a config dataclass, ignoring unknown keys."""
-    valid_fields = {f.name for f in section_cls.__dataclass_fields__.values()}
+    valid_fields = {config_field.name for config_field in fields(section_cls)}
     filtered = {k: v for k, v in raw.items() if k in valid_fields}
     return section_cls(**filtered)
 
@@ -830,7 +831,7 @@ def load_config(
         merged = _deep_merge(merged, overrides)
 
     # 4. Build typed config objects
-    sections = {}
+    sections: dict[str, Any] = {}
     for section_name, section_cls in _SECTION_MAP.items():
         raw = merged.get(section_name, {})
         if section_name == "phase2":

@@ -637,7 +637,10 @@ class SuperiorPredictiveAbilityTest:
                 demeaned[:, : periods - lag] * demeaned[:, lag:], axis=1
             ) / periods
             variances += 2.0 * weight * covariance
-        return np.clip(variances, np.finfo(np.float64).eps, None)
+        return np.asarray(
+            np.clip(variances, np.finfo(np.float64).eps, None),
+            dtype=np.float64,
+        )
 
     def compute(self, performance_differentials: np.ndarray) -> SuperiorPredictiveAbilityResult:
         differentials = np.asarray(performance_differentials, dtype=np.float64)

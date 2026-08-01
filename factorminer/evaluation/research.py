@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, field
+from typing import Any
 
 import numpy as np
 
@@ -309,8 +310,8 @@ def run_research_model_suite(
 
     reports: dict[str, dict] = {}
     for model_name in research_cfg.selection.models:
-        fold_reports = []
-        selected_sets = []
+        fold_reports: list[dict[str, Any]] = []
+        selected_sets: list[set[int]] = []
         for split in splits:
             train_returns = returns[split.train_start:split.train_end]
             test_returns = returns[split.test_start:split.test_end]

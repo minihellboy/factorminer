@@ -1,0 +1,1237 @@
+{
+  "diagnostics": [
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 2 to \"public_dir\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/__init__.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 3 to \"resolve_export\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/__init__.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 2 to \"public_dir\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/agent/__init__.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 3 to \"resolve_export\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/agent/__init__.py"
+    },
+    {
+      "code": "no-redef",
+      "count": 1,
+      "message": "Name \"specialist_proposals\" already defined on line <N>",
+      "path": "factorminer/agent/debate.py"
+    },
+    {
+      "code": "no-redef",
+      "count": 1,
+      "message": "Name \"unique\" already defined on line <N>",
+      "path": "factorminer/agent/debate.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 1 to \"generate\" of \"LLMProvider\" has incompatible type \"**dict[str, object]\"; expected \"float\"",
+      "path": "factorminer/agent/factor_generator.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 1 to \"generate\" of \"LLMProvider\" has incompatible type \"**dict[str, object]\"; expected \"int\"",
+      "path": "factorminer/agent/factor_generator.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 1 to \"generate\" of \"LLMProvider\" has incompatible type \"**dict[str, object]\"; expected \"str | None\"",
+      "path": "factorminer/agent/factor_generator.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 1 to \"generate\" of \"LLMProvider\" has incompatible type \"**dict[str, object]\"; expected \"str\"",
+      "path": "factorminer/agent/factor_generator.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 1 to \"generate_frontier\" of \"CascadeProvider\" has incompatible type \"**dict[str, object]\"; expected \"float\"",
+      "path": "factorminer/agent/factor_generator.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 1 to \"generate_frontier\" of \"CascadeProvider\" has incompatible type \"**dict[str, object]\"; expected \"int\"",
+      "path": "factorminer/agent/factor_generator.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 1 to \"generate_frontier\" of \"CascadeProvider\" has incompatible type \"**dict[str, object]\"; expected \"str | None\"",
+      "path": "factorminer/agent/factor_generator.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 1 to \"generate_frontier\" of \"CascadeProvider\" has incompatible type \"**dict[str, object]\"; expected \"str\"",
+      "path": "factorminer/agent/factor_generator.py"
+    },
+    {
+      "code": "var-annotated",
+      "count": 1,
+      "message": "Need type annotation for \"categories\" (hint: \"categories: dict[<type>, <type>] = ...\")",
+      "path": "factorminer/agent/factor_generator.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 3,
+      "message": "Returning Any from function declared to return \"LLMProvider\"",
+      "path": "factorminer/agent/llm_interface.py"
+    },
+    {
+      "code": "no-redef",
+      "count": 1,
+      "message": "Name \"formula\" already defined on line <N>",
+      "path": "factorminer/agent/output_parser.py"
+    },
+    {
+      "code": "no-redef",
+      "count": 1,
+      "message": "Name \"name\" already defined on line <N>",
+      "path": "factorminer/agent/output_parser.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 2 to \"public_dir\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/application/__init__.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 3 to \"resolve_export\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/application/__init__.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"dict[str, Any]\"",
+      "path": "factorminer/application/helix_generation.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"str | None\"",
+      "path": "factorminer/application/helix_generation.py"
+    },
+    {
+      "code": "has-type",
+      "count": 2,
+      "message": "Cannot determine type of \"_no_admission_streak\"",
+      "path": "factorminer/application/helix_validation.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument \"admitted\" to \"ResearchOutcomeRecord\" has incompatible type \"object\"; expected \"bool\"",
+      "path": "factorminer/application/research_knowledge.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument \"factor_name\" to \"ResearchOutcomeRecord\" has incompatible type \"object\"; expected \"str\"",
+      "path": "factorminer/application/research_knowledge.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument \"formula\" to \"ResearchOutcomeRecord\" has incompatible type \"object\"; expected \"str\"",
+      "path": "factorminer/application/research_knowledge.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument \"rejection_reason\" to \"ResearchOutcomeRecord\" has incompatible type \"object\"; expected \"str\"",
+      "path": "factorminer/application/research_knowledge.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"dict[str, Any]\"",
+      "path": "factorminer/application/run_artifacts.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"Mapping[str, Any] | None\"",
+      "path": "factorminer/application/runtime_context.py"
+    },
+    {
+      "code": "union-attr",
+      "count": 1,
+      "message": "Item \"None\" of \"Any | None\" has no attribute \"generate\"",
+      "path": "factorminer/architecture/_sealed_evaluator_panel.py"
+    },
+    {
+      "code": "assignment",
+      "count": 1,
+      "message": "Incompatible types in assignment (expression has type \"_BiasedFactorGenerator\", variable has type \"FactorGenerator\")",
+      "path": "factorminer/architecture/island_model.py"
+    },
+    {
+      "code": "misc",
+      "count": 1,
+      "message": "\"None\" not callable",
+      "path": "factorminer/architecture/island_model.py"
+    },
+    {
+      "code": "attr-defined",
+      "count": 2,
+      "message": "\"object\" has no attribute \"factor_name\"",
+      "path": "factorminer/architecture/library_services.py"
+    },
+    {
+      "code": "attr-defined",
+      "count": 2,
+      "message": "\"object\" has no attribute \"formula\"",
+      "path": "factorminer/architecture/library_services.py"
+    },
+    {
+      "code": "attr-defined",
+      "count": 4,
+      "message": "\"object\" has no attribute \"ic_mean\"",
+      "path": "factorminer/architecture/library_services.py"
+    },
+    {
+      "code": "attr-defined",
+      "count": 1,
+      "message": "\"object\" has no attribute \"ic_win_rate\"",
+      "path": "factorminer/architecture/library_services.py"
+    },
+    {
+      "code": "attr-defined",
+      "count": 2,
+      "message": "\"object\" has no attribute \"icir\"",
+      "path": "factorminer/architecture/library_services.py"
+    },
+    {
+      "code": "attr-defined",
+      "count": 1,
+      "message": "\"object\" has no attribute \"max_correlation\"",
+      "path": "factorminer/architecture/library_services.py"
+    },
+    {
+      "code": "attr-defined",
+      "count": 1,
+      "message": "\"object\" has no attribute \"score_vector\"",
+      "path": "factorminer/architecture/library_services.py"
+    },
+    {
+      "code": "attr-defined",
+      "count": 1,
+      "message": "\"object\" has no attribute \"signals\"",
+      "path": "factorminer/architecture/library_services.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 2,
+      "message": "Returning Any from function declared to return \"dict[str, Any]\"",
+      "path": "factorminer/architecture/partner_review.py"
+    },
+    {
+      "code": "misc",
+      "count": 1,
+      "message": "\"None\" not callable",
+      "path": "factorminer/architecture/phase2_services.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 1 to \"float\" has incompatible type \"object\"; expected \"str | Buffer | SupportsFloat | SupportsIndex\"",
+      "path": "factorminer/architecture/research_extensions.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 1 to \"infer_family\" has incompatible type \"object\"; expected \"str\"",
+      "path": "factorminer/architecture/research_extensions.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"scipy.stats\"",
+      "path": "factorminer/architecture/research_extensions.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Skipping analyzing \"sklearn.feature_selection\": module is installed, but missing library stubs or py.typed marker",
+      "path": "factorminer/architecture/research_extensions.py"
+    },
+    {
+      "code": "no-redef",
+      "count": 1,
+      "message": "Name \"summary\" already defined on line <N>",
+      "path": "factorminer/architecture/research_extensions.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"dict[str, Any]\"",
+      "path": "factorminer/architecture/research_receipt.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 2 to \"public_dir\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/benchmark/__init__.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 3 to \"resolve_export\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/benchmark/__init__.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 4,
+      "message": "Returning Any from function declared to return \"dict[str, Any]\"",
+      "path": "factorminer/benchmark/contracts.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"pandas\"",
+      "path": "factorminer/benchmark/datasets.py"
+    },
+    {
+      "code": "attr-defined",
+      "count": 4,
+      "message": "\"object\" has no attribute \"append\"",
+      "path": "factorminer/benchmark/frozen_evaluation.py"
+    },
+    {
+      "code": "dict-item",
+      "count": 1,
+      "message": "Dict entry 0 has incompatible type \"str\": \"str\"; expected \"str\": \"float\"",
+      "path": "factorminer/benchmark/frozen_evaluation.py"
+    },
+    {
+      "code": "dict-item",
+      "count": 1,
+      "message": "Dict entry 1 has incompatible type \"str\": \"str\"; expected \"str\": \"float\"",
+      "path": "factorminer/benchmark/frozen_evaluation.py"
+    },
+    {
+      "code": "index",
+      "count": 4,
+      "message": "Unsupported target for indexed assignment (\"object\")",
+      "path": "factorminer/benchmark/frozen_evaluation.py"
+    },
+    {
+      "code": "index",
+      "count": 4,
+      "message": "Value of type \"object\" is not indexable",
+      "path": "factorminer/benchmark/frozen_evaluation.py"
+    },
+    {
+      "code": "assignment",
+      "count": 1,
+      "message": "Incompatible types in assignment (expression has type \"RalphLoop\", variable has type \"HelixLoop\")",
+      "path": "factorminer/benchmark/mining_runtime.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"pandas\"",
+      "path": "factorminer/benchmark/phase2_reporting.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"str\"",
+      "path": "factorminer/benchmark/phase2_reporting.py"
+    },
+    {
+      "code": "var-annotated",
+      "count": 1,
+      "message": "Need type annotation for \"primary_net\"",
+      "path": "factorminer/benchmark/phase2_reporting.py"
+    },
+    {
+      "code": "attr-defined",
+      "count": 2,
+      "message": "\"MethodResult\" has no attribute \"runtime_payload\"",
+      "path": "factorminer/benchmark/runners.py"
+    },
+    {
+      "code": "assignment",
+      "count": 1,
+      "message": "Incompatible types in assignment (expression has type \"None\", variable has type \"Callable[[dict[str, dict[str, float]], str | None], None]\")",
+      "path": "factorminer/benchmark/runtime.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 3,
+      "message": "Returning Any from function declared to return \"dict[Any, Any]\"",
+      "path": "factorminer/benchmark/runtime.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"dict[str, Any]\"",
+      "path": "factorminer/benchmark/runtime.py"
+    },
+    {
+      "code": "union-attr",
+      "count": 1,
+      "message": "Item \"None\" of \"ndarray[tuple[Any, ...], dtype[Any]] | None\" has no attribute \"T\"",
+      "path": "factorminer/benchmark/runtime.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"pandas\"",
+      "path": "factorminer/benchmark/statistics.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"scipy.stats\"",
+      "path": "factorminer/benchmark/statistics.py"
+    },
+    {
+      "code": "attr-defined",
+      "count": 1,
+      "message": "Module has no attribute \"mine\"",
+      "path": "factorminer/cli/__init__.py"
+    },
+    {
+      "code": "union-attr",
+      "count": 8,
+      "message": "Item \"None\" of \"Any | dict[Any, Any] | None\" has no attribute \"get\"",
+      "path": "factorminer/cli/app.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"yaml\"",
+      "path": "factorminer/cli/integration_commands.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"yaml\"",
+      "path": "factorminer/configs/__init__.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 2 to \"public_dir\" has incompatible type \"dict[str, Sequence[str]]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/core/__init__.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 3 to \"resolve_export\" has incompatible type \"dict[str, Sequence[str]]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/core/__init__.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Skipping analyzing \"sympy\": module is installed, but missing library stubs or py.typed marker",
+      "path": "factorminer/core/canonicalizer.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 25,
+      "message": "Returning Any from function declared to return \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/core/expression_tree.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 1 to \"_compute_correlation_vectorized\" of \"FactorLibrary\" has incompatible type \"ndarray[tuple[Any, ...], dtype[Any]] | None\"; expected \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/core/factor_library.py"
+    },
+    {
+      "code": "index",
+      "count": 5,
+      "message": "Unsupported target for indexed assignment (\"ndarray[tuple[Any, ...], dtype[Any]] | None\")",
+      "path": "factorminer/core/factor_library.py"
+    },
+    {
+      "code": "union-attr",
+      "count": 1,
+      "message": "Item \"None\" of \"ndarray[tuple[Any, ...], dtype[Any]] | None\" has no attribute \"shape\"",
+      "path": "factorminer/core/factor_library.py"
+    },
+    {
+      "code": "var-annotated",
+      "count": 1,
+      "message": "Need type annotation for \"categories\"",
+      "path": "factorminer/core/factor_library.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"str\"",
+      "path": "factorminer/core/helix_loop.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 2 to \"savez_compressed\" has incompatible type \"**dict[str, ndarray[tuple[Any, ...], dtype[Any]]]\"; expected \"bool\"",
+      "path": "factorminer/core/library_io.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 2,
+      "message": "Returning Any from function declared to return \"dict[str, Any]\"",
+      "path": "factorminer/core/loop_services.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 2,
+      "message": "Returning Any from function declared to return \"dict[str, Any]\"",
+      "path": "factorminer/core/ralph_loop.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"list[EvaluationResult]\"",
+      "path": "factorminer/core/ralph_loop.py"
+    },
+    {
+      "code": "no-redef",
+      "count": 1,
+      "message": "Name \"entry\" already defined on line <N>",
+      "path": "factorminer/core/ralph_loop.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"int\"",
+      "path": "factorminer/core/session.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 2 to \"public_dir\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/data/__init__.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 3 to \"resolve_export\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/data/__init__.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 1 to \"float\" has incompatible type \"Any | None\"; expected \"str | Buffer | SupportsFloat | SupportsIndex\"",
+      "path": "factorminer/data/edgar_source.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"pandas\"",
+      "path": "factorminer/data/edgar_source.py"
+    },
+    {
+      "code": "union-attr",
+      "count": 1,
+      "message": "Item \"None\" of \"Any | dict[Any, Any] | None\" has no attribute \"get\"",
+      "path": "factorminer/data/edgar_source.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"pandas\"",
+      "path": "factorminer/data/futures_source.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"pandas\"",
+      "path": "factorminer/data/loader.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/data/loader.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument \"command\" to \"StdioServerParameters\" has incompatible type \"str | None\"; expected \"str\"",
+      "path": "factorminer/data/mcp_source.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 1 to \"streamablehttp_client\" has incompatible type \"str | None\"; expected \"str\"",
+      "path": "factorminer/data/mcp_source.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"pandas\"",
+      "path": "factorminer/data/mcp_source.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"yaml\"",
+      "path": "factorminer/data/mcp_source.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"pandas\"",
+      "path": "factorminer/data/mock_data.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"pandas\"",
+      "path": "factorminer/data/preprocessor.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"yaml\"",
+      "path": "factorminer/data/public_archive.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"bytes\"",
+      "path": "factorminer/data/public_archive.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"pandas\"",
+      "path": "factorminer/data/qlib_source.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"str | None\"",
+      "path": "factorminer/data/qlib_source.py"
+    },
+    {
+      "code": "assignment",
+      "count": 1,
+      "message": "Incompatible types in assignment (expression has type \"ndarray[tuple[Any, ...], dtype[Any]] | None\", variable has type \"ndarray[tuple[Any, ...], dtype[Any]]\")",
+      "path": "factorminer/data/tensor_builder.py"
+    },
+    {
+      "code": "import-not-found",
+      "count": 1,
+      "message": "Cannot find implementation or library stub for module named \"cupy\"",
+      "path": "factorminer/data/tensor_builder.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"pandas\"",
+      "path": "factorminer/data/tensor_builder.py"
+    },
+    {
+      "code": "index",
+      "count": 7,
+      "message": "Value of type \"object\" is not indexable",
+      "path": "factorminer/data/tensor_builder.py"
+    },
+    {
+      "code": "no-redef",
+      "count": 1,
+      "message": "Name \"target_np\" already defined on line <N>",
+      "path": "factorminer/data/tensor_builder.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"pandas\"",
+      "path": "factorminer/data/validation.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"scipy.stats\"",
+      "path": "factorminer/domain/dependence.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 2 to \"public_dir\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/evaluation/__init__.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 3 to \"resolve_export\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/evaluation/__init__.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument \"max_drawdown_end\" to \"DrawdownResult\" has incompatible type \"signedinteger[_32Bit | _64Bit]\"; expected \"int\"",
+      "path": "factorminer/evaluation/backtest.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"scipy.stats\"",
+      "path": "factorminer/evaluation/backtest.py"
+    },
+    {
+      "code": "assignment",
+      "count": 1,
+      "message": "Incompatible types in assignment (expression has type \"float | None\", variable has type \"float\")",
+      "path": "factorminer/evaluation/causal.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Skipping analyzing \"statsmodels.tsa.api\": module is installed, but missing library stubs or py.typed marker",
+      "path": "factorminer/evaluation/causal.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Skipping analyzing \"statsmodels.tsa.stattools\": module is installed, but missing library stubs or py.typed marker",
+      "path": "factorminer/evaluation/causal.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/evaluation/causal.py"
+    },
+    {
+      "code": "type-var",
+      "count": 1,
+      "message": "Value of type variable \"SupportsRichComparisonT\" of \"min\" cannot be \"float | None\"",
+      "path": "factorminer/evaluation/causal.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 3,
+      "message": "Returning Any from function declared to return \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/evaluation/combination.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"pandas\"",
+      "path": "factorminer/evaluation/correlation.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/evaluation/correlation.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"scipy.stats\"",
+      "path": "factorminer/evaluation/cross_validation.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"scipy.stats\"",
+      "path": "factorminer/evaluation/evidence/inference.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"pandas\"",
+      "path": "factorminer/evaluation/metrics.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"scipy.stats\"",
+      "path": "factorminer/evaluation/metrics.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/evaluation/metrics.py"
+    },
+    {
+      "code": "attr-defined",
+      "count": 1,
+      "message": "_LinearRankingModel? has no attribute \"predict\"",
+      "path": "factorminer/evaluation/model_zoo.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"scipy.optimize\"",
+      "path": "factorminer/evaluation/model_zoo.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Skipping analyzing \"sklearn.base\": module is installed, but missing library stubs or py.typed marker",
+      "path": "factorminer/evaluation/model_zoo.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Skipping analyzing \"sklearn.inspection\": module is installed, but missing library stubs or py.typed marker",
+      "path": "factorminer/evaluation/model_zoo.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Skipping analyzing \"sklearn.linear_model\": module is installed, but missing library stubs or py.typed marker",
+      "path": "factorminer/evaluation/model_zoo.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/evaluation/model_zoo.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return _LinearRankingModel?",
+      "path": "factorminer/evaluation/model_zoo.py"
+    },
+    {
+      "code": "valid-type",
+      "count": 1,
+      "message": "Variable \"factorminer.evaluation.model_zoo._LinearRankingModel\" is not valid as a type",
+      "path": "factorminer/evaluation/model_zoo.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 1 to \"batch_spearman_pairwise\" has incompatible type \"list[ndarray[tuple[Any, ...], dtype[Any]] | None]\"; expected \"list[ndarray[tuple[Any, ...], dtype[Any]]]\"",
+      "path": "factorminer/evaluation/pipeline.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 1 to \"compute_correlation_batch\" has incompatible type \"ndarray[tuple[Any, ...], dtype[Any]] | None\"; expected \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/evaluation/pipeline.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 1 to \"compute_factor_stats\" has incompatible type \"ndarray[tuple[Any, ...], dtype[Any]] | None\"; expected \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/evaluation/pipeline.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 2 to \"submit\" of \"Executor\" has incompatible type \"ndarray[tuple[Any, ...], dtype[Any]] | None\"; expected \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/evaluation/pipeline.py"
+    },
+    {
+      "code": "var-annotated",
+      "count": 1,
+      "message": "Need type annotation for \"failed\" (hint: \"failed: list[<type>] = ...\")",
+      "path": "factorminer/evaluation/pipeline.py"
+    },
+    {
+      "code": "var-annotated",
+      "count": 1,
+      "message": "Need type annotation for \"kept_indices\" (hint: \"kept_indices: set[<type>] = ...\")",
+      "path": "factorminer/evaluation/pipeline.py"
+    },
+    {
+      "code": "var-annotated",
+      "count": 1,
+      "message": "Need type annotation for \"replacement_candidates\" (hint: \"replacement_candidates: list[<type>] = ...\")",
+      "path": "factorminer/evaluation/pipeline.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"pandas\"",
+      "path": "factorminer/evaluation/portfolio.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"scipy.stats\"",
+      "path": "factorminer/evaluation/regime.py"
+    },
+    {
+      "code": "misc",
+      "count": 1,
+      "message": "Accessing \"__init__\" on an instance is unsound, since instance.__init__ could be from an incompatible subclass",
+      "path": "factorminer/evaluation/regime.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"dict[str, Any] | None\"",
+      "path": "factorminer/evaluation/report_viewer.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Skipping analyzing \"sklearn.linear_model\": module is installed, but missing library stubs or py.typed marker",
+      "path": "factorminer/evaluation/research.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"scipy.cluster.hierarchy\"",
+      "path": "factorminer/evaluation/risk_portfolio.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"scipy.optimize\"",
+      "path": "factorminer/evaluation/risk_portfolio.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"scipy.spatial.distance\"",
+      "path": "factorminer/evaluation/risk_portfolio.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 2,
+      "message": "Returning Any from function declared to return \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/evaluation/risk_portfolio.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"pandas\"",
+      "path": "factorminer/evaluation/runtime.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"scipy.stats\"",
+      "path": "factorminer/evaluation/selection.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Skipping analyzing \"sklearn.linear_model\": module is installed, but missing library stubs or py.typed marker",
+      "path": "factorminer/evaluation/selection.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"scipy.stats\"",
+      "path": "factorminer/evaluation/significance.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/evaluation/transaction_costs.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 2 to \"resolve_tenant_path\" of \"HostedPilotService\" has incompatible type \"object\"; expected \"str | Path\"",
+      "path": "factorminer/hosted/service.py"
+    },
+    {
+      "code": "attr-defined",
+      "count": 1,
+      "message": "\"object\" has no attribute \"__iter__\"; maybe \"__dir__\" or \"__str__\"? (not iterable)",
+      "path": "factorminer/hosted/service.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 2 to \"public_dir\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/memory/__init__.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 3 to \"resolve_export\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/memory/__init__.py"
+    },
+    {
+      "code": "attr-defined",
+      "count": 1,
+      "message": "\"object\" has no attribute \"search\"",
+      "path": "factorminer/memory/embeddings.py"
+    },
+    {
+      "code": "var-annotated",
+      "count": 1,
+      "message": "Need type annotation for \"admitted_feats\"",
+      "path": "factorminer/memory/formation.py"
+    },
+    {
+      "code": "var-annotated",
+      "count": 1,
+      "message": "Need type annotation for \"admitted_ops\"",
+      "path": "factorminer/memory/formation.py"
+    },
+    {
+      "code": "var-annotated",
+      "count": 1,
+      "message": "Need type annotation for \"rejected_ops\"",
+      "path": "factorminer/memory/formation.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 1 to \"_describe_factor_node\" has incompatible type \"FactorKnowledgeGraph | None\"; expected \"FactorKnowledgeGraph\"",
+      "path": "factorminer/memory/kg_retrieval.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"networkx\"",
+      "path": "factorminer/memory/knowledge_graph.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"dict[str, Any]\"",
+      "path": "factorminer/memory/knowledge_graph.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"int\"",
+      "path": "factorminer/memory/knowledge_graph.py"
+    },
+    {
+      "code": "assignment",
+      "count": 1,
+      "message": "Incompatible types in assignment (expression has type \"tuple[Any, Any]\", variable has type \"None\")",
+      "path": "factorminer/memory/online_regime_memory.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Skipping analyzing \"sklearn.linear_model\": module is installed, but missing library stubs or py.typed marker",
+      "path": "factorminer/memory/online_regime_memory.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Skipping analyzing \"sklearn.preprocessing\": module is installed, but missing library stubs or py.typed marker",
+      "path": "factorminer/memory/online_regime_memory.py"
+    },
+    {
+      "code": "import-not-found",
+      "count": 1,
+      "message": "Cannot find implementation or library stub for module named \"rank_bm25\"",
+      "path": "factorminer/memory/retrieval.py"
+    },
+    {
+      "code": "misc",
+      "count": 2,
+      "message": "\"None\" not callable",
+      "path": "factorminer/memory/retrieval.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 2 to \"public_dir\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/operators/__init__.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 3 to \"resolve_export\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/operators/__init__.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 16,
+      "message": "Returning Any from function declared to return \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/operators/arithmetic.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Skipping analyzing \"bottleneck\": module is installed, but missing library stubs or py.typed marker",
+      "path": "factorminer/operators/c_backend.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/operators/crosssectional.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 3,
+      "message": "Returning Any from function declared to return \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/operators/logical.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"scipy.stats\"",
+      "path": "factorminer/operators/neuro_symbolic.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"Tensor\"",
+      "path": "factorminer/operators/neuro_symbolic.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/operators/neuro_symbolic.py"
+    },
+    {
+      "code": "list-item",
+      "count": 1,
+      "message": "List item 0 has incompatible type \"dict[str, tuple[function, function]]\"; expected \"dict[str, tuple[Callable[..., Any], Callable[..., Any]]]\"",
+      "path": "factorminer/operators/registry.py"
+    },
+    {
+      "code": "list-item",
+      "count": 1,
+      "message": "List item 1 has incompatible type \"dict[str, tuple[function, function]]\"; expected \"dict[str, tuple[Callable[..., Any], Callable[..., Any]]]\"",
+      "path": "factorminer/operators/registry.py"
+    },
+    {
+      "code": "list-item",
+      "count": 1,
+      "message": "List item 2 has incompatible type \"dict[str, tuple[function, function]]\"; expected \"dict[str, tuple[Callable[..., Any], Callable[..., Any]]]\"",
+      "path": "factorminer/operators/registry.py"
+    },
+    {
+      "code": "list-item",
+      "count": 1,
+      "message": "List item 3 has incompatible type \"dict[str, tuple[function, function]]\"; expected \"dict[str, tuple[Callable[..., Any], Callable[..., Any]]]\"",
+      "path": "factorminer/operators/registry.py"
+    },
+    {
+      "code": "list-item",
+      "count": 1,
+      "message": "List item 6 has incompatible type \"dict[str, tuple[function, function]]\"; expected \"dict[str, tuple[Callable[..., Any], Callable[..., Any]]]\"",
+      "path": "factorminer/operators/registry.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"ndarray[tuple[Any, ...], dtype[Any]] | Tensor\"",
+      "path": "factorminer/operators/registry.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 5,
+      "message": "Returning Any from function declared to return \"Tensor\"",
+      "path": "factorminer/operators/regression.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 5,
+      "message": "Returning Any from function declared to return \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/operators/regression.py"
+    },
+    {
+      "code": "no-any-return",
+      "count": 1,
+      "message": "Returning Any from function declared to return \"ndarray[tuple[Any, ...], dtype[Any]]\"",
+      "path": "factorminer/operators/smoothing.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 2 to \"public_dir\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/utils/__init__.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument 3 to \"resolve_export\" has incompatible type \"dict[str, str]\"; expected \"dict[str, str | tuple[str, str]]\"",
+      "path": "factorminer/utils/__init__.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"yaml\"",
+      "path": "factorminer/utils/config.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"tqdm\"",
+      "path": "factorminer/utils/logging.py"
+    },
+    {
+      "code": "arg-type",
+      "count": 1,
+      "message": "Argument \"rect\" to \"tight_layout\" of \"Figure\" has incompatible type \"list[float]\"; expected \"tuple[float, float, float, float] | None\"",
+      "path": "factorminer/utils/tearsheet.py"
+    },
+    {
+      "code": "attr-defined",
+      "count": 2,
+      "message": "Module has no attribute \"RdYlGn\"",
+      "path": "factorminer/utils/tearsheet.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"pandas\"",
+      "path": "factorminer/utils/tearsheet.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"scipy.stats\"",
+      "path": "factorminer/utils/tearsheet.py"
+    },
+    {
+      "code": "var-annotated",
+      "count": 1,
+      "message": "Need type annotation for \"quintile_ts\"",
+      "path": "factorminer/utils/tearsheet.py"
+    },
+    {
+      "code": "attr-defined",
+      "count": 1,
+      "message": "Module has no attribute \"RdYlGn\"",
+      "path": "factorminer/utils/visualization.py"
+    },
+    {
+      "code": "attr-defined",
+      "count": 1,
+      "message": "Module has no attribute \"viridis\"",
+      "path": "factorminer/utils/visualization.py"
+    },
+    {
+      "code": "import-untyped",
+      "count": 1,
+      "message": "Library stubs not installed for \"seaborn\"",
+      "path": "factorminer/utils/visualization.py"
+    }
+  ],
+  "error_count": 303,
+  "scope": "factorminer production package; factorminer/tests excluded",
+  "version": 1
+}

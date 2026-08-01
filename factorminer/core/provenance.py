@@ -13,7 +13,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field, is_dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -299,7 +299,7 @@ class EconomicRationale:
     drafted_at: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return _json_safe(asdict(self))
+        return cast(dict[str, Any], _json_safe(asdict(self)))
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any] | None) -> EconomicRationale:
@@ -450,7 +450,7 @@ def attest_economic_rationale(
     payload["source"] = "human"
     payload["attestor"] = str(attestor or "human")
     payload["attested_at"] = datetime.now().isoformat(timespec="seconds")
-    return _json_safe(payload)
+    return cast(dict[str, Any], _json_safe(payload))
 
 
 @dataclass
@@ -476,7 +476,7 @@ class RunManifest:
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return _json_safe(asdict(self))
+        return cast(dict[str, Any], _json_safe(asdict(self)))
 
 
 @dataclass
@@ -514,7 +514,7 @@ class FactorProvenance:
     mechanism_binding: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return _json_safe(asdict(self))
+        return cast(dict[str, Any], _json_safe(asdict(self)))
 
 
 def build_run_manifest(
@@ -587,7 +587,7 @@ def build_factor_provenance(
     """Build per-factor provenance from the current mining context."""
     manifest = dict(run_manifest)
 
-    lineage = {
+    lineage: dict[str, Any] = {
         "parent_formula": (parent_formula or "").strip(),
         "parent_ic_paper_mean": parent_ic_paper_mean,
         "edit_type": (edit_type or "").strip(),
@@ -598,10 +598,14 @@ def build_factor_provenance(
         inferred = infer_parent_lineage(formula, library_state)
         lineage = {**lineage, **inferred}
     if not lineage["edit_type"]:
+        lineage_parent = str(lineage.get("parent_formula", "") or "")
+        lineage_secondary_parent = str(
+            lineage.get("secondary_parent_formula", "") or ""
+        )
         lineage["edit_type"] = detect_edit_type(
             formula,
-            lineage.get("parent_formula") or None,
-            secondary_parent=lineage.get("secondary_parent_formula") or None,
+            lineage_parent or None,
+            secondary_parent=lineage_secondary_parent or None,
         )
 
     if isinstance(economic_rationale, EconomicRationale):
@@ -629,6 +633,10 @@ def build_factor_provenance(
     if rationale_payload.get("source") != "human":
         rationale_payload["attested"] = False
     mechanism_binding = check_mechanism_binding(formula, rationale_payload).to_dict()
+    parent_ic_value = lineage.get("parent_ic_paper_mean")
+    normalized_parent_ic = (
+        float(parent_ic_value) if isinstance(parent_ic_value, (int, float)) else None
+    )
 
     return FactorProvenance(
         run_id=str(manifest.get("run_id", "")),
@@ -651,7 +659,7 @@ def build_factor_provenance(
         target_stack=list(target_stack or manifest.get("target_stack", [])),
         research_metrics=_json_safe(dict(research_metrics or {})),
         parent_formula=str(lineage.get("parent_formula", "") or ""),
-        parent_ic_paper_mean=lineage.get("parent_ic_paper_mean"),
+        parent_ic_paper_mean=normalized_parent_ic,
         edit_type=str(lineage.get("edit_type", "fresh") or "fresh"),
         edit_motif=str(lineage.get("edit_motif", "") or ""),
         secondary_parent_formula=str(lineage.get("secondary_parent_formula", "") or ""),

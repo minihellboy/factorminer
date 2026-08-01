@@ -28,7 +28,7 @@ observation-date label: the pipeline treats the value as available after that
 publication and evaluates only the subsequent daily observation.
 
 ```bash
-uv sync --extra dev --extra visualization
+uv sync --python 3.12 --extra dev --extra visualization
 
 uv run factorminer public-data prepare \
   examples/public_evidence/ecb_fx_daily_2023_2024.lock.json \
@@ -96,8 +96,8 @@ On another machine, check out the receipt's `code_sha`, rebuild the data from
 the committed lock, then run:
 
 ```bash
-uv sync --frozen --extra dev --extra visualization
-uv run factorminer verify-receipt \
+uv sync --python 3.12 --frozen --extra dev --extra visualization
+uv run --python 3.12 factorminer verify-receipt \
   output/public-evidence-run/releases/RELEASE_ID
 ```
 

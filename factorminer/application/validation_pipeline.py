@@ -292,7 +292,7 @@ class ValidationPipeline:
         )
 
     def _research_replacement(self, result: EvaluationResult) -> tuple[int | None, str]:
-        if result.score_vector is None or self.library.size == 0:
+        if result.score_vector is None or result.signals is None or self.library.size == 0:
             return None, result.rejection_reason
 
         conflicting: list[tuple[int, float]] = []

@@ -41,6 +41,10 @@ jobs:
       - name: Run Ruff lint report
         run: uv run ruff check . --output-format=github
 
+      - name: Report staged production mypy regressions
+        continue-on-error: true
+        run: uv run python scripts/check_mypy_baseline.py
+
       - name: Check import boundaries
         run: |
           uv run python scripts/check_architecture.py
