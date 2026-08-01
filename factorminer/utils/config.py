@@ -532,12 +532,18 @@ class ResearchAdmissionConfig:
 
     use_residual_ic: bool = True
     use_effective_rank_gain: bool = True
+    strict_profile: bool = False
+    cross_fit_residual: bool = True
     turnover_penalty: float = 0.05
     redundancy_penalty: float = 0.20
     min_score: float = 0.04
     min_lcb: float = 0.0
+    min_residual_ic: float = 0.02
     min_span_gain: float = 0.05
     min_effective_rank_gain: float = 0.0
+    min_log_det_gain: float = -0.10
+    ridge_lambda: float = 1e-3
+    log_det_epsilon: float = 1e-6
 
     def validate(self) -> None:
         if self.turnover_penalty < 0.0:
@@ -548,6 +554,14 @@ class ResearchAdmissionConfig:
             raise ValueError("research.admission.min_score must be >= 0")
         if self.min_span_gain < 0.0:
             raise ValueError("research.admission.min_span_gain must be >= 0")
+        if self.min_residual_ic < 0.0:
+            raise ValueError("research.admission.min_residual_ic must be >= 0")
+        if self.min_log_det_gain > 0.0:
+            raise ValueError("research.admission.min_log_det_gain must be <= 0")
+        if self.ridge_lambda < 0.0:
+            raise ValueError("research.admission.ridge_lambda must be >= 0")
+        if self.log_det_epsilon <= 0.0:
+            raise ValueError("research.admission.log_det_epsilon must be > 0")
 
 
 @dataclass

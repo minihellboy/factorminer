@@ -116,7 +116,15 @@ class EvaluationKernel:
                 "max_correlation": self.geometry.candidate_geometry(signals).max_correlation,
             }
 
-        geometry = compute_factor_geometry(signals, returns, library_signals)
+        admission_cfg = self.research_config.admission
+        geometry = compute_factor_geometry(
+            signals,
+            returns,
+            library_signals,
+            ridge_lambda=admission_cfg.ridge_lambda,
+            cross_fit_residual=admission_cfg.cross_fit_residual,
+            log_det_epsilon=admission_cfg.log_det_epsilon,
+        )
         score_vector = build_score_vector(
             target_stats,
             target_horizons,

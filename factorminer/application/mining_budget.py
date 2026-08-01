@@ -100,6 +100,7 @@ class EvaluationResult:
     residual_ic: float = 0.0
     projection_loss: float = 0.0
     effective_rank_gain: float = 0.0
+    log_det_gain: float = 0.0
     score_vector: dict[str, Any] | None = None
     # Parent-formula lineage for EditAwareMemoryPolicy + MRM developmental history.
     parent_formula: str = ""

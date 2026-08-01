@@ -106,6 +106,8 @@ class FactorEvidenceService:
             "performed": result.replaced is not None,
         }
         research = dict(factor.research_metrics or {})
+        provenance = dict(getattr(factor, "provenance", {}) or {})
+        mechanism_binding = _mapping_value(provenance, "mechanism_binding")
         provider = getattr(self.loop.generator, "llm_provider", None)
         model_identity = "/".join(
             value
@@ -148,6 +150,9 @@ class FactorEvidenceService:
             failure_evidence={
                 "rejection_reason": result.rejection_reason,
                 "parse_ok": result.parse_ok,
+                "mechanism_binding_contradictions": mechanism_binding.get(
+                    "contradictions", []
+                ),
             },
             cost_results=_mapping_value(research, "cost", "cost_results"),
             capacity_results=_mapping_value(research, "capacity", "capacity_results"),
@@ -160,6 +165,7 @@ class FactorEvidenceService:
             model_risk_results={
                 **_mapping_value(research, "model_risk", "model_risk_results"),
                 "phase2": dict(phase2_summary),
+                "mechanism_binding": mechanism_binding,
             },
             generator_identity=generator_family,
             model_identity=model_identity,

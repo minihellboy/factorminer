@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 
+from factorminer.core.mechanism_binding import check_mechanism_binding
 from factorminer.core.provenance import (
     UNATTESTED_RATIONALE_BANNER,
     EconomicRationale,
@@ -68,6 +69,52 @@ def test_build_factor_provenance_embeds_unattested_rationale() -> None:
     assert rationale["attested"] is False
     assert rationale["mathematical_structure"]
     assert prov["edit_type"] == "fresh"
+    assert prov["mechanism_binding"]["status"] == "no_checkable_claims"
+
+
+def test_mechanism_binding_flags_false_volume_story() -> None:
+    result = check_mechanism_binding(
+        "Mean($close, 5)",
+        {
+            "financial_semantics": "A price-volume divergence factor",
+            "market_logic": "Unusual volume flow predicts the price movement.",
+        },
+    )
+
+    assert result.status == "contradicted"
+    assert "volume_or_liquidity_input" in result.claims_checked
+    assert any("$volume or $amt" in item for item in result.contradictions)
+
+
+def test_mechanism_binding_accepts_matching_structural_ingredients() -> None:
+    result = check_mechanism_binding(
+        "Div(Delta($close, 5), Std($returns, 20))",
+        {
+            "financial_semantics": "Volatility-normalized price momentum",
+            "market_logic": "Price movement continuation scaled by volatility.",
+        },
+    )
+
+    assert result.status == "consistent"
+    assert not result.contradictions
+    assert set(result.claims_checked) == {
+        "volatility_normalization",
+        "temporal_momentum",
+        "price_input",
+    }
+
+
+def test_mechanism_binding_marks_uncheckable_story_without_inventing_conflict() -> None:
+    result = check_mechanism_binding(
+        "CsRank(Mean($close, 5))",
+        {
+            "financial_semantics": "Cross-sectional signal",
+            "market_logic": "May identify temporary market dislocations.",
+        },
+    )
+
+    assert result.status == "no_checkable_claims"
+    assert not result.contradictions
 
 
 def test_html_report_shows_unattested_banner_and_escapes_llm_text() -> None:

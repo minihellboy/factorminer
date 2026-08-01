@@ -25,6 +25,9 @@ class FactorGeometryDiagnostics:
     marginal_span_gain: float = 1.0
     effective_rank_gain: float = 1.0
     residual_ic: float = 0.0
+    log_det_before: float = 0.0
+    log_det_after: float = 0.0
+    log_det_gain: float = 0.0
 
 
 @dataclass
@@ -57,8 +60,18 @@ def compute_factor_geometry(
     candidate_signals: np.ndarray,
     returns: np.ndarray,
     library_signals: Sequence[np.ndarray] | None = None,
+    *,
+    ridge_lambda: float = 1e-3,
+    cross_fit_residual: bool = True,
+    log_det_epsilon: float = 1e-6,
 ) -> FactorGeometryDiagnostics:
-    """Compute soft library geometry metrics for a candidate."""
+    """Compute incremental geometry against the complete admitted library.
+
+    Residualization uses a ridge projection fitted on the opposite temporal
+    fold by default.  This avoids measuring incremental IC on an in-sample
+    residual.  The regularized correlation log-determinant catches collective
+    redundancy that can be invisible to every pairwise correlation.
+    """
     library_signals = list(library_signals or [])
     if not library_signals:
         return FactorGeometryDiagnostics(
@@ -67,7 +80,9 @@ def compute_factor_geometry(
             projection_loss=0.0,
             marginal_span_gain=1.0,
             effective_rank_gain=1.0,
-            residual_ic=float(compute_factor_stats(candidate_signals, returns)["ic_abs_mean"]),
+            residual_ic=float(
+                compute_factor_stats(candidate_signals, returns)["ic_paper_mean"]
+            ),
         )
 
     corrs = [
@@ -84,7 +99,9 @@ def compute_factor_geometry(
         return FactorGeometryDiagnostics(
             max_abs_correlation=max(corrs, default=0.0),
             mean_abs_correlation=float(np.mean(corrs)) if corrs else 0.0,
-            residual_ic=float(compute_factor_stats(candidate_signals, returns)["ic_abs_mean"]),
+            residual_ic=float(
+                compute_factor_stats(candidate_signals, returns)["ic_paper_mean"]
+            ),
         )
 
     design = np.column_stack(library_vectors)
@@ -94,9 +111,13 @@ def compute_factor_geometry(
         marginal_span_gain = 1.0
         residual_matrix = candidate_signals
     else:
-        beta, *_ = np.linalg.lstsq(design, response, rcond=None)
-        fitted = design @ beta
-        residual = response - fitted
+        residual = _ridge_residual(
+            design,
+            response,
+            candidate_signals.shape,
+            ridge_lambda=ridge_lambda,
+            cross_fit=cross_fit_residual,
+        )
         response_var = float(np.var(response))
         residual_var = float(np.var(residual))
         marginal_span_gain = residual_var / response_var if response_var > 1e-12 else 0.0
@@ -105,7 +126,13 @@ def compute_factor_geometry(
 
     before_rank = _effective_rank(design)
     after_rank = _effective_rank(np.column_stack([design, response]))
-    residual_ic = float(compute_factor_stats(residual_matrix, returns)["ic_abs_mean"])
+    log_det_before = _regularized_correlation_logdet(design, log_det_epsilon)
+    log_det_after = _regularized_correlation_logdet(
+        np.column_stack([design, response]),
+        log_det_epsilon,
+    )
+    log_det_gain = log_det_after - log_det_before - float(np.log1p(log_det_epsilon))
+    residual_ic = float(compute_factor_stats(residual_matrix, returns)["ic_paper_mean"])
 
     return FactorGeometryDiagnostics(
         max_abs_correlation=max(corrs, default=0.0),
@@ -114,6 +141,9 @@ def compute_factor_geometry(
         marginal_span_gain=float(max(marginal_span_gain, 0.0)),
         effective_rank_gain=float(after_rank - before_rank),
         residual_ic=residual_ic,
+        log_det_before=log_det_before,
+        log_det_after=log_det_after,
+        log_det_gain=float(log_det_gain),
     )
 
 
@@ -208,6 +238,35 @@ def passes_research_admission(
             f"Research LCB {score_vector.lower_confidence_bound:.4f} "
             f"< {admission_cfg.min_lcb:.4f}"
         )
+    if getattr(admission_cfg, "strict_profile", False):
+        strict_failures = []
+        if score_vector.geometry.max_abs_correlation >= correlation_threshold:
+            strict_failures.append(
+                f"max|rho|={score_vector.geometry.max_abs_correlation:.4f}"
+            )
+        if score_vector.geometry.residual_ic < admission_cfg.min_residual_ic:
+            strict_failures.append(
+                f"residual_ic={score_vector.geometry.residual_ic:.4f}"
+            )
+        if score_vector.geometry.marginal_span_gain < admission_cfg.min_span_gain:
+            strict_failures.append(
+                f"span_gain={score_vector.geometry.marginal_span_gain:.4f}"
+            )
+        if score_vector.geometry.log_det_gain < admission_cfg.min_log_det_gain:
+            strict_failures.append(
+                f"log_det_gain={score_vector.geometry.log_det_gain:.4f}"
+            )
+        if (
+            admission_cfg.use_effective_rank_gain
+            and score_vector.geometry.effective_rank_gain
+            < admission_cfg.min_effective_rank_gain
+        ):
+            strict_failures.append(
+                f"effective_rank_gain={score_vector.geometry.effective_rank_gain:.4f}"
+            )
+        if strict_failures:
+            return False, "Strict incremental admission failed: " + ", ".join(strict_failures)
+        return True, "Strict incremental geometry admission passes"
     if score_vector.geometry.max_abs_correlation < correlation_threshold:
         return True, "Research score passes direct admission"
     if (
@@ -461,6 +520,62 @@ def _unflatten_panel(flat: np.ndarray, valid_mask: np.ndarray, shape: tuple[int,
     matrix = np.full(shape, np.nan, dtype=np.float64)
     matrix[valid_mask] = flat.reshape(shape)[valid_mask]
     return matrix
+
+
+def _ridge_residual(
+    design: np.ndarray,
+    response: np.ndarray,
+    panel_shape: tuple[int, int],
+    *,
+    ridge_lambda: float,
+    cross_fit: bool,
+) -> np.ndarray:
+    """Return ridge projection residuals, cross-fitted over periods when possible."""
+    periods = panel_shape[1]
+    period_ids = np.tile(np.arange(periods), panel_shape[0])
+    residual = np.empty_like(response)
+
+    def fit_predict(train: np.ndarray, test: np.ndarray) -> None:
+        gram = design[train].T @ design[train]
+        penalty = max(float(ridge_lambda), 0.0) * np.eye(design.shape[1])
+        system = gram + penalty
+        target = design[train].T @ response[train]
+        try:
+            beta = np.linalg.solve(system, target)
+        except np.linalg.LinAlgError:
+            beta, *_ = np.linalg.lstsq(system, target, rcond=None)
+        residual[test] = response[test] - design[test] @ beta
+
+    if cross_fit and periods >= 2:
+        midpoint = periods // 2
+        first = period_ids < midpoint
+        second = ~first
+        if first.any() and second.any():
+            fit_predict(first, second)
+            fit_predict(second, first)
+            return residual
+
+    all_rows = np.ones(response.shape, dtype=bool)
+    fit_predict(all_rows, all_rows)
+    return residual
+
+
+def _regularized_correlation_logdet(matrix: np.ndarray, epsilon: float) -> float:
+    """Log determinant of a regularized column correlation matrix."""
+    if matrix.ndim != 2 or matrix.shape[1] == 0:
+        return 0.0
+    centered = matrix - np.mean(matrix, axis=0, keepdims=True)
+    scales = np.std(centered, axis=0, ddof=0)
+    standardized = np.divide(
+        centered,
+        scales,
+        out=np.zeros_like(centered),
+        where=scales > 1e-12,
+    )
+    correlation = standardized.T @ standardized / max(standardized.shape[0], 1)
+    regularized = correlation + max(float(epsilon), 1e-12) * np.eye(matrix.shape[1])
+    sign, value = np.linalg.slogdet(regularized)
+    return float(value) if sign > 0 and np.isfinite(value) else float("-inf")
 
 
 def _effective_rank(matrix: np.ndarray) -> float:

@@ -10,10 +10,12 @@ import pytest
 
 from factorminer.core.factor_library import Factor
 from factorminer.data.tensor_builder import TargetSpec, compute_targets
+from factorminer.evaluation.metrics import compute_factor_stats
 from factorminer.evaluation.portfolio import PortfolioBacktester
 from factorminer.evaluation.research import (
     FactorGeometryDiagnostics,
     build_score_vector,
+    compute_factor_geometry,
     passes_research_admission,
     run_research_model_suite,
 )
@@ -172,6 +174,101 @@ def test_research_score_vector_and_admission():
     )
     assert admitted is True
     assert "admission" in reason.lower()
+
+
+def test_strict_geometry_rejects_collective_redundancy_below_pairwise_threshold():
+    rng = np.random.default_rng(91)
+    library = [rng.normal(size=(160, 60)) for _ in range(5)]
+    candidate = sum(library) / np.sqrt(len(library))
+    returns = candidate + 0.05 * rng.normal(size=candidate.shape)
+    geometry = compute_factor_geometry(candidate, returns, library)
+
+    assert geometry.max_abs_correlation < 0.5
+    assert geometry.log_det_gain < -1.0
+
+    cfg = load_config(
+        overrides={
+            "benchmark": {"mode": "research"},
+            "research": {
+                "enabled": True,
+                "admission": {
+                    "strict_profile": True,
+                    "min_score": 0.0,
+                    "min_residual_ic": 0.0,
+                    "min_span_gain": 0.0,
+                    "min_log_det_gain": -0.1,
+                },
+            },
+        }
+    )
+    score = build_score_vector(
+        target_stats={
+            "paper": {
+                "ic_mean": 0.2,
+                "ic_abs_mean": 0.2,
+                "icir": 1.0,
+                "turnover": 0.0,
+                "ic_series": np.full(20, 0.2),
+            }
+        },
+        target_horizons={"paper": 1},
+        research_cfg=cfg.research,
+        geometry=geometry,
+    )
+    admitted, reason = passes_research_admission(score, cfg.research, 0.5)
+
+    assert admitted is False
+    assert "log_det_gain" in reason
+
+
+def test_strict_geometry_accepts_independent_predictive_candidate():
+    rng = np.random.default_rng(7)
+    library = [rng.normal(size=(120, 50)) for _ in range(4)]
+    candidate = rng.normal(size=(120, 50))
+    returns = candidate + 0.2 * rng.normal(size=candidate.shape)
+    geometry = compute_factor_geometry(candidate, returns, library)
+    stats = compute_factor_stats(candidate, returns)
+    stats["turnover"] = 0.0
+
+    cfg = load_config(
+        overrides={
+            "benchmark": {"mode": "research"},
+            "research": {
+                "enabled": True,
+                "admission": {
+                    "strict_profile": True,
+                    "min_score": 0.0,
+                    "min_lcb": 0.0,
+                    "min_residual_ic": 0.5,
+                    "min_span_gain": 0.8,
+                    "min_log_det_gain": -0.1,
+                },
+            },
+        }
+    )
+    score = build_score_vector(
+        target_stats={"paper": stats},
+        target_horizons={"paper": 1},
+        research_cfg=cfg.research,
+        geometry=geometry,
+    )
+    admitted, reason = passes_research_admission(score, cfg.research, 0.5)
+
+    assert geometry.log_det_gain > -0.1
+    assert admitted is True, reason
+
+
+def test_residual_ic_uses_abs_mean_not_mean_absolute_ic():
+    cross_section = np.arange(20, dtype=np.float64)[:, None]
+    candidate = np.repeat(cross_section, 20, axis=1)
+    directions = np.where(np.arange(20) % 2 == 0, 1.0, -1.0)[None, :]
+    returns = candidate * directions
+
+    raw_stats = compute_factor_stats(candidate, returns)
+    geometry = compute_factor_geometry(candidate, returns)
+
+    assert raw_stats["ic_abs_mean"] == pytest.approx(1.0)
+    assert geometry.residual_ic == pytest.approx(0.0, abs=1e-12)
 
 
 def test_research_model_suite_reports_net_ir():

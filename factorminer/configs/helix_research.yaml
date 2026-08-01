@@ -50,11 +50,18 @@ research:
   admission:
     use_residual_ic: true
     use_effective_rank_gain: true
+    strict_profile: false
+    cross_fit_residual: true
     turnover_penalty: 0.05
     redundancy_penalty: 0.20
     min_score: 0.04
     min_lcb: 0.0
+    min_residual_ic: 0.02
     min_span_gain: 0.05
+    min_effective_rank_gain: 0.0
+    min_log_det_gain: -0.10
+    ridge_lambda: 0.001
+    log_det_epsilon: 0.000001
   selection:
     models: ["ridge", "elastic_net", "lasso", "xgboost"]
   regimes:

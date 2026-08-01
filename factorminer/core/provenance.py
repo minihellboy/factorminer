@@ -17,6 +17,8 @@ from typing import Any
 
 import numpy as np
 
+from factorminer.core.mechanism_binding import check_mechanism_binding
+
 logger = logging.getLogger(__name__)
 
 # Human-facing banner for LLM-drafted economic rationale that has not been
@@ -340,17 +342,16 @@ def draft_economic_rationale(
         mathematical_structure=(
             f"{name} is expressed as the typed DSL formula `{formula}`. "
             "It composes leaf market features through registered operators "
-            "with explicit window/parameter structure."
+            f"with explicit window/parameter structure and is catalogued as '{cat}'."
         ),
         financial_semantics=(
-            f"Category hint '{cat}' frames the formula as a cross-sectional "
-            "predictor built from observable OHLCV-style inputs rather than "
-            "latent model embeddings."
+            "The predictor is computed from the observable inputs present in "
+            "the formula. Its supplied research category is metadata rather "
+            "than a structural assertion."
         ),
         market_logic=(
-            "The intended market logic is that ranked/normalized transforms of "
-            "price, volume, or related features identify temporary dislocations "
-            "that mean-revert or continue over the evaluation horizon. "
+            "The intended market logic is that transforms of the formula's "
+            "observed inputs may identify temporary cross-sectional dislocations. "
             "This is a draft hypothesis, not validated theory."
         ),
         attested=False,
@@ -510,6 +511,7 @@ class FactorProvenance:
     secondary_parent_formula: str = ""
     # Structured conceptual-soundness triple (SR 26-2 evidence packaging).
     economic_rationale: dict[str, Any] = field(default_factory=dict)
+    mechanism_binding: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return _json_safe(asdict(self))
@@ -626,6 +628,7 @@ def build_factor_provenance(
     # Hard invariant: generation never leaves attested=True unless source=human.
     if rationale_payload.get("source") != "human":
         rationale_payload["attested"] = False
+    mechanism_binding = check_mechanism_binding(formula, rationale_payload).to_dict()
 
     return FactorProvenance(
         run_id=str(manifest.get("run_id", "")),
@@ -653,4 +656,5 @@ def build_factor_provenance(
         edit_motif=str(lineage.get("edit_motif", "") or ""),
         secondary_parent_formula=str(lineage.get("secondary_parent_formula", "") or ""),
         economic_rationale=_json_safe(rationale_payload),
+        mechanism_binding=_json_safe(mechanism_binding),
     )
