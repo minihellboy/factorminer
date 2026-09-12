@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import sys
+from types import ModuleType
 
+import pytest
 from click.testing import CliRunner
 
 import factorminer.cli as cli_module
@@ -25,6 +28,35 @@ def test_doctor_json_succeeds_with_default_cpu_backend(tmp_path):
     assert statuses["packaged_config"] == "ok"
     assert statuses["effective_backend"] == "ok"
     assert statuses["llm"] in {"ok", "warning"}
+
+
+@pytest.mark.parametrize("json_output", [False, True])
+@pytest.mark.parametrize("google_state", ["missing-parent", "not-a-package", "missing-spec"])
+def test_doctor_warns_when_optional_module_discovery_fails(
+    monkeypatch, tmp_path, google_state, json_output,
+):
+    monkeypatch.setitem(
+        sys.modules, "google", None if google_state == "missing-parent" else ModuleType("google"),
+    )
+    monkeypatch.delitem(sys.modules, "google.generativeai", raising=False)
+    if google_state == "missing-spec":
+        monkeypatch.setitem(sys.modules, "google.generativeai", ModuleType("google.generativeai"))
+
+    args = ["--output-dir", str(tmp_path / "doctor-output"), "doctor"]
+    if json_output:
+        args.append("--json")
+    result = CliRunner().invoke(main, args)
+
+    assert result.exit_code == 0, result.output
+    if json_output:
+        payload = json.loads(result.output)
+        assert payload["ok"] is True
+        checks = {check["name"]: check for check in payload["checks"]}
+        assert checks["optional:google-generativeai"]["status"] == "warning"
+        assert checks["output_dir"]["status"] == "ok"
+    else:
+        assert "[WARNING] optional:google-generativeai:" in result.output
+        assert "[OK     ] output_dir: Writable:" in result.output
 
 
 def test_init_config_writes_and_refuses_overwrite(tmp_path):
@@ -97,6 +129,8 @@ def test_session_inspect_handles_partial_and_inconsistent_artifacts(tmp_path):
 
 def test_quickstart_runs_mine_and_writes_report(monkeypatch, tmp_path):
     captured: dict[str, object] = {}
+    monkeypatch.setitem(sys.modules, "google", None)
+    monkeypatch.delitem(sys.modules, "google.generativeai", raising=False)
 
     def _fake_mine_callback(**kwargs):
         import click

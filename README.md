@@ -73,6 +73,9 @@ uv run factorminer quickstart
 uv run factorminer doctor --json
 ```
 
+`doctor` reports missing or uninspectable optional dependencies as warnings,
+so they do not block the mock workflow in a base installation.
+
 `quickstart` writes a small library and static report under
 `/tmp/factorminer-quickstart`. To mine directly:
 
