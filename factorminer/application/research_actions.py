@@ -19,6 +19,12 @@ from factorminer.architecture.research_actions import (
     ResearchActionPlanner,
 )
 from factorminer.architecture.research_planner import ResearchCyclePlanner
+from factorminer.architecture.research_skills import (
+    RECIPE_VERSION,
+    digest,
+    recipe_variants,
+    signal_profile,
+)
 from factorminer.core.parser import try_parse
 from factorminer.core.types import get_features
 from factorminer.evaluation.metrics import compute_rank_ic
@@ -36,10 +42,16 @@ class ResearchActionService:
         self.loop = loop
         self.config = config
         self.planner = ResearchActionPlanner(config)
-        self.ledger = ResearchActionLedger(loop.settings.output_dir, {
+        identity = {
             "dataset_id": loop.trial_dataset_id, "planner": asdict(config),
             "loop_type": loop._loop_type(), "protocol": loop.protocol.runtime_contract(),
-        })
+        }
+        self.skills = getattr(loop.settings.research, "skills", None)
+        self.skills_enabled = self.skills is not None and self.skills.enabled
+        if self.skills_enabled:
+            identity["skills"] = loop.memory_policy.transfer_identity()
+        self.ledger = ResearchActionLedger(loop.settings.output_dir, identity)
+        loop.memory_policy.persist_research_skills(loop.settings.output_dir)
         self.active: dict[str, Any] | None = None
         self.started_at = 0.0
         self.evaluations = 0
@@ -80,6 +92,8 @@ class ResearchActionService:
 
     def prepare(self, payload: Any) -> str:
         records = self.ledger.records()
+        self.loop.memory_policy.sync_research_history(
+            records, dataset_id=self.loop.trial_dataset_id, campaign_id=self.ledger.campaign_id)
         observed: dict[str, dict] = {}
         seen: set[str] = set()
         challenged: set[str] = set()
@@ -93,16 +107,25 @@ class ResearchActionService:
                 challenged.add(record["decision"]["chosen"]["parent_formula"])
         factors = self.loop.library.list_factors()
         for factor in factors:
-            observed[factor.formula] = {
-                "formula": factor.formula, "quality": finite_float(factor.ic_paper_mean),
-                "admitted": True, "parse_ok": True,
-            }
+            if self.skills_enabled and factor.formula in observed:
+                observed[factor.formula]["admitted"] = True
+            else:
+                observed[factor.formula] = {
+                    "formula": factor.formula, "quality": finite_float(factor.ic_paper_mean),
+                    "admitted": True, "parse_ok": True,
+                }
+                if self.skills_enabled:
+                    # Imported library statistics need not describe this dataset.
+                    observed[factor.formula].update(
+                        profile=signal_profile(None), quality_scope="unverified")
             seen.add(factor.formula)
         offers = [ResearchAction("generate", payload.batch_size)]
         # All distinct observed parents remain eligible. No fixed search quota.
         for row in sorted(observed.values(), key=lambda r: (-r["quality"], r["formula"])):
-            formula = f"Mean({row['formula']}, {self.config.refinement_window})"
-            if formula not in seen and try_parse(formula) is not None:
+            candidates = ([v["formula"] for v in recipe_variants(row["formula"], self.skills.recipes)]
+                          if self.skills_enabled else [f"Mean({row['formula']}, {self.config.refinement_window})"])
+            formula = next((f for f in candidates if f not in seen and try_parse(f) is not None), None)
+            if formula is not None:
                 offers.append(ResearchAction("refine", 1, row["formula"], formula, row["quality"]))
                 break
         for factor in sorted(factors, key=lambda f: (-finite_float(f.ic_paper_mean), f.formula)):
@@ -125,10 +148,39 @@ class ResearchActionService:
             "memory_directions": payload.memory_signal.get("recommended_directions", []),
             "evaluations_so_far": self.ledger.summary()["evaluations"],
         }
+        if self.skills_enabled:
+            priors = {}
+            for offer in offers:
+                if offer.kind == "challenge" and self.config.delay_bars == 1:
+                    parent_context = self._skill_context(observed[offer.parent_formula])
+                    prior = self.loop.memory_policy.research_action_prior("challenge", context=parent_context)
+                    if prior:
+                        priors["challenge"] = prior
+            context["research_action_priors"] = priors
         decision = self.planner.plan(
             offers=offers, records=records, context=context, iteration=payload.iteration,
             quality_threshold=self.loop.settings.ic_threshold,
         )
+        chosen = decision["chosen"]
+        if self.skills_enabled and chosen["kind"] in ("refine", "challenge"):
+            parent = observed[chosen["parent_formula"]]
+            skill_context = self._skill_context(parent)
+            recipes = (self.skills.recipes if chosen["kind"] == "refine"
+                       else (("delay_1",) if self.config.delay_bars == 1 else ()))
+            variants = recipe_variants(chosen["parent_formula"], recipes)
+            if chosen["kind"] == "refine":
+                variants = [v for v in variants if v["formula"] not in seen]
+            if variants:
+                selected, guidance = self.loop.memory_policy.select_research_variant(
+                    variants, context=skill_context, sequence=decision["sequence"], seed=self.config.seed)
+                chosen.update(formula=selected["formula"], recipe_id=selected["recipe_id"])
+                decision["skill_context"] = skill_context
+                decision["skill_selection"] = guidance
+                decision["joint_selection_probability"] = decision["selection_probability"] * guidance["conditional_probability"]
+                # Kind-level value is the same for these equal-cost variants.
+                for estimate in decision["estimates"]:
+                    if estimate["action"]["kind"] == chosen["kind"]:
+                        estimate["action"] = dict(chosen)
         self.ledger.begin(decision)
         self.active = decision
         self.started_at = time.monotonic()
@@ -141,6 +193,24 @@ class ResearchActionService:
             "rationale": decision["rationale"],
         }
         return decision["chosen"]["kind"]
+
+    def _skill_context(self, parent: dict) -> dict:
+        data_config = getattr(self.loop.config, "data", None)
+        scope = {"market": getattr(data_config, "market", "unknown"),
+                 "frequency": getattr(data_config, "frequency", "unknown"),
+                 "targets": self.loop.protocol.runtime_contract()["targets"],
+                 "default_target": self.loop.protocol.default_target,
+                 "signal_failure_policy": self.loop.settings.signal_failure_policy,
+                 "delay_test": {"bars": self.config.delay_bars, "retention": self.config.delay_retention,
+                                "ic_threshold": self.loop.settings.ic_threshold},
+                 "quality_metric": "absolute mean cross-sectional Spearman IC"}
+        quality = parent["quality"]
+        profile = parent.get("profile") or signal_profile(None)
+        return {**profile, "scope": digest(scope), "scope_description": scope,
+                "parent_formula": parent["formula"], "parent_quality": quality,
+                "quality_band": "low" if quality < 0.04 else ("medium" if quality < 0.12 else "high"),
+                "quality_scope": parent.get("quality_scope", "unknown"),
+                "recipe_version": RECIPE_VERSION, "ic_threshold": self.loop.settings.ic_threshold}
 
     def refine(self, payload: Any) -> None:
         action = payload.research_action["chosen"]
@@ -221,6 +291,9 @@ class ResearchActionService:
             "quality": finite_float(r.ic_paper_mean), "signed_ic": finite_float(r.ic_mean),
             "admitted": bool(r.admitted), "rejection_reason": r.rejection_reason,
             "parent_formula": r.parent_formula,
+            **({"profile": signal_profile(r.signals),
+                "quality_scope": "full" if r.target_stats else "fast_or_unmeasured"}
+               if self.skills_enabled else {}),
         } for r in payload.results]
         challenge = payload.stage_metrics.get("research_challenge", {})
         decision_changed = None
@@ -240,6 +313,8 @@ class ResearchActionService:
         payload.stage_metrics["research_stop"] = chosen["kind"] == "stop"
         self.active = None
         self.ledger.export()
+        self.loop.memory_policy.sync_research_history(
+            self.ledger.records(), dataset_id=self.loop.trial_dataset_id, campaign_id=self.ledger.campaign_id)
 
     def fail(self, exc: BaseException) -> None:
         if self.active is None:

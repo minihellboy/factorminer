@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 
 from factorminer.architecture.research_actions import ResearchPlannerConfig
+from factorminer.architecture.research_skills import ResearchSkillsConfig
 from factorminer.configs import DEFAULT_CONFIG_PATH
 
 
@@ -648,6 +649,7 @@ class ResearchConfig:
     regimes: ResearchRegimesConfig = field(default_factory=ResearchRegimesConfig)
     execution: ResearchExecutionConfig = field(default_factory=ResearchExecutionConfig)
     planner: ResearchPlannerConfig = field(default_factory=ResearchPlannerConfig)
+    skills: ResearchSkillsConfig = field(default_factory=ResearchSkillsConfig)
 
     def validate(self) -> None:
         if self.knowledge_retrieval_limit < 0:
@@ -674,6 +676,9 @@ class ResearchConfig:
         self.regimes.validate()
         self.execution.validate()
         self.planner.validate()
+        self.skills.validate()
+        if self.skills.enabled and not self.planner.enabled:
+            raise ValueError("research.skills requires research.planner.enabled")
 
 
 @dataclass
@@ -740,6 +745,7 @@ _RESEARCH_SECTION_MAP: dict[str, type] = {
     "regimes": ResearchRegimesConfig,
     "execution": ResearchExecutionConfig,
     "planner": ResearchPlannerConfig,
+    "skills": ResearchSkillsConfig,
 }
 
 

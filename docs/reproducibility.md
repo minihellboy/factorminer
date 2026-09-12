@@ -67,6 +67,51 @@ on the fixed panel, not uncertainty across markets or independent datasets.
 The initial measured results and remaining limitations are documented in
 [Research actions](research-actions.md). The policy remains opt-in.
 
+## Research-skill transfer comparison
+
+```bash
+uv run factorminer -o output/skill-comparison benchmark research-skills \
+  --source-seeds 1000,1001,1002,1003,1004,1005,1006,1007 \
+  --target-seeds 2000,2001,2002,2003,2004,2005,2006,2007,2008,2009
+```
+
+The command freezes a protocol before dispatch and compares no procedure
+transfer, existing motif memory, nearest-trajectory retrieval, and structured
+skills. Three source families cover noisy levels, integrated nuisance, and
+changing scale. Five target families alter the mechanisms and expression syntax,
+and include independent noise and a hidden future reversal. Each family/seed
+pair has a separate `SeedSequence` stream; methods share that panel. Source and
+target seeds and dataset identities are disjoint.
+
+Each source episode evaluates one parent, all four edits in randomized order,
+and an available delay challenge. The source pack and its total evaluation cost
+are recorded in `transfer_freeze.json` before any target episode. Every target
+method receives the same original parent and exactly one edit choice: two
+candidate evaluations. The fixed experiment-kind/parent schedule is an explicit
+intervention to isolate procedure retrieval; it does not test end-to-end action
+allocation or live adaptive generation. Source costs are reported separately
+and shared by the transfer modes, rather than hidden in their target allowance.
+
+Each target episode freezes the best discovery-admitted formula and its
+direction before computing final-panel results. The score is direction-frozen
+held-out IC minus 0.04, or zero when discovery admits nothing. A selected factor
+below that threshold on the final panel is counted as a false claim. Its label
+describes this diagnostic decision rule, not a statistical test. Final results
+are never fed back to selection. Unit tests perturb only final returns and
+require identical decisions and selected formulas.
+
+`results.json` includes all runs, per-family recipe choices, false claims,
+evaluation counts, and paired differences against each baseline. Bootstrap
+intervals resample paired target panels within a family; they condition on one
+frozen source pack and are not adjusted for multiple comparisons or source-pack
+uncertainty. The existing coarse motif model cannot distinguish the four wrapper
+recipes, making nearest-trajectory retrieval the stronger baseline here. These
+are Gaussian diagnostic panels, not market or profitability evidence. Use a new
+output directory for each comparison; existing protocols cannot be overwritten.
+
+See [Research skills](research-skills.md) for configuration, effect definitions,
+versioning, and local disagreement handling.
+
 ## Market-data contract
 
 The normalized long-form panel requires:

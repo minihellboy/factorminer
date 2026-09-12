@@ -152,7 +152,8 @@ class RalphLoop:
             target_horizons=dict(self.settings.target_horizons or {}),
         )
         self.memory = memory if memory is not None else create_default_memory()
-        self.memory_policy = build_memory_policy(config, self.protocol, returns=returns)
+        self.memory_policy = build_memory_policy(config, self.protocol, returns=returns,
+                                                 output_dir=self.settings.output_dir)
         self.prompt_context_builder = PromptContextBuilder(
             self.protocol,
             family_discovery=self.family_discovery,
@@ -512,7 +513,9 @@ class RalphLoop:
                 result.parent_formula = chosen["parent_formula"]
                 result.parent_ic_paper_mean = chosen["parent_quality"]
                 result.edit_type = "refine"
-                result.edit_motif = "temporal_smoothing"
+                from factorminer.architecture.memory_policy import extract_edit_motif
+                result.edit_motif = (extract_edit_motif(result.parent_formula, result.formula)
+                                     if chosen.get("recipe_id") else "temporal_smoothing")
                 continue
             if result.parent_formula:
                 continue
@@ -843,6 +846,9 @@ class RalphLoop:
         if self.research_actions is not None:
             self.research_actions.ledger.recover_interrupted()
             self.research_actions.ledger.export()
+            self.memory_policy.sync_research_history(
+                self.research_actions.ledger.records(), dataset_id=self.trial_dataset_id,
+                campaign_id=self.research_actions.ledger.campaign_id)
 
     @classmethod
     def resume_from(

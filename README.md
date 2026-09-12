@@ -122,6 +122,11 @@ purged. Repeat the command to resume; use a new output directory for a separate
 campaign. See [Research actions](docs/research-actions.md) for the decision
 model, recovery contract, benchmark results, and current limitations.
 
+The optional [research skill extension](docs/research-skills.md) learns reusable
+edit and testing procedures from completed campaigns. It records applicability,
+uncertainty, and contradictory outcomes, freezes source experience for transfer,
+and compares structured skills with existing motif and trajectory retrieval.
+
 ## Core workflows
 
 Run the extended research lane:

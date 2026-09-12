@@ -103,6 +103,16 @@ outcome is marked interrupted with an unknown result; it is never counted as
 successful evidence. Campaigns require one writer and retain their dataset and
 protocol identity. See [Research actions](research-actions.md) for details.
 
+With `research.skills.enabled`, `TransferableSkillMemoryPolicy` wraps the
+configured memory policy and owns frozen procedure retrieval and campaign-local
+feedback. `research_skills.py` defines the versioned recipes, observation compiler,
+and dataset-cluster summaries. The action service asks the policy to choose a
+recipe after selecting an action kind, records the joint probability, and feeds
+back only committed outcomes. Imported pack hashes and retrieval settings are
+pinned in campaign identity; a retained pack copy supports resume after source
+relocation. This extension never bypasses evaluation or admission. See
+[Research skills](research-skills.md) for applicability and uncertainty semantics.
+
 ## Data and expression execution
 
 The normal data path is:

@@ -151,6 +151,13 @@ class ResearchActionPlanner:
         estimates = []
         for offer in offers:
             a, b, gain = self._posterior(offer.kind, context["bucket"], records)
+            prior = context.get("research_action_priors", {}).get(offer.kind, {})
+            for key in ("alpha_add", "beta_add"):
+                value = prior.get(key, 0.0)
+                if not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+                    raise ValueError("Invalid transferred action prior")
+            a += prior.get("alpha_add", 0.0)
+            b += prior.get("beta_add", 0.0)
             p = a / (a + b)
             cost = offer.evaluations * cfg.evaluation_cost
             if offer.kind == "generate":
