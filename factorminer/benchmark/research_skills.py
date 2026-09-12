@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from factorminer.application.runtime_context import MiningRunContext
-from factorminer.architecture.research_actions import ResearchAction
+from factorminer.architecture.research_actions import ResearchAction, ResearchActionPlanner
 from factorminer.architecture.research_skills import (
     TRANSFER_MODES,
     compile_skill_pack,
@@ -88,7 +88,7 @@ def _config(mode: str, pack_path: str, seed: int) -> Config:
     return cfg
 
 
-class _ProcedureSchedule:
+class _ProcedureSchedule(ResearchActionPlanner):
     """Hold the experiment kind fixed to isolate memory's choice of procedure.
 
     This is an explicit benchmark intervention, not a claim about end-to-end
@@ -96,6 +96,7 @@ class _ProcedureSchedule:
     """
 
     def __init__(self, inner, loop, parent: str, *, source: bool):
+        super().__init__(inner.config)
         self.inner, self.loop, self.parent, self.source = inner, loop, parent, source
 
     def plan(self, **kwargs):
@@ -129,8 +130,10 @@ def _episode(output: Path, *, seed: int, family: str, mode: str, pack_path: str 
     cfg = _config(mode, pack_path, seed)
     loop = RalphLoop(cfg, data[:, :split-1], returns[:, :split-1],
                      checkpoint_interval=0, run_context=MiningRunContext(output_dir=output))
+    actions = loop.research_actions
+    assert actions is not None  # Enabled by the frozen benchmark configuration.
     loop.stages["generate"] = GenerateStage(lambda *_: [("initial_parent", parent)])
-    loop.research_actions.planner = _ProcedureSchedule(loop.research_actions.planner, loop, parent, source=source)
+    actions.planner = _ProcedureSchedule(actions.planner, loop, parent, source=source)
     steps = 6 if source else 2  # All edits in source; one choice on each unseen task.
     started = time.monotonic()
     for i in range(1, steps+1):
@@ -138,9 +141,9 @@ def _episode(output: Path, *, seed: int, family: str, mode: str, pack_path: str 
         stats = loop._run_iteration(1)
         if stats.get("research_stop"):
             break
-    records = loop.research_actions.ledger.records()
+    records = actions.ledger.records()
     # Freeze selection before computing any final result.
-    factors = sorted(loop.library.list_factors(), key=lambda f: (-f.ic_paper_mean, f.formula))
+    factors = sorted(loop.library.list_factors(), key=lambda f: (-float(f.ic_paper_mean or 0.0), f.formula))
     best = factors[0] if factors else None
     frozen = {"config": cfg.to_dict(), "selected_formula": best.formula if best else None,
               "selected_direction": (1 if best.ic_mean >= 0 else -1) if best else None,
@@ -148,7 +151,7 @@ def _episode(output: Path, *, seed: int, family: str, mode: str, pack_path: str 
     (output/"frozen_discovery.json").write_text(json.dumps(frozen, indent=2, allow_nan=False))
     result = {"seed": seed, "family": family, "mode": mode, "source": source,
               "elapsed_seconds": time.monotonic()-started,
-              "evaluations": loop.research_actions.ledger.summary()["evaluations"],
+              "evaluations": actions.ledger.summary()["evaluations"],
               "selected_formula": frozen["selected_formula"], "dataset_id": loop.trial_dataset_id,
               "selected_recipe": next((r["decision"]["chosen"].get("recipe_id") for r in records
                                        if r["decision"]["chosen"]["kind"] == "refine"), None),
@@ -215,7 +218,7 @@ def run_skill_transfer_benchmark(output_dir: str | Path, *, source_seeds: tuple[
                                mode=mode, pack_path=str(pack_path))
                 assert row["dataset_id"] not in {r["dataset_id"] for r in source_rows}
                 runs.append(row)
-    summaries = {}
+    summaries: dict[str, dict] = {}
     for family in TARGET_FAMILIES:
         summaries[family] = {}
         for mode in TRANSFER_MODES:
@@ -224,7 +227,7 @@ def run_skill_transfer_benchmark(output_dir: str | Path, *, source_seeds: tuple[
                                       "false_claims": sum(r["false_claim"] for r in rows),
                                       "recipe_choices": dict(Counter(r["selected_recipe"] for r in rows)),
                                       "mean_evaluations": float(np.mean([r["evaluations"] for r in rows]))}
-    pairs = {}
+    pairs: dict[str, dict] = {}
     for family in TARGET_FAMILIES:
         pairs[family] = {}
         for baseline in TRANSFER_MODES[:-1]:

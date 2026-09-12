@@ -21,6 +21,7 @@ from factorminer.architecture.research_actions import (
 from factorminer.architecture.research_planner import ResearchCyclePlanner
 from factorminer.architecture.research_skills import (
     RECIPE_VERSION,
+    ResearchSkillsConfig,
     digest,
     recipe_variants,
     signal_profile,
@@ -46,8 +47,8 @@ class ResearchActionService:
             "dataset_id": loop.trial_dataset_id, "planner": asdict(config),
             "loop_type": loop._loop_type(), "protocol": loop.protocol.runtime_contract(),
         }
-        self.skills = getattr(loop.settings.research, "skills", None)
-        self.skills_enabled = self.skills is not None and self.skills.enabled
+        self.skills: ResearchSkillsConfig = getattr(loop.settings.research, "skills", None) or ResearchSkillsConfig()
+        self.skills_enabled = self.skills.enabled
         if self.skills_enabled:
             identity["skills"] = loop.memory_policy.transfer_identity()
         self.ledger = ResearchActionLedger(loop.settings.output_dir, identity)

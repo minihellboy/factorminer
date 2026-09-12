@@ -12,13 +12,14 @@ import json
 import math
 import sqlite3
 from collections import Counter, defaultdict
+from collections.abc import Sequence
 from contextlib import closing
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
-from scipy.stats import t as student_t
+from scipy.stats import t as student_t  # type: ignore[import-untyped]
 
 from factorminer.architecture.research_actions import canonical_json
 from factorminer.core.parser import try_parse
@@ -190,7 +191,7 @@ def summarize_skill(observations: list[dict], config: ResearchSkillsConfig) -> d
                        * values.std(ddof=1) / np.sqrt(len(values)))
         low, high = mean-radius, mean+radius
     status = "exploratory"
-    if len(values) >= config.minimum_datasets and low is not None:
+    if len(values) >= config.minimum_datasets and low is not None and high is not None:
         if low > config.minimum_effect:
             status = "supported"
         elif high < -config.minimum_effect:
@@ -207,13 +208,13 @@ def summarize_skill(observations: list[dict], config: ResearchSkillsConfig) -> d
             "uncertainty_scope": "Student interval over independent-dataset mean effects; descriptive, unadjusted for selection"}
 
 
-def compile_skill_pack(sources: list[str | Path], *, config: ResearchSkillsConfig | None = None) -> dict:
+def compile_skill_pack(sources: Sequence[str | Path], *, config: ResearchSkillsConfig | None = None) -> dict:
     """Read terminal snapshots without mutating source ledgers; deduplicate events."""
     cfg = config or ResearchSkillsConfig()
     cfg.validate()
     observations: dict[str, dict] = {}
     manifests: dict[str, dict] = {}
-    skipped = Counter()
+    skipped: Counter[str] = Counter()
     for source in sources:
         path = Path(source)
         if path.is_dir():
@@ -272,7 +273,7 @@ def write_skill_pack(pack: dict, path: str | Path) -> Path:
 
 
 def load_skill_pack(path: str | Path) -> dict:
-    pack = json.loads(Path(path).read_text())
+    pack = cast(dict[str, Any], json.loads(Path(path).read_text()))
     payload = {k: v for k, v in pack.items() if k != "pack_id"}
     if pack.get("schema_version") != SKILL_SCHEMA or pack.get("recipe_version") != RECIPE_VERSION or pack.get("pack_id") != digest(payload):
         raise ValueError("Invalid or modified skill pack")
