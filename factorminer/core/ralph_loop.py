@@ -12,8 +12,8 @@ Implements Algorithm 1 from the FactorMiner paper.  The loop iteratively:
   4. Updates the factor library with admitted factors  -- L <- L + {alpha}
   5. Evolves the experience memory with new insights   -- E(M, F(M, tau))
 
-The loop terminates when the library reaches the target size K or the
-maximum number of iterations is exhausted.
+The loop terminates at the library target, an optional explicit iteration
+boundary, a research-planner stop, or interruption.
 """
 
 from __future__ import annotations
@@ -35,6 +35,7 @@ from factorminer.agent.output_parser import candidate_pairs
 from factorminer.agent.prompt_builder import PromptBuilder
 from factorminer.application.mining_budget import BudgetTracker, EvaluationResult
 from factorminer.application.mining_reporting import MiningReporter
+from factorminer.application.research_actions import build_research_action_service
 from factorminer.application.research_knowledge import ResearchKnowledgeStore
 from factorminer.application.run_artifacts import MiningArtifactService
 from factorminer.application.runtime_context import MiningRunContext, MiningSettings
@@ -118,7 +119,7 @@ class RalphLoop:
             Pre-populated factor library.  Defaults to empty library.
         checkpoint_interval : int
             Save a checkpoint every N iterations.  Set to 0 to disable
-            automatic checkpointing.  Default is 1 (every iteration).
+            periodic checkpointing. Final state is always saved.
         run_context : MiningRunContext, optional
             Per-run output and materialized target state. Hierarchical config
             remains the sole source of reusable mining settings.
@@ -178,6 +179,8 @@ class RalphLoop:
         self.generator = FactorGenerator(
             llm_provider=llm_provider or MockProvider(),
             prompt_builder=PromptBuilder(),
+            temperature=getattr(getattr(config, "llm", None), "temperature", 0.8),
+            max_tokens=getattr(getattr(config, "llm", None), "max_tokens", 4096),
         )
         self.evaluation_kernel = EvaluationKernel(
             protocol=self.protocol,
@@ -204,6 +207,7 @@ class RalphLoop:
         self.pipeline.signal_failure_policy = self.settings.signal_failure_policy
         self.reporter = MiningReporter(self.settings.output_dir)
         self.budget = BudgetTracker()
+        self.research_actions = build_research_action_service(self)
         self.signal_failure_policy = self.settings.signal_failure_policy
         self._loop_services = LoopExecutionService(self)
         self._artifact_service = MiningArtifactService(self)
@@ -230,7 +234,7 @@ class RalphLoop:
         target_size: int | None = None,
         max_iterations: int | None = None,
         callback: Callable[[int, dict[str, Any]], None] | None = None,
-        resume: bool = False,
+        resume: bool = True,
     ) -> FactorLibrary:
         """Run the complete mining loop.
 
@@ -239,12 +243,12 @@ class RalphLoop:
         target_size : int, optional
             Target library size K.  Defaults to config value (110).
         max_iterations : int, optional
-            Maximum iterations before stopping.  Defaults to config value.
+            Total iteration boundary. Defaults to config value; zero is unlimited.
         callback : callable, optional
             Called after each iteration with (iteration_number, stats_dict).
         resume : bool
             If True, attempt to load the latest checkpoint from the output
-            directory before starting the loop.  Default is False.
+            directory before starting the loop. Default is True.
 
         Returns
         -------
@@ -252,14 +256,20 @@ class RalphLoop:
             The constructed factor library L.
         """
         target_size = target_size or self.settings.target_library_size
-        max_iterations = max_iterations or self.settings.max_iterations
+        max_iterations = self.settings.max_iterations if max_iterations is None else max_iterations
+        if max_iterations < 0:
+            raise ValueError("max_iterations must be >= 0; 0 means no iteration ceiling")
         batch_size = self.settings.batch_size
         output_dir = self.settings.output_dir
+        if (not resume and self.iteration == 0 and self.research_actions is not None
+                and self.research_actions.ledger.records()):
+            raise ValueError("Existing research campaign requires resume; use a new output directory for fresh work")
 
         # Resume from existing checkpoint if requested
         if resume:
             checkpoint_dir = Path(output_dir) / "checkpoint"
-            if checkpoint_dir.exists():
+            if checkpoint_dir.exists() or (self.research_actions is not None
+                                           and self.research_actions.ledger.snapshot() is not None):
                 self.load_session(str(checkpoint_dir))
                 logger.info(
                     "Resuming from iteration %d with %d factors",
@@ -314,12 +324,7 @@ class RalphLoop:
         self.budget.wall_start = time.time()
 
         try:
-            while self.library.size < target_size and self.iteration < max_iterations:
-                # Check budget BEFORE starting a new iteration
-                if self.budget.is_exhausted():
-                    logger.info("Budget exhausted — stopping loop")
-                    break
-
+            while self.library.size < target_size and (max_iterations == 0 or self.iteration < max_iterations):
                 self.iteration += 1
                 stats = self._run_iteration(batch_size)
 
@@ -342,9 +347,9 @@ class RalphLoop:
                 # Periodic checkpoint
                 if self.checkpoint_interval > 0 and self.iteration % self.checkpoint_interval == 0:
                     self._checkpoint()
-
-            if self.budget.is_exhausted():
-                logger.info("Budget exhausted: %s", self.budget.to_dict())
+                if stats.get("research_stop", False):
+                    logger.info("Research planner stopped: %s", stats["research_action"]["rationale"])
+                    break
 
         except KeyboardInterrupt:
             logger.warning("Mining interrupted by user at iteration %d", self.iteration)
@@ -352,6 +357,11 @@ class RalphLoop:
                 self._session.status = "interrupted"
             # Save checkpoint on interrupt so session can be resumed
             self._checkpoint()
+        except Exception:
+            if self._session:
+                self._session.status = "interrupted"
+            self._checkpoint()
+            raise
         finally:
             elapsed = time.time() - loop_start
             zero_admission_warning = self._loop_services.zero_admission_guidance(
@@ -376,8 +386,11 @@ class RalphLoop:
             )
             self._persist_run_manifest(Path(output_dir) / "run_manifest.json")
             if self._session:
-                self._session.finalize()
+                if self._session.status != "interrupted":
+                    self._session.finalize()
                 self._session.save()
+            # Always persist the final state, including explicit run boundaries.
+            self._checkpoint()
 
         # Final export
         lib_path = self.reporter.export_library(self.library)
@@ -425,7 +438,7 @@ class RalphLoop:
         payload: IterationPayload,
     ) -> list[EvaluationResult]:
         results = self.pipeline.evaluate_batch(payload.candidates)
-        self._annotate_result_lineage(results, payload.library_state)
+        self._annotate_result_lineage(results, payload.library_state, payload.research_action)
         self.lifecycle_store.record_batch_results(self.iteration, results)
         self._record_trial_results(results)
         return results
@@ -475,6 +488,7 @@ class RalphLoop:
         self,
         results: list[EvaluationResult],
         library_state: Mapping[str, Any] | None,
+        research_action: Mapping[str, Any] | None = None,
     ) -> None:
         """Attach parent_formula lineage onto evaluation results in-place.
 
@@ -493,6 +507,13 @@ class RalphLoop:
             for f in self.library.list_factors()
         ]
         for result in results:
+            chosen = (research_action or {}).get("chosen", {})
+            if chosen.get("kind") == "refine":
+                result.parent_formula = chosen["parent_formula"]
+                result.parent_ic_paper_mean = chosen["parent_quality"]
+                result.edit_type = "refine"
+                result.edit_motif = "temporal_smoothing"
+                continue
             if result.parent_formula:
                 continue
             lineage = infer_parent_lineage(
@@ -643,7 +664,7 @@ class RalphLoop:
     # Session persistence (save / resume)
     # ------------------------------------------------------------------
 
-    def save_session(self, path: str | None = None) -> str:
+    def save_session(self, path: str | None = None, *, _snapshot: bool = False) -> str:
         """Save the full mining session state for resume.
 
         Saves the factor library (via ``save_library``), experience memory,
@@ -682,7 +703,7 @@ class RalphLoop:
             json.dump(self.memory_policy.serialize(self.memory), f, indent=2, default=str)
 
         # Save session metadata
-        if self._session:
+        if self._session and not _snapshot:
             self._session.library_path = lib_base
             self._session.memory_path = mem_path
             self._refresh_run_manifest(
@@ -704,15 +725,18 @@ class RalphLoop:
         # Save loop state (iteration counter + budget tracker)
         loop_state: dict[str, Any] = {
             "iteration": self.iteration,
+            "dataset_id": self.trial_dataset_id,
+            "protocol": self.protocol.runtime_contract(),
             "library_size": self.library.size,
             "memory_version": self.memory.version,
+            "generator_batches": self.generator._generation_count,
+            "mock_provider_calls": (self.generator.llm_provider._call_count
+                                    if isinstance(self.generator.llm_provider, MockProvider) else None),
             "budget": {
                 "llm_calls": self.budget.llm_calls,
                 "llm_prompt_tokens": self.budget.llm_prompt_tokens,
                 "llm_completion_tokens": self.budget.llm_completion_tokens,
                 "compute_seconds": self.budget.compute_seconds,
-                "max_llm_calls": self.budget.max_llm_calls,
-                "max_wall_seconds": self.budget.max_wall_seconds,
             },
         }
         with open(checkpoint_dir / "loop_state.json", "w") as f:
@@ -734,13 +758,24 @@ class RalphLoop:
             Path to the checkpoint directory.
         """
         checkpoint_dir = Path(path)
+        if self.research_actions is not None:
+            self.research_actions.restore_checkpoint(checkpoint_dir)
 
         # Load loop state (iteration counter + budget)
         loop_state_path = checkpoint_dir / "loop_state.json"
         if loop_state_path.exists():
             with open(loop_state_path) as f:
                 loop_state = json.load(f)
+            if loop_state.get("dataset_id", self.trial_dataset_id) != self.trial_dataset_id:
+                raise ValueError("Checkpoint dataset changed; use a separate output directory")
+            if loop_state.get("protocol", self.protocol.runtime_contract()) != self.protocol.runtime_contract():
+                raise ValueError("Checkpoint protocol changed; use a separate output directory")
             self.iteration = loop_state.get("iteration", 0)
+            self.generator._generation_count = loop_state.get("generator_batches", 0)
+            if isinstance(self.generator.llm_provider, MockProvider):
+                calls = loop_state.get("mock_provider_calls")
+                if calls is not None:
+                    self.generator.llm_provider._call_count = calls
 
             # Restore budget tracker state
             budget_data = loop_state.get("budget", {})
@@ -755,12 +790,9 @@ class RalphLoop:
                 self.budget.compute_seconds = budget_data.get(
                     "compute_seconds", self.budget.compute_seconds
                 )
-                self.budget.max_llm_calls = budget_data.get(
-                    "max_llm_calls", self.budget.max_llm_calls
-                )
-                self.budget.max_wall_seconds = budget_data.get(
-                    "max_wall_seconds", self.budget.max_wall_seconds
-                )
+                # Old checkpoints may contain quotas. They no longer stop mining.
+                self.budget.max_llm_calls = 0
+                self.budget.max_wall_seconds = 0
 
             logger.info(
                 "Resuming from iteration %d (library=%d)",
@@ -808,6 +840,9 @@ class RalphLoop:
             if run_manifest_path.exists():
                 with open(run_manifest_path) as f:
                     self._run_manifest = json.load(f)
+        if self.research_actions is not None:
+            self.research_actions.ledger.recover_interrupted()
+            self.research_actions.ledger.export()
 
     @classmethod
     def resume_from(

@@ -60,6 +60,7 @@ or interface code. Reusable workflow semantics live in
 | Admission | `library_services.py` | the mutation boundary for factor libraries |
 | Phase 2 construction | `phase2_services.py` | optional Helix component factory and update services |
 | Research planning | `research_absorption.py`, `research_planner.py`, `application/research_knowledge.py` | source screening, persistent hypotheses, bounded retrieval, routing, and outcome attribution |
+| Experiment selection | `research_actions.py`, `application/research_actions.py` | optional action policy, durable decisions, deterministic refinement, advisory delay challenges, and recovery |
 | Experimental search | `island_model.py`, `sealed_joint_search.py` | opt-in population and multi-evaluator modes |
 | Training export | `rft_export.py` | reward-annotated offline datasets; no in-process model training |
 
@@ -73,7 +74,7 @@ or interface code. Reusable workflow semantics live in
 - policy-based memory retrieval and persistence;
 - lifecycle/provenance records and checkpoint conventions.
 
-`RalphLoop` is the canonical paper-style lane. It orchestrates a bounded
+`RalphLoop` is the canonical paper-style lane. It orchestrates a
 generate/evaluate/evolve run and delegates scientific rules to architecture
 services.
 
@@ -87,6 +88,20 @@ Both loops construct `FactorGenerator`, `MemoryPolicy`, `LoopExecutionService`,
 initialization path. Helix replaces only named stage implementations and
 optional validation services. There is no loop-local factor generator, memory
 manager, or benchmark engine.
+
+When `research.planner.enabled` is true, the shared execution service selects
+an action after retrieval. Generation retains the existing family router;
+refinement proposes a deterministic child with explicit parent lineage. Both
+use the same evaluation and admission services. A delay challenge recomputes
+signals through `EvaluationKernel` and records advisory evidence without
+changing admission. Stop dispatches no candidate evaluation or model call.
+
+The action ledger commits each terminal outcome and its latest library, signal,
+memory, and loop-state snapshot in one SQLite transaction. It reconstructs a
+missing or torn regular checkpoint on resume. In-flight work without a committed
+outcome is marked interrupted with an unknown result; it is never counted as
+successful evidence. Campaigns require one writer and retain their dataset and
+protocol identity. See [Research actions](research-actions.md) for details.
 
 ## Data and expression execution
 

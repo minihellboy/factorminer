@@ -41,6 +41,24 @@ def benchmark() -> None:
     """Run strict paper/research benchmark workflows."""
 
 
+@benchmark.command("research-actions")
+@click.option("--seeds", default="0,1,2", show_default=True, help="Comma-separated search seeds.")
+@click.option("--evaluations", type=click.IntRange(min=2), default=24, show_default=True,
+              help="Common evaluation allowance per benchmark episode; not a mining quota.")
+@click.pass_context
+def research_actions(ctx: click.Context, seeds: str, evaluations: int) -> None:
+    """Compare action policies on four frozen controlled worlds."""
+    from factorminer.benchmark.research_actions import run_research_action_benchmark
+
+    try:
+        selected = tuple(int(seed.strip()) for seed in seeds.split(","))
+        payload = run_research_action_benchmark(ctx.obj["output_dir"], seeds=selected,
+                                                evaluation_horizon=evaluations)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, indent=2))
+
+
 def _common_options(fn):
     fn = click.option(
         "--data",

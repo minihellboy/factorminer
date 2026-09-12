@@ -29,6 +29,7 @@ operate an autonomous account.
 | Runtime evaluation | Formula recomputation on the supplied dataset; saved summaries are not trusted as truth |
 | Benchmark runtime | Top-K freeze, memory/strategy ablations, CPCV/PBO, cost pressure, and efficiency |
 | Research knowledge | Persistent screened sources and hypotheses with bounded retrieval and outcome attribution |
+| Experiment selection | Opt-in generate, refine, delay challenge, and stop decisions with a durable action ledger |
 | Evidence packs | Immutable, content-addressed factor evidence with dataset/config/code hashes and integrity verification |
 | Research extensions | EDGAR/futures data, crowding, capacity, sensitivity, model-risk, and provenance artifacts |
 | Agent gateway | MCP server plus a plugin and managed-agent reference integration |
@@ -100,6 +101,26 @@ datetime, asset_id, open, high, low, close, volume, amount
 
 Identifier aliases such as `symbol`, `ticker`, `code`, and `ts_code` are
 accepted. Missing `vwap` and `returns` can be derived by the runtime layer.
+
+Local mining defaults to no iteration ceiling (`max_iterations: 0`) and resumes
+the checkpoint in the same output directory. Explicit `-n` values remain useful
+for short test runs; they count total campaign iterations. Legacy LLM-call and
+wall-time quota fields no longer stop the local loop.
+
+To try the experimental action planner with DeepSeek Flash and the bundled
+crypto sample, put `DEEPSEEK_API_KEY` in your local `.env` and run:
+
+```bash
+uv run --env-file .env factorminer \
+  -c factorminer/configs/research_actions_deepseek.yaml \
+  -o output/deepseek-research mine --data data/binance_crypto_5m.csv
+```
+
+This profile uses `deepseek-flash` at DeepSeek's official endpoint. The action
+lane receives the configured training split with forward-target boundary rows
+purged. Repeat the command to resume; use a new output directory for a separate
+campaign. See [Research actions](docs/research-actions.md) for the decision
+model, recovery contract, benchmark results, and current limitations.
 
 ## Core workflows
 

@@ -278,7 +278,7 @@ class HelixLoop(RalphLoop):
         payload: IterationPayload,
     ) -> list[EvaluationResult]:
         results = self.pipeline.evaluate_batch(payload.candidates)
-        self._annotate_result_lineage(results, payload.library_state)
+        self._annotate_result_lineage(results, payload.library_state, payload.research_action)
         self.lifecycle_store.record_batch_results(self.iteration, results)
         self._record_trial_results(results)
         return results
@@ -541,7 +541,7 @@ class HelixLoop(RalphLoop):
         except Exception as exc:
             logger.warning("Helix: checkpoint failed: %s", exc)
 
-    def save_session(self, path: str | None = None) -> str:
+    def save_session(self, path: str | None = None, *, _snapshot: bool = False) -> str:
         """Save the full mining session state including Phase 2 components.
 
         Extends the base RalphLoop save with:
@@ -559,7 +559,7 @@ class HelixLoop(RalphLoop):
             Path to the saved session directory.
         """
         # Base save
-        checkpoint_path = super().save_session(path)
+        checkpoint_path = super().save_session(path, _snapshot=_snapshot)
         checkpoint_dir = Path(checkpoint_path)
 
         # Save knowledge graph
@@ -594,7 +594,7 @@ class HelixLoop(RalphLoop):
         except Exception as exc:
             logger.warning("Helix: failed to save helix state: %s", exc)
 
-        if self._session is not None:
+        if self._session is not None and not _snapshot:
             self._refresh_run_manifest(
                 output_dir=str(checkpoint_dir.parent),
                 artifact_paths={

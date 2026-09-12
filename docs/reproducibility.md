@@ -32,6 +32,41 @@ uv run factorminer --cpu benchmark table1 --mock --baseline factor_miner
 report under `/tmp/factorminer-quickstart`. Mock results prove execution and
 artifact shape only; they are not evidence of market performance.
 
+## Experiment-selection comparison
+
+```bash
+uv run factorminer -o output/action-comparison benchmark research-actions \
+  --seeds 0,1,2,3,4,5,6,7,8,9 --evaluations 32
+```
+
+This command compares decision value, generate-only heuristic, random action
+allocation, and contextual bandit policies through the real mining stages.
+Each seed supplies all policies the same shuffled proposal tape and evaluation
+allowance. The tape replaces the generator, so this isolates allocation; it
+does not reproduce an adaptive live LLM's responses to different prompts.
+Production mining has no resource quota. The finite allowance belongs only to
+the comparison, and a value-based stop can leave some evaluations unused.
+
+Four fixed diagnostic panels cover persistent signal, independent noise,
+transient signal, and an unannounced future break. The protocol is written
+before dispatch; decisions, selected formulas, and directions are frozen before
+the final panel is evaluated. The final panel is not returned to the planner.
+The array API `compare_research_actions` accepts a frozen external catalog and
+`purge_bars`; set the latter to cover the target's entry delay plus holding
+period. The supplied-data caller owns point-in-time feature preparation.
+
+The primary score sums direction-frozen delayed IC minus the admission
+threshold over recommendations. Failed discovery delay checks remove a factor
+from this advisory recommendation set, without deleting it from the library.
+Unstressed utility, raw-library delayed utility, failed delay claims, actual
+evaluation counts, and elapsed time are also reported. Summed IC is a diagnostic
+score, not portfolio returns. A delay-tolerance objective can discard useful
+short-lived signals. Bootstrap intervals measure paired search-seed variation
+on the fixed panel, not uncertainty across markets or independent datasets.
+
+The initial measured results and remaining limitations are documented in
+[Research actions](research-actions.md). The policy remains opt-in.
+
 ## Market-data contract
 
 The normalized long-form panel requires:

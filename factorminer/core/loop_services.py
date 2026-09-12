@@ -55,6 +55,24 @@ class LoopExecutionService:
         trailing_stages: Sequence[str] = (),
         phase2_summary: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Execute an iteration, retaining failed action accounting for resume."""
+        try:
+            return self._execute_iteration(
+                batch_size, trailing_stages=trailing_stages, phase2_summary=phase2_summary,
+            )
+        except BaseException as exc:
+            actions = getattr(self.loop, "research_actions", None)
+            if actions is not None:
+                actions.fail(exc)
+            raise
+
+    def _execute_iteration(
+        self,
+        batch_size: int,
+        *,
+        trailing_stages: Sequence[str] = (),
+        phase2_summary: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Execute the canonical mining sequence for a loop composition."""
         started_at = time.time()
         payload = self.new_payload(batch_size)
@@ -64,8 +82,22 @@ class LoopExecutionService:
             limit=self.loop.settings.research_knowledge_retrieval_limit,
         )
         payload.memory_signal = retrieval.enrich(payload.memory_signal)
-        self.run_stage_chain(payload, ("generate",))
-        self.loop.budget.record_llm_call()
+        actions = getattr(self.loop, "research_actions", None)
+        action_kind = actions.prepare(payload) if actions is not None else "generate"
+        if action_kind in ("stop", "challenge"):
+            if action_kind == "challenge":
+                actions.challenge(payload)
+            elapsed = time.time() - started_at
+            self.loop.budget.record_compute(elapsed)
+            actions.finish(payload, elapsed)
+            stats = self.build_stats(payload, elapsed)
+            self.log_telemetry(self.build_telemetry(payload, stats, elapsed))
+            return stats
+        if action_kind == "refine":
+            actions.refine(payload)
+        else:
+            self.run_stage_chain(payload, ("generate",))
+            self.loop.budget.record_llm_call()
 
         if not payload.candidates:
             logger.warning(
@@ -74,8 +106,17 @@ class LoopExecutionService:
                 self.loop.iteration,
                 self.describe_empty_generation(payload),
             )
-            return self.empty_stats()
+            if actions is None:
+                return self.empty_stats()
+            elapsed = time.time() - started_at
+            self.loop.budget.record_compute(elapsed)
+            actions.finish(payload, elapsed)
+            stats = self.build_stats(payload, elapsed)
+            self.log_telemetry(self.build_telemetry(payload, stats, elapsed))
+            return stats
 
+        if actions is not None:
+            actions.record_evaluation_dispatch(payload)
         self.run_stage_chain(payload, ("evaluate", "library_update"))
         summary = dict(phase2_summary or {})
         if "phase2_rejections" in payload.stage_metrics:
@@ -88,7 +129,8 @@ class LoopExecutionService:
             },
             memory_signal=payload.memory_signal,
             phase2_summary=summary,
-            generator_family=self.loop._generator_family(),
+            generator_family=("deterministic_refinement" if action_kind == "refine"
+                              else self.loop._generator_family()),
         )
 
         self.run_stage_chain(payload, ("distill", *trailing_stages))
@@ -99,6 +141,8 @@ class LoopExecutionService:
         )
         elapsed = time.time() - started_at
         self.loop.budget.record_compute(elapsed)
+        if actions is not None:
+            actions.finish(payload, elapsed)
         stats = self.build_stats(payload, elapsed)
         telemetry = self.build_telemetry(
             payload,

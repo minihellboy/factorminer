@@ -9,6 +9,7 @@ from typing import Any
 
 import yaml
 
+from factorminer.architecture.research_actions import ResearchPlannerConfig
 from factorminer.configs import DEFAULT_CONFIG_PATH
 
 
@@ -18,7 +19,7 @@ class MiningConfig:
 
     target_library_size: int = 110
     batch_size: int = 40
-    max_iterations: int = 200
+    max_iterations: int = 0  # No automatic iteration ceiling; positive values are explicit run boundaries.
     ic_threshold: float = 0.04
     icir_threshold: float = 0.5
     correlation_threshold: float = 0.5
@@ -30,8 +31,8 @@ class MiningConfig:
             raise ValueError("target_library_size must be >= 1")
         if self.batch_size < 1:
             raise ValueError("batch_size must be >= 1")
-        if self.max_iterations < 1:
-            raise ValueError("max_iterations must be >= 1")
+        if self.max_iterations < 0:
+            raise ValueError("max_iterations must be >= 0 (0 means no iteration ceiling)")
         if not (0.0 < self.ic_threshold < 1.0):
             raise ValueError("ic_threshold must be in (0, 1)")
         if not (0.0 < self.icir_threshold < 10.0):
@@ -190,6 +191,7 @@ class LLMConfig:
             "mock",
             "openai_compatible",
             "local",
+            "deepseek",
         )
         if self.provider not in allowed:
             raise ValueError(
@@ -645,6 +647,7 @@ class ResearchConfig:
     selection: ResearchSelectionConfig = field(default_factory=ResearchSelectionConfig)
     regimes: ResearchRegimesConfig = field(default_factory=ResearchRegimesConfig)
     execution: ResearchExecutionConfig = field(default_factory=ResearchExecutionConfig)
+    planner: ResearchPlannerConfig = field(default_factory=ResearchPlannerConfig)
 
     def validate(self) -> None:
         if self.knowledge_retrieval_limit < 0:
@@ -670,6 +673,7 @@ class ResearchConfig:
         self.selection.validate()
         self.regimes.validate()
         self.execution.validate()
+        self.planner.validate()
 
 
 @dataclass
@@ -735,6 +739,7 @@ _RESEARCH_SECTION_MAP: dict[str, type] = {
     "selection": ResearchSelectionConfig,
     "regimes": ResearchRegimesConfig,
     "execution": ResearchExecutionConfig,
+    "planner": ResearchPlannerConfig,
 }
 
 

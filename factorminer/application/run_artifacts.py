@@ -65,6 +65,11 @@ class MiningArtifactService:
             notes=[],
         )
         loop._run_manifest = manifest.to_dict()
+        actions = getattr(loop, "research_actions", None)
+        if actions is not None:
+            loop._run_manifest["research_actions"] = actions.ledger.summary()
+            loop._run_manifest["artifact_paths"]["research_actions"] = str(actions.ledger.path)
+            loop._run_manifest["artifact_paths"]["research_actions_jsonl"] = str(actions.ledger.path.with_suffix(".jsonl"))
         return loop._run_manifest
 
     def persist_manifest(self, path: Path) -> None:
