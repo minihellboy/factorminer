@@ -24,6 +24,9 @@ The lock selects official `torch==2.13.0+cu126` wheels on Linux and
 `cupy-cuda12x==14.2.0`. Both use CUDA 12; runtime libraries and NVRTC come from
 the environment, so a system CUDA toolkit is not required. Validation uses
 Python 3.12, Linux x86_64, and an NVIDIA RTX 4090 with driver 580.173.02.
+The Linux Torch wheels require glibc 2.28 or newer. The locked macOS Torch
+wheels require Apple Silicon and macOS 14+; Intel Macs can use the base CPU
+install without model extras. Other GPU/platform combinations are unverified.
 The CUDA index selection is uv-specific; pip users must select the official
 PyTorch CUDA 12.6 distribution separately before installing the GPU extra.
 
