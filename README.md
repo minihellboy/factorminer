@@ -1,114 +1,61 @@
 # FactorMiner
 
-**A governed research engine for discovering, evaluating, and documenting
-interpretable alpha factors.**
+**Symbolic factor discovery with LLM-guided search, reproducible evaluation,
+and transferable research memory.**
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/minihellboy/factorminer/actions/workflows/ci.yml/badge.svg)](https://github.com/minihellboy/factorminer/actions/workflows/ci.yml)
 
-FactorMiner combines a typed formula DSL, LLM-guided search, structured memory,
-strict runtime recomputation, and reviewable research artifacts. It follows the
-system described in [*FactorMiner: A Self-Evolving Agent with Skills and
-Experience Memory for Financial Alpha Discovery*](https://arxiv.org/abs/2602.14670)
-and extends it with explicit architecture contracts, stronger validation, and a
-model-agnostic agent integration surface.
+FactorMiner generates interpretable formulas, evaluates them on market data,
+and records their lineage, metrics, and admission decisions. Shared evaluation
+and memory contracts support local mining, controlled experiments, and agent
+integrations. Outputs are research artifacts; the project does not execute trades.
 
-FactorMiner is research infrastructure. It proposes and evaluates artifacts; it
-does not recommend trades, size positions, bind risk limits, route orders, or
-operate an autonomous account.
+## Capabilities
 
-## What is included
-
-| Surface | Purpose |
+| Component | Function |
 | --- | --- |
-| Typed DSL and operator registry | Safe, interpretable formulas over OHLCV and registered feature leaves |
-| `RalphLoop` | Canonical paper-style generate/evaluate/evolve lane |
-| `HelixLoop` | Extended retrieval, debate, canonicalization, and validation lane |
-| Policy-based memory | Paper, none, KG, family-, regime-, and edit-aware policies |
-| Runtime evaluation | Formula recomputation on the supplied dataset; saved summaries are not trusted as truth |
-| Benchmark runtime | Top-K freeze, memory/strategy ablations, CPCV/PBO, cost pressure, and efficiency |
-| Research knowledge | Persistent screened sources and hypotheses with bounded retrieval and outcome attribution |
-| Experiment selection | Opt-in generate, refine, delay challenge, and stop decisions with a durable action ledger |
-| Evidence packs | Immutable, content-addressed factor evidence with dataset/config/code hashes and integrity verification |
-| Research extensions | EDGAR/futures data, crowding, capacity, sensitivity, model-risk, and provenance artifacts |
-| Agent gateway | MCP server plus a plugin and managed-agent reference integration |
-
-The built-in catalog contains 110 normalized paper factors. Named third-party
-baselines are not all faithful reproductions; manifests label catalog subsets,
-proxies, runtime loops, and saved libraries explicitly. See
-[Reproducibility](docs/reproducibility.md) before interpreting benchmark output.
+| Formula engine | Typed DSL, registered operators, and NumPy/C/GPU backends |
+| Mining | Ralph and Helix loops with generation, evaluation, memory, and checkpoints |
+| Experiment selection | Opt-in generation, refinement, delay challenges, and stopping |
+| Research skills | Versioned procedures with applicability, uncertainty, and contradiction tracking |
+| Evaluation | Runtime recomputation, split-aware metrics, dependence, costs, and statistical diagnostics |
+| Evidence | Formula lineage, trial ledgers, content-addressed evidence packs, and verifiable releases |
+| Integration | CLI, Python API, MCP server, and reference agent packages |
 
 ## Install
 
-The recommended contributor setup uses [uv](https://docs.astral.sh/uv/):
+Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/):
 
 ```bash
 git clone https://github.com/minihellboy/factorminer.git
 cd factorminer
-uv sync --group dev --all-extras
+uv sync --group dev --extra llm
 ```
 
-For a smaller local environment:
-
-```bash
-uv sync --group dev
-uv sync --group dev --extra llm   # add hosted/local LLM providers
-uv sync --group dev --extra mcp   # add the MCP server
-```
-
-The portable default backend is NumPy. The CUDA extra is Linux-oriented; use
-`--gpu` only where CUDA is available. A pip editable install also works:
-
-```bash
-python3 -m pip install -e ".[llm,mcp]"
-```
+NumPy is the default backend. Optional extras include `mcp`, `research`,
+`embeddings`, `visualization`, and `gpu`; the CUDA extra targets Linux.
+Contributor setup and checks are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Quick start
 
-No API key is required for the deterministic demo and mock workflow:
+Run a local workflow without credentials:
 
 ```bash
-uv run python scripts/run_demo.py
-uv run factorminer quickstart
 uv run factorminer doctor --json
+uv run factorminer quickstart
 ```
 
-`doctor` reports missing or uninspectable optional dependencies as warnings,
-so they do not block the mock workflow in a base installation.
-
-`quickstart` writes a small library and static report under
-`/tmp/factorminer-quickstart`. To mine directly:
+`quickstart` writes a sample library and HTML report to
+`/tmp/factorminer-quickstart`. For a controlled mock campaign:
 
 ```bash
-uv run factorminer -o /tmp/factorminer-run mine --mock -n 2 -b 8 -t 10
-uv run factorminer session inspect /tmp/factorminer-run --telemetry
+uv run factorminer -o output/mock mine --mock -n 2 -b 8 -t 10
+uv run factorminer session inspect output/mock --telemetry
 ```
 
-For real data, validate the schema first:
-
-```bash
-uv run factorminer validate-data path/to/market_data.csv
-uv run factorminer -c factorminer.local.yaml -o output-real \
-  mine --data path/to/market_data.csv
-```
-
-The minimum panel fields are:
-
-```text
-datetime, asset_id, open, high, low, close, volume, amount
-```
-
-Identifier aliases such as `symbol`, `ticker`, `code`, and `ts_code` are
-accepted. Missing `vwap` and `returns` can be derived by the runtime layer.
-
-Local mining defaults to no iteration ceiling (`max_iterations: 0`) and resumes
-the checkpoint in the same output directory. Explicit `-n` values remain useful
-for short test runs; they count total campaign iterations. Legacy LLM-call and
-wall-time quota fields no longer stop the local loop.
-
-To try the experimental action planner with DeepSeek Flash and the bundled
-crypto sample, put `DEEPSEEK_API_KEY` in your local `.env` and run:
+To run the action planner with DeepSeek Flash, set `DEEPSEEK_API_KEY` in `.env`:
 
 ```bash
 uv run --env-file .env factorminer \
@@ -116,161 +63,70 @@ uv run --env-file .env factorminer \
   -o output/deepseek-research mine --data data/binance_crypto_5m.csv
 ```
 
-This profile uses `deepseek-flash` at DeepSeek's official endpoint. The action
-lane receives the configured training split with forward-target boundary rows
-purged. Repeat the command to resume; use a new output directory for a separate
-campaign. See [Research actions](docs/research-actions.md) for the decision
-model, recovery contract, benchmark results, and current limitations.
+The bundled data is a workflow sample. The action lane uses the configured
+training split and purges forward-target overlap. Local mining resumes in the
+same output directory and defaults to no iteration ceiling or model-call/wall-time
+quota. A positive `-n` sets a total campaign iteration boundary for experiments.
+See [research actions](docs/research-actions.md) and
+[research skills](docs/research-skills.md) for configuration and recovery.
 
-The optional [research skill extension](docs/research-skills.md) learns reusable
-edit and testing procedures from completed campaigns. It records applicability,
-uncertainty, and contradictory outcomes, freezes source experience for transfer,
-and compares structured skills with existing motif and trajectory retrieval.
+## Data and evaluation
 
-## Core workflows
-
-Run the extended research lane:
-
-```bash
-uv run factorminer --cpu helix --mock --debate --canonicalize -n 2 -b 8 -t 10
-```
-
-Recompute and evaluate a saved library:
-
-```bash
-uv run factorminer --cpu evaluate output/factor_library.json \
-  --mock --period both --top-k 10
-```
-
-Build a composite on explicit fit/evaluation splits:
-
-```bash
-uv run factorminer --cpu combine output/factor_library.json \
-  --mock --fit-period train --eval-period test --method all \
-  --selection lasso --top-k 20
-```
-
-Run a benchmark or the standalone Phase 2 report builder:
-
-```bash
-uv run factorminer --cpu --config factorminer/configs/paper_repro.yaml \
-  benchmark table1 --mock --baseline factor_miner
-uv run factorminer --cpu benchmark ablation-strategy --mock \
-  --baseline factor_miner
-uv run python scripts/run_phase2_benchmark.py --mock
-```
-
-The CLI also exposes data validation/resampling, visualization, CPCV, portfolio
-construction, crowding and sensitivity diagnostics, EDGAR/futures attachment,
-research ingestion, RFT dataset export, sealed search, model co-optimization,
-and MCP transports. Use `uv run factorminer --help` and command-level `--help`
-as the authoritative command reference.
-
-Research ingestion persists both eligible and rejected source decisions. An
-eligible source produces a content-addressed hypothesis that mining can retrieve
-without placing raw documents in prompts:
-
-```bash
-uv run factorminer -o output ingest-research path/to/note.txt --mock
-uv run factorminer -o output verify-evidence
-```
-
-## Architecture
-
-```mermaid
-flowchart LR
-    D["Market data"] --> C["Dataset contract"]
-    C --> L["Ralph / Helix stages"]
-    M["Memory policy"] --> L
-    K["Research knowledge"] --> L
-    L --> E["Evaluation kernel"]
-    E --> A["Admission service"]
-    A --> F["Factor library"]
-    A --> P["Provenance + evidence pack"]
-    F --> R["Runtime analysis"]
-    F --> B["Runtime benchmarks"]
-    C --> R
-    C --> B
-```
-
-Both loops use the same validated factor generator, parser, stage contract,
-admission service, and policy persistence. Helix adds richer components without
-creating a parallel benchmark or memory infrastructure. The architecture layer
-owns reusable contracts and policy; loops should remain orchestration.
-
-See [Architecture](docs/architecture.md) for contracts, package ownership, and
-dependency direction.
-
-## Repository layout
+Input panels require:
 
 ```text
-factorminer/
-├── factorminer/
-│   ├── application/    typed execution context and workflow contracts
-│   ├── architecture/   contracts, policies, stages, reusable services
-│   ├── core/           loops, DSL parser, expression trees, library, I/O
-│   ├── domain/         dependency-free numerical contracts
-│   ├── agent/          providers, prompts, generation, debate
-│   ├── data/           loaders, preprocessing, connectors, tensor building
-│   ├── evaluation/     recomputation, metrics, validation, reports
-│   ├── benchmark/      contracts, datasets, runners, statistics, reports
-│   ├── memory/         stores, retrieval, KG, embeddings
-│   ├── operators/      typed operator specs and execution backends
-│   ├── mcp/            agent-facing MCP server
-│   └── tests/          regression and contract coverage
-├── integrations/       plugin and managed-agent reference deployments
-├── scripts/            demos, standalone runners, repository validation
-├── docs/               architecture, reproducibility, security
-└── data/               documented public onboarding sample
+datetime, asset_id, open, high, low, close, volume, amount
 ```
 
-`output/` is mutable runtime state and intentionally ignored. Repository-local
-configuration belongs in a separate untracked file, not in the shipped defaults.
+Validate a panel, then recompute a saved library on it:
 
-## Agent and financial-services integration
+```bash
+uv run factorminer validate-data path/to/market_data.csv --strict
+uv run factorminer -c path/to/config.yaml evaluate output/run/factor_library.json \
+  --data path/to/market_data.csv --period both --top-k 10
+```
 
-FactorMiner can run as a local stdio MCP server or an opt-in authenticated HTTP
-server. The reference `factor-researcher` integration keeps two deployment
-forms beside each other:
-
-- `integrations/factor-researcher/plugin/`
-- `integrations/factor-researcher/managed-agent/`
-
-Both reuse the same system prompt and skills. External data services remain
-customer-controlled; FactorMiner preserves the research-only boundary and
-returns artifacts for human review. Setup, connector examples, permissions,
-and deployment notes are in the
-[integration guide](integrations/factor-researcher/README.md).
+Configure targets and train/test periods for the supplied data. Saved scores
+remain metadata; analysis recomputes formulas through the evaluation kernel.
+See [reproducibility](docs/reproducibility.md) for field aliases, metric semantics,
+frozen comparisons, and baseline provenance. Command-level `--help` lists the
+available mining, analysis, benchmark, and data workflows.
 
 ## Documentation
 
-| Document | Owns |
+| Guide | Contents |
 | --- | --- |
-| [Architecture](docs/architecture.md) | Runtime contracts, dependency direction, and package ownership |
-| [Reproducibility](docs/reproducibility.md) | Data contracts, metrics, baseline provenance, public and paper-scale workflows |
-| [Evidence protocol](docs/evidence-protocol.md) | IC definitions, inference, risk neutralization, cost stress, and report schema |
-| [Public evidence release](docs/public-evidence-release.md) | Checksum-locked public data, multi-seed run, portable release, and fresh-clone verification |
-| [Design-partner pilot](docs/design-partner-pilot.md) | Private dataset commitments and bounded external acknowledgments |
-| [Hosted pilot](docs/hosted-pilot.md) | Tenant isolation, scoped MCP, quotas, retention, incident response, and consent-based learning |
-| [Security](docs/security.md) | Connectors, MCP, model/content boundaries, persistence, secrets |
-| [License](LICENSE) | MIT license terms for the entire project |
-| [Integration guide](integrations/factor-researcher/README.md) | Agent packaging, financial-data connectors, deployment guardrails |
-| [Contributing](CONTRIBUTING.md) | PR scope, checks, ownership, and documentation governance |
+| [Architecture](docs/architecture.md) | Components, ownership, execution, and persistence |
+| [Research actions](docs/research-actions.md) | Experiment selection and campaign recovery |
+| [Research skills](docs/research-skills.md) | Compile, transfer, and inspect procedure memory |
+| [Reproducibility](docs/reproducibility.md) | Data, metrics, splits, and benchmarks |
+| [Evidence protocol](docs/evidence-protocol.md) | Inference, risk residualization, and cost diagnostics |
+| [Security](docs/security.md) | Input, model, credential, and MCP boundaries |
+| [Agent integration](integrations/factor-researcher/README.md) | Plugin, managed-agent, and MCP setup |
 
-## Development
+Optional workflows: [public evidence releases](docs/public-evidence-release.md),
+[partner review](docs/design-partner-pilot.md), and
+[hosted pilot operations](docs/hosted-pilot.md).
 
-```bash
-uv run ruff check .
-uv run python scripts/check_architecture.py
-uv run python scripts/check.py
-uv run pytest -q factorminer/tests
-uv build
-```
+## Repository
 
-See [Contributing](CONTRIBUTING.md) for focused test commands, import-boundary
-rules, and PR expectations.
+| Path | Purpose |
+| --- | --- |
+| `factorminer/` | Engine, CLI, configuration, and tests |
+| `docs/` | Technical contracts and workflow guides |
+| `data/` | Onboarding sample and provenance manifest |
+| `examples/` | Public-data specifications and checksum locks |
+| `integrations/` | Reference agent packages |
+| `scripts/` | Checks, demos, benchmark entry point, and type baseline |
 
-## License
+`output/` contains ignored runtime state. Keep each campaign in its own
+directory; archive completed campaigns with their manifests and checkpoints.
 
-FactorMiner is licensed under the MIT License. See [LICENSE](LICENSE) for the
-full license text.
+## License and reference
+
+FactorMiner is [MIT-licensed](LICENSE). Its original research foundation is
+[*FactorMiner: A Self-Evolving Agent with Skills and Experience Memory for
+Financial Alpha Discovery*](https://arxiv.org/abs/2602.14670). The project adds
+experiment selection, transferable procedures, and evidence/recovery contracts.
+Paper-specific profiles and baseline coverage are documented in
+[reproducibility](docs/reproducibility.md#paper-compatibility).

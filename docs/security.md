@@ -1,232 +1,94 @@
-# Security Model
+# Security
 
-FactorMiner processes untrusted market data and model-generated text, launches
-bounded subprocesses, can call external data services, and can expose an MCP
-tool surface. This document defines the current trust boundaries and enforced
-controls for those operations.
+FactorMiner processes market data, formulas, saved artifacts, model output, and
+agent requests. Credentials, licensed data, filesystem access, and evaluation
+integrity are the main trust boundaries.
 
-FactorMiner is a research engine. Its tools return research artifacts; they do
-not place trades, size positions, bind limits, route orders, or operate accounts.
+## Execution boundaries
 
-## Assets and trust boundaries
+| Surface | Contract |
+| --- | --- |
+| Formula DSL | Registered leaves/operators and parser-validated expression trees |
+| Custom NumPy operators | Token screening, empty builtins, and NumPy-only globals; compiled with `exec` in process |
+| CLI calls from MCP | Explicit argument arrays, without `shell=True`; captured output and return codes |
+| Managed-agent output | Declared `./out/` boundary and leaf-specific tools; references checked by `scripts/check.py` |
+| Reports | Escaped model-authored names, formulas, rationales, and narrative fields |
 
-Protected assets include provider credentials, MCP bearer tokens, licensed
-market data, local files outside selected input/output paths, research artifacts,
-and the integrity of evaluation results.
+Custom-operator restrictions are not an OS security boundary. Treat those
+experiments as trusted local code execution. Ordinary factor formulas use the
+DSL execution path.
 
-Treat all of the following as untrusted data:
+Input loaders use tabular/schema parsers. Connector cache keys use normalized
+identifiers. Saved scores are recomputed for analysis; artifact hashes establish
+integrity, not source truth or future validity. See [architecture](architecture.md)
+and [evidence protocol](evidence-protocol.md).
 
-- CSV, Parquet, HDF, Qlib, and connector payloads;
-- saved factor libraries and session artifacts;
-- formulas, rationales, research notes, and all LLM output;
-- MCP tool arguments and external agent handoffs;
-- remote HTTP responses and local OpenAI-compatible endpoints.
+## Models, prompts, and persistence
 
-The primary boundaries are:
+Provider keys and bearer tokens belong in environment variables or secret stores.
+Committed YAML, manifests, session artifacts, reports, and RFT exports must not
+contain them. A configured model endpoint receives the prompt content sent to it.
 
-```mermaid
-flowchart LR
-    U["Untrusted inputs"] --> V["Schema / parser validation"]
-    V --> E["FactorMiner engine"]
-    E --> A["Escaped, structured artifacts"]
-    H["Agent host"] --> M["MCP boundary"]
-    M --> E
-    E --> C["Explicit outbound connectors"]
-    S["Environment secrets"] --> M
-    S --> C
-```
+`OpenAICompatibleProvider` requires an operator-configured `base_url` and does
+not fall back to `OPENAI_API_KEY`. Frontier construction strips custom URLs;
+draft/frontier requests have independent timeouts. Generated content cannot
+select the endpoint.
 
-## Filesystem and subprocess execution
+Research notes enter generation through structured archetypes; memory and
+library retrieval uses typed summaries. Sealed-evaluator feedback exposes only
+allowed coarse fields. Malformed replies fail to neutral/rejected results, and
+rationales remain data rather than instructions. HTML rationales are marked as
+unreviewed unless a human attestation is recorded.
 
-MCP engine tools delegate to the `factorminer` CLI using explicit argument
-arrays. They do not use `shell=True`. The called workflow receives explicit
-input/output paths and returns captured structured output or an error containing
-the return code and diagnostics.
+Neural-leaf persistence uses `torch.save` and loads weights with
+`torch.load(..., map_location="cpu", weights_only=True)`. Retain checkpoint
+provenance; restricted weight loading is not validation of model behavior.
+RFT export creates a dataset and records `trains_model: false`.
 
-`output/` is mutable local state and is ignored by Git. Agent manifests confine
-managed output to `./out/`; only the librarian leaf in the reference managed
-integration has write-capable tools. Plugin and managed-agent references are
-validated by `scripts/check.py`.
+## Data connectors
 
-Input path validation is format-specific. Connector cache keys use normalized,
-validated identifiers rather than response-controlled path fragments. Data
-loaders do not execute file contents.
+Acquisition is explicit through workflows such as `fetch-data`, `attach-edgar`,
+and `build-futures`. Normal mining does not initiate unattended data acquisition.
 
-## Outbound data connectors
+- EDGAR fetches use the pinned SEC endpoint, timeouts, response-size controls,
+  a descriptive user agent, and request-rate controls. Joins use filing dates.
+- Consensus-factor fetches require HTTPS, cap response size, and validate shape.
+  Missing or malformed data remains unavailable.
+- `MCPDataSourceConfig` validates transport, connection fields, column coverage,
+  positional schemas, and unknown keys before connection. `${ENV}` expansion
+  keeps credentials outside YAML. Derived `amount = close * volume` is opt-in
+  and recorded as an approximation.
 
-Current outbound surfaces are:
+Connector configuration and examples are in the
+[integration guide](../integrations/factor-researcher/README.md).
 
-| Surface | Data | Invocation |
-| --- | --- | --- |
-| `data/edgar_source.py` | SEC EDGAR XBRL facts | explicit `attach-edgar` |
-| `data/mcp_source.py` | configured external MCP table data | explicit `fetch-data` |
-| `evaluation/crowding.py` | public consensus-factor return panels | explicit crowding workflow |
-| `data/futures_source.py` | continuous-futures input transformation | explicit `build-futures` |
+## MCP transports
 
-Network fetches use explicit timeouts. EDGAR access is pinned to
-`https://data.sec.gov`, applies response-size limits, sends a descriptive user
-agent, and rate-limits requests to the SEC fair-access ceiling. Point-in-time
-joins use filing dates, not covered-period end dates, so facts are unavailable
-before publication.
-
-Consensus-factor fetches reject non-HTTPS URLs, enforce response-size caps, and
-validate content/shape before parsing. Malformed or unavailable data produces an
-explicit unavailable result rather than a low-risk default.
-
-`MCPDataSourceConfig` is operator-controlled YAML. It validates transport,
-required connection fields, canonical column coverage, positional schemas, and
-unknown keys before opening a connection. `${ENV}` expansion allows credentials
-to remain outside the file. Derived `amount = close * volume` is opt-in and is
-recorded as an approximation, not observed turnover.
-
-Normal `mine` and `helix` commands do not trigger unattended external fetches.
-Acquisition and attachment are separate explicit workflows.
-
-## MCP server
-
-### Stdio
-
-Stdio is the default transport. It is a local subprocess pipe and does not add a
-network listener or application authentication layer:
+Stdio uses the launching process and host account as its boundary:
 
 ```bash
 uv run factorminer mcp-serve --transport stdio
 ```
 
-The security boundary is the process launcher and host user account.
-
-### HTTP
-
-HTTP transport is opt-in. The default host is `127.0.0.1`, and startup fails
-unless the configured token environment variable contains a non-empty value:
+HTTP is opt-in, defaults to loopback, and requires a non-empty token:
 
 ```bash
 export FACTORMINER_MCP_TOKEN="$(openssl rand -hex 32)"
-uv run factorminer mcp-serve \
-  --transport http --host 127.0.0.1 --port 8765
+uv run factorminer mcp-serve --transport http --host 127.0.0.1 --port 8765
 ```
 
-Clients must send `Authorization: Bearer <token>`. Authentication uses the MCP
-SDK `TokenVerifier`/`AccessToken` protocol via
-`StaticBearerTokenVerifier`. There is no unauthenticated HTTP mode.
+Clients send `Authorization: Bearer <token>`. `StaticBearerTokenVerifier` uses
+the MCP SDK token-verification interface. The local listener is for one trusted
+operator; its token does not supply tenant isolation or per-tool authorization.
 
-The static bearer token is a single-operator/trusted-network control. It does
-not provide user identity, roles, tenant isolation, or per-tool authorization;
-do not expose the development listener as a public multi-tenant service.
-
-The separate `hosted-pilot serve` surface adds tenant-bound scoped credentials,
-durable allow-listed jobs, quotas, retention, and consent controls. Its threat
-model and operator runbook are in [Hosted pilot security and
-operations](hosted-pilot.md). The local server and hosted server must never be
-routed through the same public endpoint.
-
-Every tool description states its argument/result shape and the research-only
-contract. Tool functions return structured JSON and never invoke a trading or
-broker endpoint. Deployment details are in the
-[integration guide](../integrations/factor-researcher/README.md).
-
-## Local/frontier model cascade
-
-`OpenAICompatibleProvider` sends prompts to an operator-configured `base_url`.
-That URL is loaded from local configuration and cannot be supplied by a formula,
-LLM response, research note, or MCP request.
-
-Enforced credential separation:
-
-- a missing custom `base_url` is an error;
-- the custom provider does not fall back to `OPENAI_API_KEY`;
-- frontier-provider construction strips custom `base_url` values;
-- local/draft and frontier requests have independent timeouts.
-
-Enabling a custom endpoint grants that endpoint access to the prompt content
-sent through the draft path. Operators must treat the endpoint as a data
-processor and restrict it with normal network policy.
-
-## Formula and generated-code boundary
-
-The default factor surface is a typed DSL, not arbitrary Python. Output is
-parsed into an expression tree, validated against registered leaves/operators,
-and evaluated through bounded operator implementations. Parse failures and
-unsupported expressions fail evaluation; the runtime does not substitute saved
-scores.
-
-LLM text is never passed to Python `eval` or `exec`. Connector and artifact
-formats use JSON/YAML/tabular parsers with schema checks. Operator sandbox and
-custom-operator paths must preserve the same resource and syntax restrictions.
-
-## Prompt and memory injection
-
-Research notes and model output can re-enter later model context only through
-structured boundaries:
-
-- research absorption emits bounded `ResearchArchetype` fields instead of
-  concatenating raw documents into generation prompts;
-- `PromptContextBuilder` renders typed memory/library summaries;
-- sealed evaluator feedback allow-lists coarse fields and excludes raw evaluator
-  internals from generator-facing context;
-- malformed evaluator replies fail to a neutral/rejected result;
-- economic rationale is attached to an admitted factor and is not treated as a
-  system instruction.
-
-These controls separate instructions from data structurally. Agent prompts must
-continue to label connector payloads, notes, formulas, and saved artifacts as
-data rather than instructions.
-
-## HTML and report rendering
-
-Formula names, rationales, narrative fields, and model-authored text are escaped
-with `html.escape` before interpolation into HTML reports. An economic rationale
-is marked `UNATTESTED -- LLM DRAFT, NOT REVIEWED` unless its attestation is
-explicitly recorded as human.
-
-Static report generation does not execute embedded model output. Regression
-tests include literal script-tag payloads and assert escaped output.
-
-## Evaluation integrity
-
-Security includes protection against misleading research artifacts:
-
-- runtime analysis recomputes formulas on the selected dataset;
-- train/test boundaries are explicit and shared across analysis paths;
-- point-in-time fundamental joins use availability dates;
-- proxy and partial baselines are labeled in manifests;
-- sealed multi-evaluator mode exposes agreement summaries rather than its
-  scoring internals to generation;
-- unavailable diagnostics remain unavailable rather than defaulting to a safe
-  label.
-
-These controls limit stale-score reuse, look-ahead, provenance ambiguity, and
-reward gaming. They do not turn a backtest into an investment recommendation.
-
-## Secrets and persistence
-
-API keys and bearer tokens belong in environment variables or an approved
-secret store. They must not appear in YAML committed to Git, CLI arguments that
-are routinely logged, reports, session state, RFT JSONL, or benchmark manifests.
-
-Current persistence surfaces store formulas, metrics, policies, trajectory
-metadata, hashes, rewards, and configuration projections—not provider secrets.
-The RFT export records `trains_model: false`; it creates a dataset and does not
-launch model training.
-
-## Model serialization
-
-FactorMiner trains optional small models in process and does not call
-`torch.load` on external checkpoints. Consequently the Python-pickle checkpoint
-execution surface is absent from the current runtime. External serialized model
-objects are not accepted as CLI/MCP inputs.
+The separate [hosted pilot](hosted-pilot.md) provides tenant-bound credentials,
+scoped jobs, retention, and consent controls. It is an optional deployment
+surface with its own operational boundary. MCP tools return research artifacts
+and do not call trading or broker endpoints.
 
 ## Verification
 
-The following checks enforce this document's key invariants:
-
-| Control | Coverage |
-| --- | --- |
-| HTTP requires a token and defaults to loopback | MCP server tests |
-| Tool descriptions retain research-only text | MCP tests and live stdio smoke in CI-compatible environments |
-| Connector timeouts, caps, malformed input, and point-in-time joins | data/crowding regression tests |
-| Custom provider does not read frontier credentials | LLM-interface tests |
-| Sealed feedback excludes evaluator internals | sealed-search tests |
-| HTML escapes model-authored fields | report/MRM tests |
-| Integration files and relative references resolve | `uv run python scripts/check.py` |
-| Package/import contracts remain stable | `test_import_boundaries.py` and CI |
+Existing tests cover HTTP authentication, connector validation and availability
+joins, provider credential separation, sealed feedback, report escaping, and
+operator/checkpoint behavior. Run `uv run python scripts/check.py` for integration
+manifests and `uv run python scripts/check_architecture.py` for import boundaries.

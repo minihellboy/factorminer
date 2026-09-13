@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 BASELINE_VERSION = 1
-DEFAULT_BASELINE = Path(__file__).resolve().parents[1] / "mypy-baseline.json"
+DEFAULT_BASELINE = Path(__file__).resolve().parent / "baselines" / "mypy.json"
 ERROR_PATTERN = re.compile(
     r"^(?P<path>.+?):(?P<line>\d+)(?::\d+)?: error: "
     r"(?P<message>.*?)(?:  \[(?P<code>[^]]+)\])?$"
