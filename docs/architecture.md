@@ -67,8 +67,33 @@ Configured target definitions and train/test periods are shared by mining,
 
 Registered leaves include `$open`, `$high`, `$low`, `$close`, `$volume`, `$amt`,
 `$vwap`, and `$returns`. Scoped feature registrations can add point-in-time
-fundamentals or futures fields. The parser builds expression trees executed by
-registered operators on NumPy, C, or GPU backends.
+fundamentals or futures fields. The parser builds expression trees evaluated on
+NumPy arrays by the shared signal runtime.
+
+### Numerical backends
+
+`evaluation.backend: gpu` accelerates candidate-to-library Spearman correlation
+with Torch on CUDA, falling back to Torch CPU or NumPy when unavailable. Formula
+recomputation, IC metrics, and intra-batch deduplication remain on NumPy. Use
+`factorminer --gpu doctor` to verify CUDA before a GPU campaign.
+
+The operator registry separately accepts `backend="numpy"`, `"c"` (Bottleneck
+with NumPy fallbacks), or `"torch"`. Torch operators execute on the input tensor's
+device. CuPy is an optional CUDA array dependency, not the formula evaluator.
+Neural leaves train on the requested device; inference uses the model's current
+device unless explicitly moved. Checkpoints reload onto CPU with weights-only
+loading and can then move to CUDA.
+
+Registry Torch/NumPy parity covers rolling warm-up, missing observations,
+interpolated quantiles, and short panels. The registry's `SMA` treats missing
+observations as zero; `Mean` averages valid observations. The expression runtime
+has separate implementations and normalization conventions; registry parity
+does not establish an interchangeable GPU expression evaluator.
+Cross-sectional ordinal ranks break ties in asset
+row order on both backends. This can change historical tied-rank results.
+Candidate/library correlation instead uses average tied ranks and ranks each
+column before masking paired observations. Dates with fewer than five paired
+ranks are skipped; constant ranks contribute zero on otherwise usable dates.
 
 ## Memory and research knowledge
 

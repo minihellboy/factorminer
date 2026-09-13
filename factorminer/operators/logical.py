@@ -150,7 +150,7 @@ def not_torch(x: torch.Tensor) -> torch.Tensor:
 
 
 def sign_torch(x: torch.Tensor) -> torch.Tensor:
-    return x.sign()
+    return x.sign().masked_fill(torch.isnan(x), float("nan"))
 
 
 def max2_torch(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:

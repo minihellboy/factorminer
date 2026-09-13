@@ -268,13 +268,11 @@ def corr_torch(x: torch.Tensor, y: torch.Tensor, window: int = 10) -> torch.Tens
     wy = _unfold_torch(y, window)
     mx = wx.nanmean(dim=2, keepdim=True)
     my = wy.nanmean(dim=2, keepdim=True)
-    dx = (wx - mx).nan_to_num(0.0)
-    dy = (wy - my).nan_to_num(0.0)
-    not_nan = ~(torch.isnan(wx) | torch.isnan(wy))
-    n = not_nan.sum(dim=2).float()
-    cov = (dx * dy * not_nan).sum(dim=2) / n.clamp(min=1)
-    sx = ((dx ** 2 * not_nan).sum(dim=2) / n.clamp(min=1)).sqrt()
-    sy = ((dy ** 2 * not_nan).sum(dim=2) / n.clamp(min=1)).sqrt()
+    dx = wx - mx
+    dy = wy - my
+    cov = (dx * dy).nanmean(dim=2)
+    sx = dx.square().nanmean(dim=2).sqrt()
+    sy = dy.square().nanmean(dim=2).sqrt()
     result = torch.where((sx > 1e-10) & (sy > 1e-10), cov / (sx * sy),
                          torch.tensor(float("nan"), device=x.device))
     return _pad_front_torch(result, window, T)
@@ -289,11 +287,7 @@ def cov_torch(x: torch.Tensor, y: torch.Tensor, window: int = 10) -> torch.Tenso
     wy = _unfold_torch(y, window)
     mx = wx.nanmean(dim=2, keepdim=True)
     my = wy.nanmean(dim=2, keepdim=True)
-    dx = (wx - mx).nan_to_num(0.0)
-    dy = (wy - my).nan_to_num(0.0)
-    not_nan = ~(torch.isnan(wx) | torch.isnan(wy))
-    n = not_nan.sum(dim=2).float()
-    result = (dx * dy * not_nan).sum(dim=2) / n.clamp(min=1)
+    result = ((wx - mx) * (wy - my)).nanmean(dim=2)
     return _pad_front_torch(result, window, T)
 
 
@@ -306,12 +300,10 @@ def beta_torch(x: torch.Tensor, y: torch.Tensor, window: int = 10) -> torch.Tens
     wy = _unfold_torch(y, window)
     mx = wx.nanmean(dim=2, keepdim=True)
     my = wy.nanmean(dim=2, keepdim=True)
-    dx = (wx - mx).nan_to_num(0.0)
-    dy = (wy - my).nan_to_num(0.0)
-    not_nan = ~(torch.isnan(wx) | torch.isnan(wy))
-    n = not_nan.sum(dim=2).float()
-    var_y = (dy ** 2 * not_nan).sum(dim=2) / n.clamp(min=1)
-    cov_xy = (dx * dy * not_nan).sum(dim=2) / n.clamp(min=1)
+    dx = wx - mx
+    dy = wy - my
+    var_y = dy.square().nanmean(dim=2)
+    cov_xy = (dx * dy).nanmean(dim=2)
     result = torch.where(var_y > 1e-10, cov_xy / var_y,
                          torch.tensor(float("nan"), device=x.device))
     return _pad_front_torch(result, window, T)
@@ -326,12 +318,10 @@ def resid_torch(x: torch.Tensor, y: torch.Tensor, window: int = 10) -> torch.Ten
     wy = _unfold_torch(y, window)
     mx = wx.nanmean(dim=2, keepdim=True)
     my = wy.nanmean(dim=2, keepdim=True)
-    dx = (wx - mx).nan_to_num(0.0)
-    dy = (wy - my).nan_to_num(0.0)
-    not_nan = ~(torch.isnan(wx) | torch.isnan(wy))
-    n = not_nan.sum(dim=2, keepdim=True).float()
-    var_y = (dy ** 2 * not_nan).sum(dim=2, keepdim=True) / n.clamp(min=1)
-    cov_xy = (dx * dy * not_nan).sum(dim=2, keepdim=True) / n.clamp(min=1)
+    dx = wx - mx
+    dy = wy - my
+    var_y = dy.square().nanmean(dim=2, keepdim=True)
+    cov_xy = (dx * dy).nanmean(dim=2, keepdim=True)
     b = torch.where(var_y > 1e-10, cov_xy / var_y, torch.zeros_like(var_y))
     a = mx - b * my
     result = (wx[:, :, -1:] - b * wy[:, :, -1:] - a).squeeze(2)
@@ -364,13 +354,15 @@ def cumprod_torch(x: torch.Tensor) -> torch.Tensor:
 
 
 def cummax_torch(x: torch.Tensor) -> torch.Tensor:
-    filled = x.nan_to_num(float("-inf"))
-    return filled.cummax(dim=1).values
+    valid = ~torch.isnan(x)
+    filled = x.masked_fill(~valid, float("-inf"))
+    return filled.cummax(dim=1).values.masked_fill(valid.cumsum(dim=1) == 0, float("nan"))
 
 
 def cummin_torch(x: torch.Tensor) -> torch.Tensor:
-    filled = x.nan_to_num(float("inf"))
-    return filled.cummin(dim=1).values
+    valid = ~torch.isnan(x)
+    filled = x.masked_fill(~valid, float("inf"))
+    return filled.cummin(dim=1).values.masked_fill(valid.cumsum(dim=1) == 0, float("nan"))
 
 
 # ===========================================================================

@@ -451,7 +451,7 @@ def _decay(x: np.ndarray, window: int) -> np.ndarray:
 
 
 def _cs_rank(x: np.ndarray) -> np.ndarray:
-    """Cross-sectional percentile rank at each time step."""
+    """Cross-sectional percentile rank; break ties in asset row order."""
     M, T = x.shape
     out = np.empty_like(x, dtype=np.float64)
     for t in range(T):
@@ -460,7 +460,7 @@ def _cs_rank(x: np.ndarray) -> np.ndarray:
         ranked = np.empty(M, dtype=np.float64)
         ranked[:] = np.nan
         if valid.any():
-            order = col[valid].argsort().argsort().astype(np.float64)
+            order = col[valid].argsort(kind="stable").argsort().astype(np.float64)
             ranked[valid] = (order + 1) / valid.sum()
         out[:, t] = ranked
     return out

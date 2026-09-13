@@ -18,6 +18,41 @@ uv sync --group dev --all-extras
 Smaller environments can use `uv sync --group dev` and add `--extra llm` or
 `--extra mcp` only when needed. Run repository commands through `uv run`.
 
+### Optional model and GPU environments
+
+The lock selects official `torch==2.13.0+cu126` wheels on Linux and
+`cupy-cuda12x==14.2.0`. Both use CUDA 12; runtime libraries and NVRTC come from
+the environment, so a system CUDA toolkit is not required. Validation uses
+Python 3.12, Linux x86_64, and an NVIDIA RTX 4090 with driver 580.173.02.
+The CUDA index selection is uv-specific; pip users must select the official
+PyTorch CUDA 12.6 distribution separately before installing the GPU extra.
+
+```bash
+uv sync --frozen --group dev --extra gpu --extra embeddings
+uv run --no-sync factorminer --gpu doctor
+FACTORMINER_REQUIRE_CUDA=1 FACTORMINER_TEST_EMBEDDINGS=1 \
+  uv run --no-sync pytest -q factorminer/tests/test_gpu_compatibility.py
+```
+
+The required-CUDA flag fails if Torch or CUDA is missing. Tests compare real
+CUDA tensors against NumPy and CPU Torch, check gradients against NumPy finite
+differences, run a CuPy compiled kernel with DLPack interchange, train/reload a
+neural leaf, and compare pipeline admission decisions. Embedding validation
+downloads `all-MiniLM-L6-v2` on first use; normal CI skips this network test.
+
+macOS uses the native Torch wheel without CuPy. When Torch and Homebrew-linked
+XGBoost load different OpenMP runtimes, the process can crash. Launch mixed
+model workflows with Torch's library directory selected before Python starts
+([upstream workaround](https://github.com/pytorch/pytorch/issues/191933)):
+
+```bash
+FACTOR_TORCH_LIB=$(uv run --no-sync python -c 'from pathlib import Path; import torch; print(Path(torch.__file__).parent / "lib")')
+DYLD_LIBRARY_PATH="$FACTOR_TORCH_LIB" uv run --no-sync pytest -q factorminer/tests
+```
+
+This preserves parallel execution and does not alter system libraries. The
+base CPU environment (`uv sync --group dev`) does not install Torch or CuPy.
+
 ## Branches and pull requests
 
 Branch from an up-to-date `main`:

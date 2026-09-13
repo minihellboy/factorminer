@@ -21,7 +21,8 @@ except ImportError:
 def cs_rank_np(x: np.ndarray) -> np.ndarray:
     """Cross-sectional percentile rank -- key GPU target (26x speedup).
 
-    For each time step, rank assets from 0 to 1.  NaN inputs get NaN rank.
+    For each time step, rank assets from 0 to 1. Ties use asset row order.
+    NaN inputs and columns with fewer than two observations get NaN rank.
     """
     M, T = x.shape
     out = np.full_like(x, np.nan, dtype=np.float64)
@@ -31,7 +32,7 @@ def cs_rank_np(x: np.ndarray) -> np.ndarray:
         n = valid.sum()
         if n < 2:
             continue
-        order = col[valid].argsort().argsort().astype(np.float64)
+        order = col[valid].argsort(kind="stable").argsort().astype(np.float64)
         out[valid, t] = order / (n - 1)
     return out
 
@@ -72,7 +73,7 @@ def cs_quantile_np(x: np.ndarray, n_bins: int = 5) -> np.ndarray:
         n = valid.sum()
         if n < 2:
             continue
-        order = col[valid].argsort().argsort().astype(np.float64)
+        order = col[valid].argsort(kind="stable").argsort().astype(np.float64)
         out[valid, t] = np.floor(order / n * n_bins).clip(0, n_bins - 1)
     return out
 
@@ -83,20 +84,13 @@ def cs_quantile_np(x: np.ndarray, n_bins: int = 5) -> np.ndarray:
 
 def cs_rank_torch(x: torch.Tensor) -> torch.Tensor:
     """Cross-sectional percentile rank -- fully vectorized for GPU."""
-    M, T = x.shape
     not_nan = ~torch.isnan(x)
-    # Replace NaN with very large value so they sort last
-    filled = x.clone()
-    filled[~not_nan] = float("inf")
-    # argsort twice gives rank
-    ranks = filled.argsort(dim=0).argsort(dim=0).float()
+    # Stable sorting makes tied values follow asset row order on every device.
+    ranks = x.argsort(dim=0, stable=True).argsort(dim=0).to(x.dtype)
     # Count valid per column
     n_valid = not_nan.sum(dim=0, keepdim=True).float()
     result = ranks / (n_valid - 1).clamp(min=1)
-    result[~not_nan] = float("nan")
-    # Clamp ranks for entries that got inf-sorted
-    result = result.clamp(0.0, 1.0)
-    result[~not_nan] = float("nan")
+    result = result.masked_fill(~not_nan | (n_valid < 2), float("nan"))
     return result
 
 
@@ -126,14 +120,11 @@ def cs_neutralize_torch(x: torch.Tensor) -> torch.Tensor:
 
 def cs_quantile_torch(x: torch.Tensor, n_bins: int = 5) -> torch.Tensor:
     n_bins = int(n_bins)
-    M, T = x.shape
     not_nan = ~torch.isnan(x)
-    filled = x.clone()
-    filled[~not_nan] = float("inf")
-    ranks = filled.argsort(dim=0).argsort(dim=0).float()
+    ranks = x.argsort(dim=0, stable=True).argsort(dim=0).to(x.dtype)
     n_valid = not_nan.sum(dim=0, keepdim=True).float()
     result = (ranks / n_valid * n_bins).floor().clamp(0, n_bins - 1)
-    result[~not_nan] = float("nan")
+    result = result.masked_fill(~not_nan | (n_valid < 2), float("nan"))
     return result
 
 

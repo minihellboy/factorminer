@@ -28,7 +28,7 @@ def _linreg_components_np(x: np.ndarray, window: int):
     w = _rolling_np(x, window)
     if w is None:
         nan = np.full_like(x, np.nan)
-        return nan, nan, nan, nan
+        return nan, nan, nan, nan, nan
 
     t_idx = np.arange(window, dtype=np.float64)  # (window,)
     t_mean = t_idx.mean()

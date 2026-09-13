@@ -41,6 +41,8 @@ def _pad_front(result: np.ndarray, window: int, total_T: int) -> np.ndarray:
 
 def _unfold_torch(x: torch.Tensor, window: int) -> torch.Tensor:
     """Unfold last dimension to get sliding windows: (M, T) -> (M, T-w+1, w)."""
+    if x.shape[1] < window:
+        return x[:, :0].unsqueeze(2).expand(-1, -1, window)
     return x.unfold(dimension=1, size=window, step=1)
 
 
@@ -273,7 +275,7 @@ def std_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
     n = not_nan.sum(dim=2, keepdim=True).float()
     var = (d ** 2).sum(dim=2, keepdim=True) / (n - 1).clamp(min=1)
     result = var.sqrt().squeeze(2)
-    result[n.squeeze(2) < 2] = float("nan")
+    result = result.masked_fill(n.squeeze(2) < 2, float("nan"))
     return _pad_front_torch(result, window, T)
 
 
@@ -322,11 +324,7 @@ def kurt_torch(x: torch.Tensor, window: int = 20) -> torch.Tensor:
 
 
 def median_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
-    window = int(window)
-    M, T = x.shape
-    w = _unfold_torch(x, window)
-    result = w.nanmedian(dim=2).values
-    return _pad_front_torch(result, window, T)
+    return quantile_torch(x, window, q=0.5)
 
 
 def sum_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
@@ -412,14 +410,10 @@ def ts_rank_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
 def quantile_torch(x: torch.Tensor, window: int = 10, q: float = 0.5) -> torch.Tensor:
     window = int(window)
     M, T = x.shape
+    if T < window:
+        return torch.full_like(x, float("nan"))
     w = _unfold_torch(x, window)
-    result = w.nanmedian(dim=2).values  # approximation; true quantile below
-    # Use sorting for proper quantile
-    sorted_w, _ = w.sort(dim=2)
-    n = (~torch.isnan(w)).sum(dim=2).float()
-    idx = ((n - 1) * q).long().clamp(min=0)
-    # Gather the quantile value
-    result = sorted_w.gather(2, idx.unsqueeze(2)).squeeze(2)
+    result = torch.nanquantile(w, q, dim=2, interpolation="linear")
     return _pad_front_torch(result, window, T)
 
 

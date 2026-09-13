@@ -58,6 +58,21 @@ jobs:
       - name: Run test suite
         run: uv run pytest -q factorminer/tests
 
+      - name: Verify base CPU installation without optional extras
+        run: |
+          UV_PROJECT_ENVIRONMENT=/tmp/factorminer-cpu-base uv sync --frozen --python 3.12 --no-dev
+          /tmp/factorminer-cpu-base/bin/factorminer --help
+          /tmp/factorminer-cpu-base/bin/python - <<'PY'
+          import importlib.util
+          import numpy as np
+          from factorminer.core.parser import parse
+
+          assert importlib.util.find_spec("torch") is None
+          assert importlib.util.find_spec("cupy") is None
+          result = parse("Add($close, $close)").evaluate({"$close": np.ones((5, 10))})
+          np.testing.assert_array_equal(result, np.full((5, 10), 2.0))
+          PY
+
       - name: Check package artifacts
         run: |
           rm -rf /tmp/factorminer-dist

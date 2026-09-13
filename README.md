@@ -16,7 +16,7 @@ integrations. Outputs are research artifacts; the project does not execute trade
 
 | Component | Function |
 | --- | --- |
-| Formula engine | Typed DSL, registered operators, and NumPy/C/GPU backends |
+| Formula engine | Typed DSL with NumPy evaluation; optional compiled operators and Torch kernels |
 | Mining | Ralph and Helix loops with generation, evaluation, memory, and checkpoints |
 | Experiment selection | Opt-in generation, refinement, delay challenges, and stopping |
 | Research skills | Versioned procedures with applicability, uncertainty, and contradiction tracking |
@@ -36,7 +36,10 @@ uv sync --group dev --extra llm
 
 NumPy is the default backend. Optional extras include `mcp`, `research`,
 `embeddings`, `visualization`, and `gpu`; the CUDA extra targets Linux.
-Contributor setup and checks are in [CONTRIBUTING.md](CONTRIBUTING.md).
+`uv sync --frozen --extra gpu` installs patched PyTorch with CUDA 12.6 and
+CuPy for CUDA 12. The base install needs neither Torch nor a GPU.
+See [backend scope](docs/architecture.md#numerical-backends) and
+[platform setup and checks](CONTRIBUTING.md#optional-model-and-gpu-environments).
 
 ## Quick start
 

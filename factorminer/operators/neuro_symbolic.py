@@ -188,7 +188,8 @@ if _TORCH_AVAILABLE:
                 Stack of feature arrays, F channels, in the order given at
                 construction time.
             device : torch.device, optional
-                Where to place tensors.  Defaults to CPU.
+                Defaults to the model's current device. An explicit device
+                moves the model there as well as the input tensors.
 
             Returns
             -------
@@ -197,7 +198,9 @@ if _TORCH_AVAILABLE:
             if not _TORCH_AVAILABLE:
                 return np.full(features_3d.shape[:2], np.nan)
 
-            device = device or torch.device("cpu")
+            if device is not None:
+                self.to(device)
+            device = next(self.parameters()).device
             M, T, F = features_3d.shape
             W = self.window_size
 

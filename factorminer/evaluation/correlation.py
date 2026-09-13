@@ -272,41 +272,41 @@ def _try_torch_rank_correlation(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     N, M, T = library.shape
+    if N == 0 or M == 0 or T == 0:
+        return np.zeros(N, dtype=np.float64)
+
+    def rank_columns(x: torch.Tensor) -> torch.Tensor:
+        # Average tied ranks, independently before masking paired observations,
+        # exactly as in _rank_columns. NaNs sort last and are restored below.
+        values, order = x.sort(dim=0, stable=True)
+        positions = torch.arange(M, device=device).unsqueeze(1).expand(M, T)
+        start = torch.ones_like(values, dtype=torch.bool)
+        start[1:] = values[1:] != values[:-1]
+        end = torch.ones_like(start)
+        end[:-1] = start[1:]
+        first = torch.where(start, positions, 0).cummax(dim=0).values
+        last = torch.where(end, positions, M - 1).flip(0).cummin(dim=0).values.flip(0)
+        sorted_ranks = (first + last).to(x.dtype) / 2 + 1
+        ranks = torch.empty_like(x).scatter(0, order, sorted_ranks)
+        return ranks.masked_fill(torch.isnan(x) | ((~torch.isnan(x)).sum(dim=0) < 2),
+                                 float("nan"))
+
     cand_t = torch.from_numpy(candidate).to(device, dtype=torch.float64)
     lib_t = torch.from_numpy(library).to(device, dtype=torch.float64)
-
+    cand_ranked = rank_columns(cand_t)
     correlations = torch.zeros(N, dtype=torch.float64, device=device)
-
-    for t in range(T):
-        c_col = cand_t[:, t]
-        l_cols = lib_t[:, :, t]  # (N, M)
-
-        # Skip if too many NaN
-        c_valid = ~torch.isnan(c_col)
-        if c_valid.sum() < 5:
-            continue
-
-        # Rank the candidate column
-        c_col[c_valid].argsort().argsort().float() + 1.0
-
-        for i in range(N):
-            l_col = l_cols[i]
-            valid = c_valid & ~torch.isnan(l_col)
-            n = valid.sum()
-            if n < 5:
-                continue
-            # Rank both
-            c_v = c_col[valid]
-            l_v = l_col[valid]
-            c_rank = c_v.argsort().argsort().float() + 1.0
-            l_rank = l_v.argsort().argsort().float() + 1.0
-            c_m = c_rank - c_rank.mean()
-            l_m = l_rank - l_rank.mean()
-            denom = torch.sqrt((c_m ** 2).sum() * (l_m ** 2).sum())
-            if denom > 1e-12:
-                correlations[i] += (c_m * l_m).sum() / denom
-
-    correlations /= max(T, 1)
+    for i in range(N):
+        lib_ranked = rank_columns(lib_t[i])
+        valid = ~(torch.isnan(cand_ranked) | torch.isnan(lib_ranked))
+        n = valid.sum(dim=0)
+        ca = cand_ranked.masked_fill(~valid, 0)
+        lb = lib_ranked.masked_fill(~valid, 0)
+        ca = (ca - ca.sum(dim=0) / n.clamp(min=1)).masked_fill(~valid, 0)
+        lb = (lb - lb.sum(dim=0) / n.clamp(min=1)).masked_fill(~valid, 0)
+        denom = (ca.square().sum(dim=0) * lb.square().sum(dim=0)).sqrt()
+        corr = torch.where(denom > 1e-12, (ca * lb).sum(dim=0) / denom, 0)
+        usable = n >= 5
+        correlations[i] = corr.masked_fill(~usable, 0).sum() / usable.sum().clamp(min=1)
     return correlations.cpu().numpy()
 
 

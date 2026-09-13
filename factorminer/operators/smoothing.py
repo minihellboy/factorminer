@@ -19,10 +19,12 @@ except ImportError:
 # ===========================================================================
 
 def sma_np(x: np.ndarray, window: int = 10) -> np.ndarray:
-    """Simple moving average (identical to Mean)."""
+    """Simple moving average, treating missing observations as zero."""
     window = int(window)
     M, T = x.shape
     out = np.full_like(x, np.nan, dtype=np.float64)
+    if T < window:
+        return out
     # Cumsum trick for O(1) per element
     cs = np.nancumsum(x, axis=1)
     out[:, window - 1:] = cs[:, window - 1:]
@@ -126,13 +128,13 @@ def hma_np(x: np.ndarray, window: int = 10) -> np.ndarray:
 # ===========================================================================
 
 def sma_torch(x: torch.Tensor, window: int = 10) -> torch.Tensor:
-    """Simple moving average using conv1d for GPU efficiency."""
+    """Simple moving average, treating missing observations as zero."""
     window = int(window)
     M, T = x.shape
     # Use unfold-based approach
     from factorminer.operators.statistical import _pad_front_torch, _unfold_torch
     w = _unfold_torch(x, window)
-    result = w.nanmean(dim=2)
+    result = w.nansum(dim=2) / window
     return _pad_front_torch(result, window, T)
 
 

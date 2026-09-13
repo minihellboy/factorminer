@@ -145,7 +145,7 @@ def abs_torch(x: torch.Tensor) -> torch.Tensor:
 
 
 def sign_torch(x: torch.Tensor) -> torch.Tensor:
-    return x.sign()
+    return x.sign().masked_fill(torch.isnan(x), float("nan"))
 
 
 def log_torch(x: torch.Tensor) -> torch.Tensor:
