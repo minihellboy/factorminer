@@ -511,6 +511,25 @@ class OpenAICompatibleProvider(LLMProvider):
         return f"openai_compatible/{self.model}"
 
 
+class DeepSeekProvider(OpenAICompatibleProvider):
+    """DeepSeek's official endpoint, with its own environment credential."""
+
+    def __init__(self, model: str = "deepseek-flash", api_key: str | None = None,
+                 timeout_s: float = 120.0, prompt_cache: bool = False) -> None:
+        super().__init__(model=model, base_url="https://api.deepseek.com",
+                         api_key=api_key or os.environ.get("DEEPSEEK_API_KEY", ""),
+                         timeout_s=timeout_s, prompt_cache=prompt_cache)
+
+    def _get_client(self) -> Any:
+        if not self.api_key:
+            raise MissingAPIKeyError("Set DEEPSEEK_API_KEY to use the DeepSeek provider")
+        return super()._get_client()
+
+    @property
+    def provider_name(self) -> str:
+        return f"deepseek/{self.model}"
+
+
 class CascadeProvider(LLMProvider):
     """Cheap-first cascade: local draft → DSL-parse signal → frontier escalate.
 
@@ -785,6 +804,7 @@ _PROVIDER_MAP: dict[str, type] = {
     "mock": MockProvider,
     "openai_compatible": OpenAICompatibleProvider,
     "local": OpenAICompatibleProvider,
+    "deepseek": DeepSeekProvider,
 }
 
 
@@ -827,10 +847,13 @@ def _build_single_provider(config: dict[str, Any]) -> LLMProvider:
         kwargs["prompt_cache"] = bool(config.get("prompt_cache", False))
         return cls(**kwargs)
 
-    # Frontier providers
+    # Official hosted providers
     if "api_key" in config and config["api_key"]:
         kwargs["api_key"] = config["api_key"]
     kwargs["prompt_cache"] = prompt_cache
+    if provider_name == "deepseek":
+        kwargs["timeout_s"] = float(config.get("timeout_s", 120.0))
+        return cls(**kwargs)
 
     if provider_name == "openai":
         # Optional base_url on OpenAIProvider is supported but discouraged for

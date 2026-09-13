@@ -22,7 +22,7 @@ class MiningConfig:
 
     target_library_size: int = 110
     batch_size: int = 40
-    max_iterations: int = 200
+    max_iterations: int = 0
     ic_threshold: float = 0.04
     icir_threshold: float = 0.5
     correlation_threshold: float = 0.5
@@ -44,8 +44,8 @@ class MiningConfig:
             raise ValueError("target_library_size must be >= 1")
         if self.batch_size < 1:
             raise ValueError("batch_size must be >= 1")
-        if self.max_iterations < 1:
-            raise ValueError("max_iterations must be >= 1")
+        if self.max_iterations < 0:
+            raise ValueError("max_iterations must be >= 0 (0 means no iteration ceiling)")
         if not (0.0 < self.ic_threshold < 1.0):
             raise ValueError("ic_threshold must be in (0, 1)")
         if not (0.0 < self.correlation_threshold <= 1.0):
