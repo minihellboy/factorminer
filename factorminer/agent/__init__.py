@@ -12,6 +12,7 @@ _EXPORTS = {
             "LLMProvider",
             "OpenAIProvider",
             "OpenAICompatibleProvider",
+            "DeepSeekProvider",
             "AnthropicProvider",
             "GoogleProvider",
             "CascadeProvider",

@@ -21,6 +21,7 @@ class IterationPayload:
     results: list[Any] = field(default_factory=list)
     admitted_results: list[Any] = field(default_factory=list)
     stage_metrics: dict[str, Any] = field(default_factory=dict)
+    research_action: dict[str, Any] = field(default_factory=dict)
 
 
 class LoopStage(ABC):

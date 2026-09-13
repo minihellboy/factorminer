@@ -28,7 +28,7 @@ mining:
   batch_size: 40
 
   # Maximum number of Ralph Loop iterations before stopping
-  max_iterations: 200
+  max_iterations: 0  # Run until the target, planner stop, or interruption; no automatic quota.
 
   # Minimum absolute IC for a factor to pass Stage 1 screening (paper: 0.04)
   ic_threshold: 0.04
