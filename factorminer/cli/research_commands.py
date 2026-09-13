@@ -16,6 +16,44 @@ from factorminer.cli.app import _create_llm_provider
 from factorminer.cli.context import main
 
 
+@main.group("research-skills")
+def research_skills() -> None:
+    """Freeze and inspect transferable procedures from completed action ledgers."""
+
+
+@research_skills.command("compile")
+@click.argument("campaigns", nargs=-1, required=True, type=click.Path(exists=True))
+@click.option("--destination", required=True, type=click.Path(dir_okay=False))
+@click.pass_context
+def compile_skills(ctx: click.Context, campaigns: tuple[str, ...], destination: str) -> None:
+    """Compile immutable skills; source ledgers are opened read-only."""
+    import sqlite3
+
+    from factorminer.architecture.research_skills import compile_skill_pack, write_skill_pack
+
+    try:
+        pack = compile_skill_pack(list(campaigns), config=ctx.obj["config"].research.skills)
+        write_skill_pack(pack, destination)
+    except (ValueError, OSError, sqlite3.Error) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps({"pack_id": pack["pack_id"], "skills": len(pack["skills"]),
+                           "observations": len(pack["observations"]), "skipped": pack["skipped"],
+                           "path": destination}, indent=2))
+
+
+@research_skills.command("inspect")
+@click.argument("pack_path", type=click.Path(exists=True, dir_okay=False))
+def inspect_skills(pack_path: str) -> None:
+    """Verify a skill pack and display applicability, evidence, and uncertainty."""
+    from factorminer.architecture.research_skills import load_skill_pack
+
+    try:
+        pack = load_skill_pack(pack_path)
+    except (ValueError, OSError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps({k: v for k, v in pack.items() if k != "observations"}, indent=2))
+
+
 @main.command("verify-evidence")
 @click.pass_context
 def verify_evidence(ctx: click.Context) -> None:

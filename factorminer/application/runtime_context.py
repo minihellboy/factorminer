@@ -68,7 +68,7 @@ class MiningSettings:
 
     @property
     def max_iterations(self) -> int:
-        return int(self._value("mining", "max_iterations", 200))
+        return int(self._value("mining", "max_iterations", 0))
 
     @property
     def ic_threshold(self) -> float:

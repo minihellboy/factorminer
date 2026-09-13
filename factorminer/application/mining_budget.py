@@ -16,8 +16,8 @@ import numpy as np
 class BudgetTracker:
     """Tracks resource consumption across the mining session.
 
-    Monitors LLM token usage, GPU compute time, and wall-clock time
-    so the loop can stop early when a budget is exhausted.
+    Retains the legacy limit fields for compatibility with existing callers.
+    Mining uses these counters for observation and ignores exhaustion flags.
     """
 
     max_llm_calls: int = 0  # 0 = unlimited
@@ -51,7 +51,7 @@ class BudgetTracker:
         return self.llm_prompt_tokens + self.llm_completion_tokens
 
     def is_exhausted(self) -> bool:
-        """True if any budget limit has been reached."""
+        """Legacy diagnostic only; mining does not stop on this value."""
         if self.max_llm_calls > 0 and self.llm_calls >= self.max_llm_calls:
             return True
         if self.max_wall_seconds > 0 and self.wall_elapsed >= self.max_wall_seconds:

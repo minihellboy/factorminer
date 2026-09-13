@@ -51,8 +51,7 @@ For production, put a standards-compliant OAuth authorization server in front
 of the resource server, validate the resource audience, publish protected
 resource metadata, and request least-privilege scopes. The MCP
 [authorization specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization)
-defines these requirements. The Python SDK dependency stays on stable 1.x
-(`mcp>=1.27,<2`) while 2.x is not stable.
+defines these requirements. The supported SDK version is declared in `pyproject.toml`.
 
 ## Provisioning and service startup
 
