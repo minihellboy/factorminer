@@ -565,7 +565,7 @@ class TestRalphLoopEndToEnd:
             assert "library_size" in stats
             assert "yield_rate" in stats
 
-    def test_budget_stops_loop(self, test_config, synthetic_data, mock_provider, tmp_dir):
+    def test_legacy_quota_does_not_stop_loop(self, test_config, synthetic_data, mock_provider, tmp_dir):
         test_config.max_iterations = 100
         test_config.output_dir = tmp_dir
         data_tensor, returns = synthetic_data
@@ -578,9 +578,9 @@ class TestRalphLoopEndToEnd:
         )
         loop.budget = BudgetTracker(max_llm_calls=2)
 
-        loop.run(max_iterations=100, target_size=1000)
-        assert loop.budget.llm_calls == 2
-        assert loop.iteration == 2
+        loop.run(max_iterations=4, target_size=1000)
+        assert loop.budget.llm_calls == 4
+        assert loop.iteration == 4
 
     def test_target_size_stops_loop(self, test_config, synthetic_data, mock_provider, tmp_dir):
         test_config.output_dir = tmp_dir
@@ -944,14 +944,13 @@ class TestCheckpointResume:
         # Verify the checkpoint was written at least once
         with open(checkpoint_dir / "loop_state.json") as f:
             state = json.load(f)
-        # The last checkpoint should be at iteration 2 (since 3 is not
-        # divisible by 2, the checkpoint at iter 2 is the latest one)
-        assert state["iteration"] == 2
+        # The final save preserves progress since the last periodic checkpoint.
+        assert state["iteration"] == 3
 
-    def test_checkpoint_disabled(
+    def test_disabling_periodic_checkpoints_preserves_final_progress(
         self, test_config, synthetic_data, mock_provider, tmp_dir
     ):
-        """Verify checkpoint_interval=0 disables automatic checkpointing."""
+        """Disabling periodic writes still leaves a resumable final state."""
         test_config.output_dir = tmp_dir
         data_tensor, returns = synthetic_data
 
@@ -965,8 +964,9 @@ class TestCheckpointResume:
         loop.run(max_iterations=2)
 
         checkpoint_dir = Path(tmp_dir) / "checkpoint"
-        # No automatic checkpoint should have been created
-        assert not checkpoint_dir.exists()
+        assert checkpoint_dir.exists()
+        with open(checkpoint_dir / "loop_state.json") as stream:
+            assert json.load(stream)["iteration"] == 2
 
     def test_resume_from_classmethod(
         self, test_config, synthetic_data, mock_provider, tmp_dir

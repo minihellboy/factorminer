@@ -202,7 +202,7 @@ class MiningSessionLogger:
 
     def start_progress(self, total_iterations: int) -> None:
         self._progress = tqdm(
-            total=total_iterations,
+            total=total_iterations or None,
             desc="Mining",
             unit="iter",
             bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",

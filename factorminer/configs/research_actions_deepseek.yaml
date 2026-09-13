@@ -1,0 +1,42 @@
+# Local crypto research with DeepSeek Flash and the opt-in action planner.
+# Load DEEPSEEK_API_KEY from the environment; never put credentials here.
+data_path: "./data/binance_crypto_5m.csv"
+
+mining:
+  max_iterations: 0
+  target_library_size: 110
+  batch_size: 6
+
+llm:
+  provider: "deepseek"
+  model: "deepseek-flash"
+  max_tokens: 8192
+  timeout_s: 180
+  cascade_enabled: false
+
+evaluation:
+  backend: "numpy"
+  signal_failure_policy: "raise"
+
+memory:
+  policy: "edit_aware"
+
+research:
+  planner:
+    enabled: true
+    policy: "decision_value"
+    seed: 42
+
+data:
+  market: "crypto"
+  universe: "Binance"
+  frequency: "5min"
+  train_period: ["2026-02-14 21:30:00", "2026-02-16 23:55:00"]
+  test_period: ["2026-02-17 00:00:00", "2026-02-18 08:45:00"]
+  targets:
+    - name: "paper"
+      entry_delay_bars: 1
+      holding_bars: 1
+      price_pair: "open_to_close"
+      return_transform: "simple"
+  default_target: "paper"

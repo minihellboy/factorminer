@@ -28,6 +28,22 @@ logger = logging.getLogger(__name__)
 class MemoryPolicy(ABC):
     """Policy interface for memory state, retrieval, and evolution."""
 
+    def transfer_identity(self) -> dict[str, Any]:
+        return {}
+
+    def persist_research_skills(self, output_dir) -> None:
+        """Optional campaign-local copy of immutable source evidence."""
+
+    def sync_research_history(self, records, *, dataset_id, campaign_id) -> None:
+        """Optional procedure-memory hook; only committed outcomes are supplied."""
+
+    def select_research_variant(self, variants, *, context, sequence, seed):
+        """Optional typed procedure retrieval, separate from factor admission."""
+        return None
+
+    def research_action_prior(self, kind, *, context) -> dict[str, Any]:
+        return {}
+
     @abstractmethod
     def schema(self) -> dict[str, Any]:
         raise NotImplementedError
@@ -1282,8 +1298,19 @@ def build_memory_policy(
     protocol: PaperProtocol,
     *,
     returns: Any = None,
+    output_dir: Any = None,
 ) -> MemoryPolicy:
     """Construct the configured memory policy from flat or hierarchical config."""
+
+    inner = _build_memory_policy(config, protocol, returns=returns)
+    skills = getattr(getattr(config, "research", None), "skills", None)
+    if skills is not None and skills.enabled:
+        from factorminer.architecture.skill_memory import TransferableSkillMemoryPolicy
+        return TransferableSkillMemoryPolicy(inner, skills, protocol, output_dir=output_dir)
+    return inner
+
+
+def _build_memory_policy(config: Any, protocol: PaperProtocol, *, returns: Any = None) -> MemoryPolicy:
 
     memory_cfg = getattr(config, "memory", None)
     policy_name = str(
