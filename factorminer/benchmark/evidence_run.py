@@ -167,6 +167,9 @@ def run_evidence_benchmark(
     mock: bool = False,
     baseline_names: list[str] | None = None,
     qlib_evidence_path: str | None = None,
+    qlib_model: str | None = None,
+    qlib_python: str | None = None,
+    qlib_alpha: float = 1.0,
     factor_miner_library_path: str | None = None,
     factor_miner_no_memory_library_path: str | None = None,
 ) -> dict[str, Any]:
@@ -178,6 +181,10 @@ def run_evidence_benchmark(
         raise ValueError("baseline ids must be unique, non-empty, lower-case identifiers")
     if mock and data_path:
         raise ValueError("choose either mock data or a data file")
+    if qlib_evidence_path and qlib_model:
+        raise ValueError("choose either external Qlib evidence or an isolated Qlib model")
+    if qlib_model not in (None, "ridge"):
+        raise ValueError("isolated Qlib model must be ridge")
     raw_path = None if mock else _input_path(
         str(data_path or getattr(cfg, "_raw", {}).get("data_path") or ""),
         relative_to=Path.cwd(),
@@ -247,6 +254,7 @@ def run_evidence_benchmark(
     all_universes = list(dict.fromkeys([
         cfg.benchmark.freeze_universe, *cfg.benchmark.report_universes,
     ]))
+    freeze_dataset = None
     for universe in all_universes:
         universe_cfg = _cfg_with_overrides(cfg, universe)
         dataset, dataset_hash = load_benchmark_dataset(
@@ -258,11 +266,24 @@ def run_evidence_benchmark(
         dataset_contracts[universe] = DatasetContract.from_runtime_dataset(
             universe_cfg, dataset
         ).replay_identity()
+        if universe == cfg.benchmark.freeze_universe:
+            freeze_dataset = dataset
         for baseline in baselines:
             if dataset_hashes[baseline].get(universe) != dataset_hash:
                 raise ValueError(f"{baseline}/{universe} input changed during the evidence run")
     if dataset_contracts[cfg.benchmark.freeze_universe] != freeze_contract.get("replay_identity"):
         raise ValueError("frozen dataset changed during the evidence run")
+    if qlib_model:
+        from factorminer.benchmark.qlib_runner import run_isolated_qlib
+
+        if freeze_dataset is None:
+            raise ValueError("frozen dataset was not loaded for Qlib")
+        qlib_result, qlib_artifacts = run_isolated_qlib(
+            freeze_dataset, cfg, evidence_dir / "qlib_run",
+            python=qlib_python, alpha=qlib_alpha,
+        )
+        qlib_result["dataset_replay_identity"] = dataset_contracts[cfg.benchmark.freeze_universe]
+        artifact_paths.update({name: str(path.resolve()) for name, path in qlib_artifacts.items()})
     manifest = {
         "schema_version": 1,
         "kind": "benchmark_evidence",

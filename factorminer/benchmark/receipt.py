@@ -551,6 +551,8 @@ def verify_research_receipt(
     # artifact_sha256s is keyed by artifact NAME -> digest; paths live in the
     # referenced source_manifest, so re-open it to resolve each name to a path.
     source_manifest = payload.get("source_manifest") or {}
+    manifest_payload: dict[str, Any] = {}
+    inventory: dict[str, Path] = {}
     try:
         manifest_path = _resolve_bundle_path(source_manifest.get("path", ""), base_dir=release_dir)
     except ValueError as exc:
@@ -595,6 +597,11 @@ def verify_research_receipt(
             actual_digest = file_sha256(path)
             if actual_digest != expected_digest:
                 mismatches.append(f"artifact '{name}' hash changed: {path}")
+
+        if manifest_payload.get("kind") == "benchmark_evidence":
+            from factorminer.benchmark.qlib_runner import verify_qlib_receipt_artifacts
+
+            mismatches.extend(verify_qlib_receipt_artifacts(manifest_payload, inventory))
 
         for index, ref in enumerate(manifest_payload.get("runtime_manifest_refs", [])):
             try:
@@ -652,6 +659,17 @@ def verify_research_receipt(
                     mismatches.append(
                         "dataset_commitment: HMAC mismatch against supplied commitment-input"
                     )
+
+    qlib_payload = manifest_payload.get("qlib") or {}
+    if (manifest_payload.get("kind") == "benchmark_evidence"
+            and isinstance(qlib_payload, dict)
+            and qlib_payload.get("protocol") == "frozen_panel_qlib_ridge"
+            and (scheme == "none" or (commitment_input is not None and commitment_input.is_file()))):
+        from factorminer.benchmark.qlib_runner import verify_qlib_against_committed_input
+
+        mismatches.extend(verify_qlib_against_committed_input(
+            manifest_payload, inventory, None if scheme == "none" else commitment_input
+        ))
 
     return ReceiptVerificationResult(
         release_id=claimed_release_id, passed=not mismatches, mismatches=mismatches

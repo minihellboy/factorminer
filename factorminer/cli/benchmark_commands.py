@@ -134,6 +134,12 @@ def table1(
 @click.option("--baseline", "baselines", multiple=True, help="Restrict to baseline ids.")
 @click.option("--qlib-evidence", type=click.Path(exists=True, dir_okay=False), default=None,
               help="JSON bundle describing Qlib handler, value export, and metrics.")
+@click.option("--qlib-model", type=click.Choice(["ridge"]), default=None,
+              help="Run this Qlib model in an isolated interpreter on the frozen panel.")
+@click.option("--qlib-python", type=click.Path(exists=True, dir_okay=False), default=None,
+              help="Python interpreter with pyqlib installed for the isolated worker.")
+@click.option("--qlib-alpha", type=click.FloatRange(min=0, min_open=True), default=1.0,
+              show_default=True, help="Ridge regularization for --qlib-model.")
 @_common_options
 def evidence_run(
     ctx: click.Context,
@@ -143,6 +149,9 @@ def evidence_run(
     factor_miner_no_memory_library: str | None,
     baselines: tuple[str, ...],
     qlib_evidence: str | None,
+    qlib_model: str | None,
+    qlib_python: str | None,
+    qlib_alpha: float,
 ) -> None:
     """Run frozen baselines and publish a checked, portable research receipt."""
     from factorminer.benchmark.evidence_run import run_evidence_benchmark
@@ -153,6 +162,7 @@ def evidence_run(
             data_path=data_path, mock=mock,
             baseline_names=list(baselines) if baselines else None,
             qlib_evidence_path=qlib_evidence,
+            qlib_model=qlib_model, qlib_python=qlib_python, qlib_alpha=qlib_alpha,
             factor_miner_library_path=factor_miner_library,
             factor_miner_no_memory_library_path=factor_miner_no_memory_library,
         )
