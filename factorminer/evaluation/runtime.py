@@ -307,14 +307,18 @@ def load_runtime_dataset(
         raw_df["datetime"] = pd.to_datetime(raw_df["datetime"])
 
     target_specs = _resolve_target_specs(cfg)
-    target_df = compute_targets(raw_df, target_specs)
+    preprocess_config = _resolve_preprocess_config(getattr(cfg, "preprocess", None))
+    processed_df = preprocess(raw_df, preprocess_config)
+    # Targets count bars on the grid formulas see: timestamps removed by the
+    # quality check must not be skipped over by a forward-return offset.
+    kept = raw_df["datetime"].isin(processed_df["datetime"].unique())
+    target_input = raw_df if kept.all() else raw_df[kept]
+    target_df = compute_targets(target_input, target_specs)
     target_columns = [spec.column_name for spec in target_specs]
     merge_columns = ["datetime", "asset_id", *target_columns]
-    preprocess_config = _resolve_preprocess_config(getattr(cfg, "preprocess", None))
-    universe_mask = _universe_mask(raw_df, target_df)
+    universe_mask = _universe_mask(target_input, target_df)
     if universe_mask is not None:
         target_df.loc[~universe_mask, target_columns] = np.nan
-    processed_df = preprocess(raw_df, preprocess_config)
     processed_df = processed_df.merge(
         target_df[merge_columns],
         on=["datetime", "asset_id"],

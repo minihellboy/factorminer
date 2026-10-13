@@ -384,3 +384,14 @@ def test_targets_do_not_span_trading_suspensions():
     # Row shifting would report B's 100% move across the suspension as a one-day return.
     assert np.isnan(targets[("B", dates[0])])
     assert np.isnan(targets[("B", dates[3])])
+
+
+def test_targets_reject_duplicate_bars():
+    frame = pd.DataFrame({
+        "datetime": pd.to_datetime(["2024-01-02", "2024-01-02", "2024-01-03"]),
+        "asset_id": ["A", "A", "A"],
+        "close": [1.0, 100.0, 2.0],
+    })
+    spec = TargetSpec(name="paper", entry_delay_bars=0, holding_bars=1, price_pair="close_to_close")
+    with pytest.raises(ValueError, match="duplicate"):
+        compute_targets(frame, [spec])

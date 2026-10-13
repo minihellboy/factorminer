@@ -130,6 +130,11 @@ def compute_targets(
     gap) is missing, so its target is NaN rather than a return spanning the gap.
     """
     df = df.sort_values(["asset_id", "datetime"])
+    duplicated = df.duplicated(["asset_id", "datetime"])
+    if duplicated.any():
+        raise ValueError(
+            f"{int(duplicated.sum())} duplicate (asset_id, datetime) rows; targets need one bar per key"
+        )
     calendar = np.sort(df["datetime"].unique())
     positions = np.searchsorted(calendar, df["datetime"].to_numpy())
     asset_codes, assets = pd.factorize(df["asset_id"])
