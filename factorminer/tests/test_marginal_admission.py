@@ -153,3 +153,22 @@ def test_trial_ledger_records_marginal_statistics(tmp_path, market, basis):
     (observation,) = ledger.record_batch_results(iteration=1, results=[result],
                                                  dataset_id="d", target_name="paper")
     assert observation.metadata["marginal"]["partial_ic_t"] == stats["partial_ic_t"]
+
+
+def test_planner_gain_counts_marginal_value_under_marginal_admission(market):
+    from factorminer.application.research_actions import ResearchActionService
+    from factorminer.core.factor_library import Factor
+
+    pipeline = _pipeline(market)
+    pipeline.library.admit_factor(Factor(
+        id=0, name="m", formula="Neg($close)", category="test", ic_mean=0.09, icir=0.5,
+        ic_win_rate=0.5, max_correlation=0.0, batch_number=0, signals=market.novel,
+        ic_paper_mean=0.09, research_metrics={"marginal": {"partial_ic": -0.025}},
+    ))
+    loop = SimpleNamespace(pipeline=pipeline, library=pipeline.library,
+                           settings=SimpleNamespace(ic_threshold=0.02))
+    service = ResearchActionService.__new__(ResearchActionService)
+    service.loop = loop
+    assert service.library_utility() == pytest.approx(0.025 - 0.005)
+    pipeline.marginal_basis = None
+    assert service.library_utility() == pytest.approx(0.09 - 0.02)
