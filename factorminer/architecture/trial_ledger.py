@@ -332,6 +332,11 @@ class TrialLedger:
                         "stage_passed": int(getattr(result, "stage_passed", 0)),
                         "admitted": bool(getattr(result, "admitted", False)),
                         "rejection_reason": str(getattr(result, "rejection_reason", "")),
+                        **(
+                            {"marginal": dict(result.marginal)}
+                            if getattr(result, "marginal", None)
+                            else {}
+                        ),
                     },
                 )
             )

@@ -364,17 +364,18 @@ def _ts_var(sx: np.ndarray) -> np.ndarray:
 
 
 def _empty_windows(sx: np.ndarray) -> np.ndarray:
-    return np.all(np.isnan(sx), axis=1)
+    empty: np.ndarray = np.all(np.isnan(sx), axis=1)
+    return empty
 
 
 def _ts_sum(sx: np.ndarray) -> np.ndarray:
-    out = np.nansum(sx, axis=1)
+    out: np.ndarray = np.nansum(sx, axis=1)
     out[_empty_windows(sx)] = np.nan
     return out
 
 
 def _ts_prod(sx: np.ndarray) -> np.ndarray:
-    out = np.nanprod(sx, axis=1)
+    out: np.ndarray = np.nanprod(sx, axis=1)
     out[_empty_windows(sx)] = np.nan
     return out
 

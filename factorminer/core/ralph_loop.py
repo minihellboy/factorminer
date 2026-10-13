@@ -33,6 +33,7 @@ from factorminer.agent.factor_generator import FactorGenerator
 from factorminer.agent.llm_interface import LLMProvider, MockProvider
 from factorminer.agent.output_parser import candidate_pairs
 from factorminer.agent.prompt_builder import PromptBuilder
+from factorminer.application.marginal_admission import build_marginal_basis
 from factorminer.application.mining_budget import BudgetTracker, EvaluationResult
 from factorminer.application.mining_reporting import MiningReporter
 from factorminer.application.research_actions import build_research_action_service
@@ -209,6 +210,9 @@ class RalphLoop:
             default_target=self.dataset_contract.default_target,
         )
         self.pipeline.signal_failure_policy = self.settings.signal_failure_policy
+        self.pipeline.marginal_basis = build_marginal_basis(
+            config, self.evaluation_kernel, self.pipeline._build_data_dict(), returns
+        )
         self.reporter = MiningReporter(self.settings.output_dir)
         self.budget = BudgetTracker()
         self.research_actions = build_research_action_service(self)

@@ -107,6 +107,8 @@ class EvaluationResult:
     effective_rank_gain: float = 0.0
     log_det_gain: float = 0.0
     score_vector: dict[str, Any] | None = None
+    # MarginalStats.to_dict() under admission.policy "marginal".
+    marginal: dict[str, float] | None = None
     # Parent-formula lineage for EditAwareMemoryPolicy + MRM developmental history.
     parent_formula: str = ""
     parent_ic_paper_mean: float | None = None

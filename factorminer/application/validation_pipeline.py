@@ -13,6 +13,11 @@ from factorminer.architecture import EvaluationKernel, LibraryGeometry, PaperPro
 from factorminer.core.factor_library import FactorLibrary
 from factorminer.core.types import get_features
 from factorminer.evaluation.dependence_index import indexed_dependence_metric
+from factorminer.evaluation.marginal import (
+    MarginalBasis,
+    MarginalConfig,
+    passes_marginal_admission,
+)
 from factorminer.evaluation.metrics import compute_factor_stats
 from factorminer.evaluation.pipeline import coverage_ranked_subset
 from factorminer.evaluation.runtime import SignalComputationError, compute_tree_signals
@@ -51,7 +56,10 @@ class ValidationPipeline:
         redundancy_metric: str = "spearman",
         evaluation_kernel: EvaluationKernel | None = None,
         default_target: str = "paper",
+        marginal_basis: MarginalBasis | None = None,
     ) -> None:
+        # With a basis, admission is by marginal value (admission.policy "marginal").
+        self.marginal_basis = marginal_basis
         self.data_tensor = data_tensor  # (M, T, F)
         self.returns = returns  # (M, T)
         self.default_target = default_target
@@ -174,8 +182,12 @@ class ValidationPipeline:
 
         result.signals = signals
 
-        # Fast IC screen on M_fast asset subset
-        if fast_screen and len(self._fast_indices) < signals.shape[0]:
+        # Fast IC screen on M_fast asset subset (standalone IC is not the marginal bar)
+        if (
+            fast_screen
+            and self.marginal_basis is None
+            and len(self._fast_indices) < signals.shape[0]
+        ):
             fast_signals = signals[self._fast_indices, :]
             fast_returns = self.returns[self._fast_indices, :]
             fast_stats = compute_factor_stats(fast_signals, fast_returns)
@@ -228,6 +240,9 @@ class ValidationPipeline:
             result.projection_loss = result.score_vector["geometry"]["projection_loss"]
             result.effective_rank_gain = result.score_vector["geometry"]["effective_rank_gain"]
             result.log_det_gain = result.score_vector["geometry"]["log_det_gain"]
+
+        if self.marginal_basis is not None:
+            return self._marginal_admission(result, signals)
 
         # Stage 1 gate: IC threshold (full data)
         quality_gate = result.ic_paper_mean
@@ -301,6 +316,55 @@ class ValidationPipeline:
             result.max_correlation = self.geometry.candidate_geometry(signals).max_dependence
         return result
 
+    @property
+    def marginal_config(self) -> MarginalConfig:
+        assert self.marginal_basis is not None
+        return self.marginal_basis.config
+
+    def _marginal_admission(self, result: EvaluationResult, signals: np.ndarray) -> EvaluationResult:
+        """Admit on value beyond the reference basis and the library."""
+        assert self.marginal_basis is not None
+        stats = self.marginal_basis.evaluate(signals)
+        result.marginal = stats.to_dict()
+        result.score_vector = {"marginal": result.marginal}
+        result.residual_ic = stats.partial_ic
+        result.projection_loss = 1.0 - stats.residual_share
+        admitted, reason = passes_marginal_admission(stats, self.marginal_config)
+        result.stage_passed = 3 if admitted else 1
+        result.admitted = admitted
+        result.rejection_reason = "" if admitted else reason
+        return result
+
+    def _select_marginal(self, results: list[EvaluationResult]) -> list[EvaluationResult]:
+        """Greedy in-batch admission: each pick is re-judged against earlier picks."""
+        assert self.marginal_basis is not None
+        passing = [r for r in results if r.admitted and r.signals is not None]
+        passing.sort(key=lambda r: -(r.marginal or {}).get("partial_ic_t", 0.0))
+        picked: list[object] = []
+        try:
+            for position, result in enumerate(passing):
+                if picked:
+                    self._marginal_admission(result, result.signals)  # type: ignore[arg-type]
+                    if not result.admitted:
+                        result.rejection_reason += " (after earlier picks in this batch)"
+                        continue
+                key = ("batch", position)
+                self.marginal_basis.add(key, result.signals)  # type: ignore[arg-type]
+                picked.append(key)
+        finally:
+            for pick in picked:
+                self.marginal_basis.remove(pick)
+        return results
+
+    def sync_marginal_basis(self) -> None:
+        """Make the basis' library columns match the admitted library."""
+        if self.marginal_basis is not None:
+            self.marginal_basis.sync({
+                factor.id: factor.signals
+                for factor in self.library.list_factors()
+                if factor.signals is not None
+            })
+
     def _research_enabled(self) -> bool:
         return bool(
             self.research_config is not None
@@ -347,6 +411,7 @@ class ValidationPipeline:
         """
         if not candidates:
             return []
+        self.sync_marginal_basis()
         data_dict = self._build_data_dict()
         workers = min(max(self.num_workers, 1), len(candidates))
         size = -(-len(candidates) // workers)
@@ -370,6 +435,9 @@ class ValidationPipeline:
         else:
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 results = [result for chunk in pool.map(evaluate_chunk, chunks) for result in chunk]
+
+        if self.marginal_basis is not None:
+            return self._select_marginal(results)
 
         # Stage 3: Intra-batch deduplication
         results = self._deduplicate_batch(results)

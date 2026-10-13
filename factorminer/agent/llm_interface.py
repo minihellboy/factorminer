@@ -117,9 +117,10 @@ class LLMProvider(ABC):
     @property
     def usage(self) -> TokenUsage:
         """Running token counts reported by this provider's API calls."""
-        usage = self.__dict__.get("_token_usage")
+        usage: TokenUsage | None = self.__dict__.get("_token_usage")
         if usage is None:
-            usage = self.__dict__.setdefault("_token_usage", TokenUsage())
+            usage = TokenUsage()
+            self.__dict__["_token_usage"] = usage
         return usage
 
     @abstractmethod
