@@ -723,8 +723,10 @@ class AdmissionConfig:
     adds beyond a reference basis (principal components of ``reference``) and
     the library: a partial rank IC with Newey-West ``t >= min_t``, a residual
     variance share, and long-only TopkDropout economics of the residual (see
-    ``evaluation.marginal``). Candidates of one batch are admitted greedily,
-    each judged against the ones admitted before it.
+    ``evaluation.marginal``); with ``recent_periods`` the partial IC must also
+    hold (``t >= min_recent_t``, same sign) over the discovery panel's last
+    periods. Candidates of one batch are admitted greedily, each judged
+    against the ones admitted before it.
     """
 
     policy: str = "paper"
@@ -740,6 +742,8 @@ class AdmissionConfig:
     min_residual_share: float = 0.2
     min_excess_bps: float | None = 0.0
     min_net_bps: float | None = None
+    recent_periods: int = 0
+    min_recent_t: float = 1.0
 
     def validate(self) -> None:
         if self.policy not in ADMISSION_POLICIES:

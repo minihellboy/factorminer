@@ -10,6 +10,8 @@ the admitted library by ridge least squares, and reports
   rank IC), with a Newey-West t-statistic;
 * ``residual_share``: the share of the candidate's cross-sectional variance
   the basis does not explain (``1 - R^2``);
+* optionally, the partial IC over the most recent ``recent_periods`` of the
+  panel, so a candidate whose value has already decayed can be refused;
 * long-only economics of the oriented residual under the benchmark's
   TopkDropout rule (hold the top ``topk_fraction`` of members, replace at most
   ``drop_fraction`` of the book per day): excess return over the universe
@@ -46,6 +48,8 @@ class MarginalConfig:
     min_residual_share: float = 0.2  # admission: novelty beyond the basis
     min_excess_bps: float | None = 0.0  # admission: daily gross book excess; None disables
     min_net_bps: float | None = None  # admission: daily book excess net of costs
+    recent_periods: int = 0  # decay check over the panel's last periods; 0 disables
+    min_recent_t: float = 1.0  # admission: same-sign partial IC t over recent_periods
 
     def validate(self) -> None:
         if self.reference_components < 0:
@@ -58,6 +62,8 @@ class MarginalConfig:
             raise ValueError("drop_fraction must be in (0, 1]")
         if self.min_assets < 5:
             raise ValueError("min_assets must be >= 5")
+        if self.recent_periods < 0:
+            raise ValueError("recent_periods must be >= 0")
 
 
 @dataclass(frozen=True)
@@ -75,6 +81,8 @@ class MarginalStats:
     top_net_bps: float
     top_net_t: float
     basis_size: int
+    recent_partial_ic: float = 0.0  # signed in the full-panel direction
+    recent_partial_ic_t: float = 0.0
 
     def to_dict(self) -> dict[str, float]:
         return {key: float(value) for key, value in asdict(self).items()}
@@ -95,6 +103,10 @@ def passes_marginal_admission(stats: MarginalStats, config: MarginalConfig) -> t
         failures.append(f"book excess {stats.top_excess_bps:.2f} bps <= {config.min_excess_bps:g}")
     if config.min_net_bps is not None and not stats.top_net_bps >= config.min_net_bps:
         failures.append(f"book net {stats.top_net_bps:.2f} bps < {config.min_net_bps:g}")
+    if config.recent_periods and not stats.recent_partial_ic_t >= config.min_recent_t:
+        failures.append(
+            f"recent partial IC t {stats.recent_partial_ic_t:.2f} < {config.min_recent_t:g}"
+        )
     if failures:
         return False, "Marginal value: " + "; ".join(failures)
     return True, (
@@ -250,6 +262,7 @@ class MarginalBasis:
         den = np.sqrt(np.sum(residual**2, axis=1) * np.sum(self._y_resid**2, axis=1))
         usable = den > 1e-12
         series = num[usable] / den[usable]
+        recent = self._periods[usable] >= self.shape[1] - self.config.recent_periods
         total = float(np.sum(candidate**2))
         residual_share = float(np.sum(residual**2) / total) if total > 1e-12 else 0.0
         if series.size < 3:
@@ -260,6 +273,12 @@ class MarginalBasis:
         hac = compute_hac_mean_test(series)
         direction = 1.0 if mean >= 0 else -1.0
         excess, turnover, net, net_t = self._bucket(direction * residual)
+        recent_ic = recent_t = 0.0
+        if self.config.recent_periods and recent.sum() >= 3:
+            tail = direction * series[recent]
+            recent_ic = float(tail.mean())
+            tail_t = compute_hac_mean_test(tail).t_stat
+            recent_t = float(tail_t) if np.isfinite(tail_t) else 0.0
         return MarginalStats(
             partial_ic=mean,
             partial_ic_t=float(abs(hac.t_stat)) if np.isfinite(hac.t_stat) else 0.0,
@@ -272,6 +291,8 @@ class MarginalBasis:
             top_net_bps=net,
             top_net_t=net_t,
             basis_size=self.size,
+            recent_partial_ic=recent_ic,
+            recent_partial_ic_t=recent_t,
         )
 
     def _bucket(self, score: np.ndarray) -> tuple[float, float, float, float]:

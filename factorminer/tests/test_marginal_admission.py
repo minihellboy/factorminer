@@ -172,3 +172,18 @@ def test_planner_gain_counts_marginal_value_under_marginal_admission(market):
     assert service.library_utility() == pytest.approx(0.025 - 0.005)
     pipeline.marginal_basis = None
     assert service.library_utility() == pytest.approx(0.09 - 0.02)
+
+
+def test_recent_decay_check_refuses_a_factor_that_stopped_working(market):
+    decayed = market.novel.copy()
+    tail = PERIODS // 4
+    decayed[:, -tail:] = market.rng.standard_normal((ASSETS, tail))  # no information lately
+    config = MarginalConfig(reference_components=0, min_excess_bps=None, recent_periods=tail,
+                            min_recent_t=1.0)
+    basis = MarginalBasis(market.returns, market.reference, config)
+    stale = basis.evaluate(decayed)
+    assert stale.partial_ic_t > 3  # the full-window average still looks strong
+    admitted, reason = passes_marginal_admission(stale, config)
+    assert not admitted and "recent partial IC" in reason
+    fresh = basis.evaluate(market.novel)
+    assert fresh.recent_partial_ic > 0 and passes_marginal_admission(fresh, config)[0]
