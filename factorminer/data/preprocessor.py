@@ -76,12 +76,21 @@ class PreprocessConfig:
 # ---------------------------------------------------------------------------
 
 def compute_vwap(df: pd.DataFrame) -> pd.DataFrame:
-    """Add ``vwap`` column: amount / volume.  NaN when volume is zero."""
+    """Ensure a ``vwap`` column, deriving amount / volume where none is supplied.
+
+    A supplied ``vwap`` is kept: vendors often quote amount and volume in
+    different units (e.g. thousand-yuan amount against lot volume), so
+    amount / volume can differ from the true VWAP by a constant factor.
+    Missing values are derived; the result is NaN when volume is zero.
+    """
     df = df.copy()
     amount = df["amount"].to_numpy(dtype=np.float64, copy=False)
     volume = df["volume"].to_numpy(dtype=np.float64, copy=False)
     vwap = np.full(len(df), np.nan, dtype=np.float64)
     np.divide(amount, volume, out=vwap, where=volume > 0)
+    if "vwap" in df.columns:
+        supplied = pd.to_numeric(df["vwap"], errors="coerce").to_numpy(dtype=np.float64)
+        vwap = np.where(np.isfinite(supplied), supplied, vwap)
     df["vwap"] = vwap
     return df
 

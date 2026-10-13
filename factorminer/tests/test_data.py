@@ -294,3 +294,12 @@ class TestLoaderSchemaCompatibility:
 
         with pytest.raises(ValueError, match="missing required columns: \\['asset_id'\\]"):
             load_market_data(path)
+
+
+def test_supplied_vwap_is_kept_and_gaps_are_derived():
+    from factorminer.data.preprocessor import compute_vwap
+
+    frame = pd.DataFrame({"amount": [1.0, 2.0, 3.0], "volume": [10.0, 10.0, 0.0],
+                          "vwap": [1.0, np.nan, np.nan]})
+    out = compute_vwap(frame)["vwap"].to_numpy()
+    assert out[0] == 1.0 and out[1] == pytest.approx(0.2) and np.isnan(out[2])
