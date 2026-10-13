@@ -286,3 +286,70 @@ def test_gemini_out_of_tokens_is_a_typed_failure(monkeypatch):
     monkeypatch.setattr(provider, "_get_client", lambda: client)
     with pytest.raises(TruncatedResponseError):
         provider.generate("s", "u", max_tokens=64)
+
+
+def test_token_usage_is_recorded_even_when_the_answer_is_truncated(monkeypatch):
+    provider = DeepSeekProvider(api_key="key")
+    response = _completion(None, "length")
+    response.usage = SimpleNamespace(prompt_tokens=1200, completion_tokens=8192,
+                                     prompt_cache_hit_tokens=1024)
+    monkeypatch.setattr(provider, "_get_client", lambda: _FakeClient(response))
+    guarded = GuardedProvider(provider, role=PRIMARY)
+    with pytest.raises(ProviderCallError):
+        guarded.generate("s", "u", max_tokens=8192)
+    assert guarded.usage.totals() == (1200, 8192, 1024)
+    assert guarded.usage is provider.usage
+
+
+def test_anthropic_and_gemini_usage_include_cached_and_thinking_tokens(monkeypatch):
+    anthropic = AnthropicProvider(api_key="key")
+    message = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="a: Neg($close)")], stop_reason="end_turn",
+        usage=SimpleNamespace(input_tokens=100, output_tokens=40, cache_read_input_tokens=900,
+                              cache_creation_input_tokens=0),
+    )
+    monkeypatch.setattr(anthropic, "_get_client",
+                        lambda: SimpleNamespace(messages=SimpleNamespace(create=lambda **kw: message)))
+    anthropic.generate("s", "u")
+    assert anthropic.usage.totals() == (1000, 40, 900)
+
+    gemini = GoogleProvider(api_key="key")
+    part = SimpleNamespace(text="a: Neg($close)")
+    candidate = SimpleNamespace(finish_reason=SimpleNamespace(name="STOP"),
+                                content=SimpleNamespace(parts=[part]))
+    response = SimpleNamespace(
+        candidates=[candidate],
+        usage_metadata=SimpleNamespace(prompt_token_count=300, candidates_token_count=20,
+                                       thoughts_token_count=80, cached_content_token_count=0),
+    )
+    monkeypatch.setattr(gemini, "_get_client",
+                        lambda: SimpleNamespace(generate_content=lambda *a, **kw: response))
+    gemini.generate("s", "u")
+    assert gemini.usage.totals() == (300, 100, 0)
+
+
+def test_mining_budget_records_provider_tokens_per_iteration(tmp_path):
+    from factorminer.core.ralph_loop import RalphLoop
+    from factorminer.utils.config import load_config
+
+    cfg = load_config()
+    cfg.mining.target_library_size = 3
+    cfg.mining.batch_size = 4
+    provider = MockProvider()
+    calls = {"n": 0}
+    original = provider.generate
+
+    def generate(*args, **kwargs):
+        calls["n"] += 1
+        provider.usage.record(500, 200)
+        return original(*args, **kwargs)
+
+    provider.generate = generate  # type: ignore[method-assign]
+    rng = np.random.default_rng(0)
+    data = rng.normal(size=(12, 60, 8))
+    returns = rng.normal(size=(12, 60))
+    loop = RalphLoop(config=cfg, data_tensor=data, returns=returns, llm_provider=provider)
+    loop._loop_services.execute_iteration(4)
+    assert calls["n"] >= 1
+    assert loop.budget.llm_prompt_tokens == 500 * calls["n"]
+    assert loop.budget.llm_completion_tokens == 200 * calls["n"]

@@ -20,7 +20,7 @@ from collections import deque
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from factorminer.agent.llm_interface import LLMProvider
+from factorminer.agent.llm_interface import LLMProvider, TokenUsage
 
 PRIMARY = "primary"
 DRAFT = "draft"
@@ -186,6 +186,10 @@ class GuardedProvider(LLMProvider):
     @property
     def inner(self) -> LLMProvider:
         return self._inner
+
+    @property
+    def usage(self) -> TokenUsage:
+        return self._inner.usage
 
     @property
     def provider_name(self) -> str:

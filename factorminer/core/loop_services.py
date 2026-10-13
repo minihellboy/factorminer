@@ -76,6 +76,14 @@ class LoopExecutionService:
                 actions.fail(exc)
             raise
 
+    def _llm_usage(self) -> tuple[int, int]:
+        """(prompt, completion) tokens reported so far by the generator's provider."""
+        provider = getattr(getattr(self.loop, "generator", None), "llm_provider", None)
+        usage = getattr(provider, "usage", None)
+        if usage is None:
+            return 0, 0
+        return int(getattr(usage, "prompt_tokens", 0)), int(getattr(usage, "completion_tokens", 0))
+
     def _execute_iteration(
         self,
         batch_size: int,
@@ -103,11 +111,16 @@ class LoopExecutionService:
             stats = self.build_stats(payload, elapsed)
             self.log_telemetry(self.build_telemetry(payload, stats, elapsed))
             return stats
+        usage_before = self._llm_usage()
         if actions is not None and action_kind == "refine":
             actions.refine(payload)
         else:
             self.run_stage_chain(payload, ("generate",))
             self.loop.budget.record_llm_call()
+        usage_after = self._llm_usage()
+        self.loop.budget.record_tokens(
+            usage_after[0] - usage_before[0], usage_after[1] - usage_before[1]
+        )
 
         if not payload.candidates:
             logger.warning(

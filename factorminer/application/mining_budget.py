@@ -39,6 +39,11 @@ class BudgetTracker:
         self.llm_prompt_tokens += prompt_tokens
         self.llm_completion_tokens += completion_tokens
 
+    def record_tokens(self, prompt_tokens: int, completion_tokens: int) -> None:
+        """Add tokens billed by LLM calls that are counted elsewhere."""
+        self.llm_prompt_tokens += prompt_tokens
+        self.llm_completion_tokens += completion_tokens
+
     def record_compute(self, seconds: float) -> None:
         self.compute_seconds += seconds
 
