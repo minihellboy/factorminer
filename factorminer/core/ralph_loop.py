@@ -705,9 +705,19 @@ class RalphLoop:
             checkpoint_dir = Path(output_dir) / "checkpoint"
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-        # Save library using library_io (JSON + optional signal cache)
+        # Save library using library_io (JSON + optional signal cache). The
+        # signal cache is rewritten only when the library's members changed,
+        # and uncompressed: compressing it cost seconds per iteration.
         lib_base = str(checkpoint_dir / "library")
-        save_library(self.library, lib_base, save_signals=True)
+        signature = (lib_base, tuple(
+            (factor.id, id(factor.signals)) for factor in self.library.list_factors()
+        ))
+        signals_current = (
+            signature == getattr(self, "_checkpoint_signature", None)
+            and Path(lib_base + "_signals.npz").exists()
+        )
+        save_library(self.library, lib_base, save_signals=not signals_current, compress=False)
+        self._checkpoint_signature = signature
 
         # Policy serialization is the canonical persistence path for all loops.
         mem_path = str(checkpoint_dir / "memory.json")

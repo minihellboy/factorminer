@@ -28,6 +28,7 @@ def save_library(
     library: FactorLibrary,
     path: str | Path,
     save_signals: bool = True,
+    compress: bool = True,
 ) -> None:
     """Save a FactorLibrary to disk.
 
@@ -44,6 +45,8 @@ def save_library(
         ``output/my_library.json`` and ``output/my_library_signals.npz``.
     save_signals : bool
         Whether to write the binary signal cache.
+    compress : bool
+        Zip-compress the signal cache (about half the size, many times slower).
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -75,7 +78,7 @@ def save_library(
 
         if signal_arrays:
             npz_path = Path(str(path) + "_signals.npz")
-            np.savez_compressed(npz_path, **signal_arrays)
+            (np.savez_compressed if compress else np.savez)(npz_path, **signal_arrays)
             logger.info(
                 "Saved signal cache to %s (%d arrays)",
                 npz_path, len(signal_arrays),

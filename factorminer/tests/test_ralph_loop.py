@@ -725,6 +725,32 @@ class TestSessionPersistence:
         assert "memory.json" in checkpoint_files
         assert "loop_state.json" in checkpoint_files
 
+    def test_checkpoint_rewrites_signals_only_when_the_library_changes(
+        self, test_config, synthetic_data, mock_provider, tmp_dir
+    ):
+        test_config.output_dir = tmp_dir
+        data_tensor, returns = synthetic_data
+        loop = RalphLoop(config=test_config, data_tensor=data_tensor, returns=returns,
+                         llm_provider=mock_provider)
+        from factorminer.core.factor_library import Factor
+
+        rng = np.random.default_rng(0)
+        for index in range(2):
+            loop.library.admit_factor(Factor(
+                id=0, name=f"f{index}", formula="Neg($close)", category="test", ic_mean=0.05,
+                icir=0.5, ic_win_rate=0.5, max_correlation=0.0, batch_number=0,
+                signals=rng.standard_normal(returns.shape),
+            ))
+        npz = os.path.join(loop.save_session(), "library_signals.npz")
+        first = os.stat(npz).st_mtime_ns
+        loop.save_session()
+        assert os.stat(npz).st_mtime_ns == first  # unchanged library: not rewritten
+        removed = loop.library.list_factors()[0].id
+        loop.library.remove_factor(removed)
+        loop.save_session()
+        with np.load(npz) as saved:
+            assert f"factor_{removed}" not in saved.files
+
     def test_load_restores_iteration(
         self, test_config, synthetic_data, mock_provider, tmp_dir
     ):
