@@ -116,16 +116,66 @@ def test_default_preprocess_is_omitted_from_serialised_config_identity():
 
 
 
-def test_fast_screen_keeps_random_draw_on_dense_panels_and_prefers_coverage_otherwise():
-    from factorminer.evaluation.pipeline import _fast_screen_subset
+def test_mining_screen_prefers_coverage_and_keeps_dense_draw():
+    from factorminer.application.validation_pipeline import ValidationPipeline
+    from factorminer.evaluation.pipeline import coverage_ranked_subset
 
     dense = np.zeros((50, 20))
-    expected = np.random.default_rng(42).choice(50, size=10, replace=False)
-    np.testing.assert_array_equal(_fast_screen_subset(dense, 10), expected)
+    assert coverage_ranked_subset(dense, 10) is None
+    pipeline = ValidationPipeline(data_tensor=np.zeros((50, 20, 8)), returns=dense,
+                                  library=None, fast_screen_assets=10)
+    expected = np.sort(np.random.RandomState(0).choice(50, 10, replace=False))
+    np.testing.assert_array_equal(pipeline._fast_indices, expected)
 
     masked = np.full((50, 20), np.nan)
     members = np.arange(5, 50, 5)  # nine always-members among 50 ever-members
     masked[members] = 0.0
     masked[0, :3] = 0.0
-    chosen = _fast_screen_subset(masked, 10)
-    assert set(members) <= set(chosen) and 0 in chosen
+    pipeline = ValidationPipeline(data_tensor=np.zeros((50, 20, 8)), returns=masked,
+                                  library=None, fast_screen_assets=10)
+    assert set(members) <= set(pipeline._fast_indices) and 0 in pipeline._fast_indices
+
+
+def test_evaluation_pipeline_screen_keeps_seeded_draw_on_dense_panels():
+    from factorminer.evaluation.pipeline import PipelineConfig, ValidationPipeline
+
+    dense = np.zeros((50, 20))
+    pipeline = ValidationPipeline(returns=dense, library=None,
+                                  config=PipelineConfig(fast_screen_assets=10))
+    expected = np.random.default_rng(42).choice(50, size=10, replace=False)
+    np.testing.assert_array_equal(pipeline._fast_idx, expected)
+
+
+def test_targets_follow_dates_kept_by_the_quality_check():
+    dates = pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05",
+                            "2025-01-02", "2025-01-03"])
+    rows = []
+    for asset, base in (("A", 10.0), ("B", 20.0), ("C", 30.0)):
+        for step, date in enumerate(dates):
+            if date == dates[1] and asset != "A":
+                continue  # only 1/3 of assets trade: the date fails min_nonnan_ratio=0.5
+            price = base + step
+            rows.append({"datetime": date, "asset_id": asset, "open": price, "high": price,
+                         "low": price, "close": price, "volume": 1.0, "amount": price})
+    cfg = load_config(overrides={
+        "preprocess": RAW_PRICES | {"min_nonnan_ratio": 0.5},
+        "data": {"train_period": ["2024-01-01", "2024-12-31"],
+                 "test_period": ["2025-01-01", "2025-12-31"],
+                 "targets": [{"name": "paper", "entry_delay_bars": 0, "holding_bars": 1,
+                              "price_pair": "close_to_close"}]},
+    })
+    dataset = load_runtime_dataset(pd.DataFrame(rows), cfg)
+    assert dates[1] not in set(pd.to_datetime(dataset.timestamps))
+    a = list(dataset.asset_ids).index("A")
+    # One bar after 2024-01-02 on the kept grid is 2024-01-04 (close 12), not 01-03 (11).
+    assert dataset.returns[a, 0] == pytest.approx(12.0 / 10.0 - 1.0)
+
+
+def test_preprocess_typos_are_rejected_and_discovery_keeps_provenance():
+    from factorminer.application.research_actions import discovery_dataset
+
+    with pytest.raises(ValueError, match="unknown preprocess settings"):
+        load_config(overrides={"preprocess": {"standardize": False}})
+    cfg = load_config(SAMPLE_CONFIG, overrides={"preprocess": RAW_PRICES})
+    dataset = load_runtime_dataset(_sample(), cfg)
+    assert discovery_dataset(dataset).preprocessing == dataset.preprocessing

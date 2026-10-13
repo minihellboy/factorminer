@@ -73,14 +73,13 @@ def main() -> None:
     # Bars with no trade carry no price; keep them as gaps rather than rows.
     frame = frame.dropna(subset=["open", "high", "low", "close"], how="all")
 
+    # One join of rows against membership spans, instead of a scan per instrument.
+    keyed = frame[["asset_id", "datetime"]].reset_index().merge(
+        spans.rename(columns={"instrument": "asset_id"}), on="asset_id", how="inner")
+    inside = (keyed["datetime"] >= keyed["start"]) & (keyed["datetime"] <= keyed["end"])
+    member_rows = keyed.loc[inside, "index"].unique()
     flags = np.zeros(len(frame), dtype=np.int8)
-    for instrument, rows in spans.groupby("instrument"):
-        selected = frame["asset_id"].to_numpy() == instrument
-        dates = frame.loc[selected, "datetime"].to_numpy()
-        member = np.zeros(len(dates), dtype=bool)
-        for span in rows.itertuples():
-            member |= (dates >= np.datetime64(span.start)) & (dates <= np.datetime64(span.end))
-        flags[selected] = member
+    flags[frame.index.get_indexer(member_rows)] = 1
     frame["in_universe"] = flags
     frame = frame.sort_values(["datetime", "asset_id"]).reset_index(drop=True)
 

@@ -64,6 +64,12 @@ QPY=qlib-venv/bin/python
 $QPY -I scripts/qlib_cn/export_panel.py --provider qlib_cn --universe csi300 \
   --start 2007-01-01 --end 2026-10-12 --out panels/csi300.parquet \
   --source-manifest qlib_bin.manifest.json
+# FactorMiner reads CSV unless pyarrow is installed in its environment
+$QPY -I -c "import pandas as pd; pd.read_parquet('panels/csi300.parquet').to_csv('panels/csi300.csv', index=False)"
+# Raw Qlib labels for paired comparisons
+$QPY -I -c "import qlib; from qlib.data import D; qlib.init(provider_uri='qlib_cn', region='cn'); \
+  df = D.features(D.instruments('csi300'), ['Ref(\$close, -2)/Ref(\$close, -1) - 1'], start_time='2008-01-01'); \
+  df.columns = ['label']; df.reset_index().to_parquet('labels/csi300.parquet')"
 
 # 3. Qlib reference matrix (Alpha158/Alpha360 x LightGBM/linear, three seeds)
 scripts/qlib_cn/run_reference_matrix.sh $QPY qlib_cn output/qlib_cn
@@ -79,9 +85,18 @@ $QPY -I scripts/qlib_cn/run_qlib_baselines.py --provider qlib_cn --universe csi3
   --out output/qlib_cn/csi300/classic/mined_factors_lgb_s0
 $QPY -I scripts/qlib_cn/run_qlib_baselines.py ... --handler alpha158_plus ...
 
-# 6. One results table
+# 6. Paired HAC test of daily RankIC differences (seeds averaged per side)
+$QPY -I scripts/qlib_cn/compare_predictions.py --label labels/csi300.parquet \
+  --a output/qlib_cn/csi300/classic/mined_alpha158_plus_lgb_s0/predictions.parquet \
+  --b output/qlib_cn/csi300/classic/alpha158_lgb_s0/predictions.parquet
+
+# 7. One results table
 python scripts/qlib_cn/aggregate.py output/qlib_cn > output/qlib_cn/results.json
 ```
+
+Supplied `vwap` columns are kept: in this provider `amount / volume` is 0.1x
+the true VWAP (unit mismatch), so deriving VWAP would misscale every formula
+that mixes `$vwap` with prices.
 
 Market data and factor values stay local. Run outputs record the provider
 release, panel SHA-256, splits, model parameters, and seeds.

@@ -11,8 +11,10 @@ import numpy as np
 import pytest
 
 from factorminer.agent.llm_interface import (
+    AnthropicProvider,
     CascadeProvider,
     DeepSeekProvider,
+    GoogleProvider,
     LLMProvider,
     MockProvider,
     TruncatedResponseError,
@@ -259,3 +261,28 @@ def test_partially_truncated_answer_is_kept(monkeypatch, caplog):
     monkeypatch.setattr(provider, "_get_client", lambda: _FakeClient(_completion("a: Neg($close)", "length")))
     assert provider.generate("s", "u") == "a: Neg($close)"
     assert "truncated" in caplog.text
+
+
+def test_anthropic_thinking_out_of_tokens_is_a_typed_failure(monkeypatch):
+    provider = AnthropicProvider(api_key="key")
+    thinking_only = SimpleNamespace(content=[SimpleNamespace(type="thinking", thinking="...")],
+                                    stop_reason="max_tokens")
+    client = SimpleNamespace(messages=SimpleNamespace(create=lambda **kwargs: thinking_only))
+    monkeypatch.setattr(provider, "_get_client", lambda: client)
+    with pytest.raises(TruncatedResponseError):
+        provider.generate("s", "u", max_tokens=64)
+
+
+def test_gemini_out_of_tokens_is_a_typed_failure(monkeypatch):
+    provider = GoogleProvider(api_key="key")
+    finish = SimpleNamespace(name="MAX_TOKENS")
+    candidate = SimpleNamespace(finish_reason=finish, content=SimpleNamespace(parts=[]))
+
+    def text():
+        raise ValueError("no text part")
+
+    response = type("R", (), {"candidates": [candidate], "text": property(lambda self: text())})()
+    client = SimpleNamespace(generate_content=lambda *args, **kwargs: response)
+    monkeypatch.setattr(provider, "_get_client", lambda: client)
+    with pytest.raises(TruncatedResponseError):
+        provider.generate("s", "u", max_tokens=64)
