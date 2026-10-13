@@ -40,16 +40,14 @@ class TruncatedResponseError(RuntimeError):
     """The model hit its output-token limit before writing any answer text."""
 
 
-def _chat_completion_text(response: Any, *, provider: str, max_tokens: int) -> str:
-    """Return a chat completion's text, refusing silent empty truncations.
+def _answer_or_raise(text: str, *, truncated: bool, provider: str, max_tokens: int) -> str:
+    """Return a response's text, refusing silent empty truncations.
 
-    Reasoning models spend ``max_tokens`` on hidden reasoning first; when that
-    exhausts the limit the answer is empty. Returning ``""`` would look like a
+    Reasoning models spend the output limit on hidden reasoning first; when
+    that exhausts it the answer is empty. Returning ``""`` would look like a
     model that proposed nothing, so it is raised as a typed failure instead.
     """
-    choice = response.choices[0]
-    text = choice.message.content or ""
-    if getattr(choice, "finish_reason", None) == "length":
+    if truncated:
         if not text.strip():
             raise TruncatedResponseError(
                 f"{provider} used all {max_tokens} output tokens before answering; "
@@ -57,6 +55,15 @@ def _chat_completion_text(response: Any, *, provider: str, max_tokens: int) -> s
             )
         logger.warning("%s response truncated at %d output tokens", provider, max_tokens)
     return text
+
+
+def _chat_completion_text(response: Any, *, provider: str, max_tokens: int) -> str:
+    choice = response.choices[0]
+    return _answer_or_raise(
+        choice.message.content or "",
+        truncated=getattr(choice, "finish_reason", None) == "length",
+        provider=provider, max_tokens=max_tokens,
+    )
 
 
 class LLMProvider(ABC):
@@ -352,7 +359,11 @@ class AnthropicProvider(LLMProvider):
         for block in response.content:
             if hasattr(block, "text"):
                 text_parts.append(block.text)
-        text = "\n".join(text_parts) if text_parts else ""
+        text = _answer_or_raise(
+            "\n".join(text_parts) if text_parts else "",
+            truncated=getattr(response, "stop_reason", None) == "max_tokens",
+            provider=self.provider_name, max_tokens=max_tokens,
+        )
         logger.debug("Anthropic response: %d chars", len(text))
         return text
 
@@ -419,7 +430,15 @@ class GoogleProvider(LLMProvider):
                 "max_output_tokens": max_tokens,
             },
         )
-        text = response.text if response.text else ""
+        candidates = getattr(response, "candidates", None) or []
+        finish = getattr(candidates[0], "finish_reason", None) if candidates else None
+        truncated = getattr(finish, "name", str(finish)).endswith("MAX_TOKENS")
+        parts = getattr(getattr(candidates[0], "content", None), "parts", None) if candidates else None
+        # ``response.text`` raises when a truncated candidate carries no text part.
+        raw = "".join(getattr(part, "text", "") for part in parts) if parts else (
+            "" if truncated else (response.text or ""))
+        text = _answer_or_raise(raw, truncated=truncated, provider=self.provider_name,
+                                max_tokens=max_tokens)
         logger.debug("Google response: %d chars", len(text))
         return text
 
