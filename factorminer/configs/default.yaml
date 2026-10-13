@@ -58,8 +58,13 @@ evaluation:
   # GPU device identifier (used when backend is "gpu")
   gpu_device: "cuda:0"
 
-  # Computation backend: "numpy" (portable CPU), "gpu" (CUDA),
-  # or "c" (compiled CPU kernels via Bottleneck)
+  # Computation backend for formula evaluation during mining:
+  #   "numpy" - portable CPU reference evaluator
+  #   "gpu"   - CUDA plan executor (gpu extra). Bit-identical to "numpy"
+  #             except for last-ulp rounding in exp/log/tanh/pow (Skew,
+  #             Kurt); select the card with CUDA_VISIBLE_DEVICES
+  #   "c"     - Bottleneck kernels for operator-level calls; formulas
+  #             evaluate with "numpy"
   backend: "numpy"
 
   # Redundancy/dependence metric used for admission, replacement,

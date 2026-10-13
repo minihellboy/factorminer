@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -51,6 +51,26 @@ _UNBOUNDED_OPERATORS = frozenset(
 )
 
 
+class PlanExecutor(Protocol):
+    """Runs plan steps on another array backend (see ``operators.torch_executor``).
+
+    Values passed between steps are the executor's own arrays; ``to_numpy``
+    converts a formula's output back to a NumPy panel the caller owns.
+    """
+
+    backend: str
+
+    def leaf(self, name: str, data: Mapping[str, np.ndarray]) -> Any: ...
+
+    def constant(self, value: float, data: Mapping[str, np.ndarray]) -> Any: ...
+
+    def operator(self, spec: OperatorSpec, inputs: list[Any], params: dict[str, float]) -> Any: ...
+
+    def from_numpy(self, array: np.ndarray) -> Any: ...
+
+    def to_numpy(self, value: Any) -> np.ndarray: ...
+
+
 @dataclass(frozen=True)
 class PlanStep:
     """One deduplicated node in a compiled plan.
@@ -70,7 +90,22 @@ class PlanStep:
     leaf_name: str = ""
     constant: float = 0.0
 
-    def run(self, data: Mapping[str, np.ndarray], inputs: list[np.ndarray]) -> np.ndarray:
+    def run(
+        self,
+        data: Mapping[str, np.ndarray],
+        inputs: list[Any],
+        executor: PlanExecutor | None = None,
+    ) -> Any:
+        if executor is not None and self.kind != "opaque":
+            if self.kind == "operator":
+                assert self.operator is not None
+                return executor.operator(self.operator, inputs, dict(self.params))
+            if self.kind == "leaf":
+                return executor.leaf(self.leaf_name, data)
+            return executor.constant(self.constant, data)
+        if executor is not None:
+            # Opaque nodes evaluate on host panels; hand the result to the executor.
+            return executor.from_numpy(self.node.evaluate(data))
         if self.kind == "operator":
             assert self.operator is not None
             return _dispatch_operator(self.operator, inputs, dict(self.params))
@@ -270,14 +305,17 @@ class BatchPlan:
         return sum(len(plan.steps) for plan in self.plans) - len(self.steps)
 
     def iter_outputs(
-        self, data: Mapping[str, np.ndarray]
+        self,
+        data: Mapping[str, np.ndarray],
+        executor: PlanExecutor | None = None,
     ) -> Iterator[tuple[int, np.ndarray | BaseException]]:
         """Yield ``(formula_index, signals_or_exception)`` in formula order.
 
         Intermediate arrays are dropped after their last consumer, so peak
         memory is bounded by live shared subexpressions rather than batch size.
         A step failure is propagated to every dependent formula, which receives
-        the same exception a recursive evaluation would have raised.
+        the same exception a recursive evaluation would have raised. With an
+        *executor*, steps run on its backend and outputs come back as NumPy.
         """
         remaining = [0] * len(self.steps)
         for step in self.steps:
@@ -291,7 +329,7 @@ class BatchPlan:
         for formula_index, output in enumerate(self.outputs):
             while cursor <= output:
                 if cursor not in values:
-                    values[cursor] = self._run_step(cursor, data, values)
+                    values[cursor] = self._run_step(cursor, data, values, executor)
                     for index in self.steps[cursor].inputs:
                         self._release(index, remaining, values)
                 cursor += 1
@@ -299,7 +337,12 @@ class BatchPlan:
             remaining[output] -= 1
             if remaining[output] == 0:
                 del values[output]
-            elif isinstance(value, np.ndarray):
+            if executor is not None and not isinstance(value, BaseException):
+                try:
+                    value = executor.to_numpy(value)
+                except Exception as exc:  # noqa: BLE001 - reported per formula
+                    value = exc
+            elif remaining[output] > 0 and isinstance(value, np.ndarray):
                 # Still needed by a later formula: hand out a private copy.
                 value = value.copy()
             yield formula_index, value
@@ -308,15 +351,16 @@ class BatchPlan:
         self,
         index: int,
         data: Mapping[str, np.ndarray],
-        values: dict[int, np.ndarray | BaseException],
-    ) -> np.ndarray | BaseException:
+        values: dict[int, Any],
+        executor: PlanExecutor | None = None,
+    ) -> Any:
         step = self.steps[index]
         inputs = [values[i] for i in step.inputs]
         for value in inputs:
             if isinstance(value, BaseException):
                 return value
         try:
-            return step.run(data, inputs)  # type: ignore[arg-type]
+            return step.run(data, inputs, executor)
         except Exception as exc:  # noqa: BLE001 - propagated to dependents
             return exc
 

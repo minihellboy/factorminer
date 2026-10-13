@@ -563,23 +563,56 @@ def _record_split_signals(
             )
 
 
+_PLAN_EXECUTORS: dict[str, Any] = {}
+
+
+def plan_executor(backend: str | None) -> Any:
+    """Executor for ``evaluation.backend``; ``None`` runs the NumPy evaluator.
+
+    ``"gpu"`` evaluates plans with :class:`~factorminer.operators.torch_executor.TorchPlanExecutor`
+    on CUDA. One executor is shared per process so feature panels upload once.
+    ``"numpy"`` and ``"c"`` (operator-level only) evaluate trees with NumPy.
+    """
+    if backend in (None, "numpy", "c"):
+        return None
+    if backend != "gpu":
+        raise ValueError(f"Unknown evaluation backend {backend!r}")
+    executor = _PLAN_EXECUTORS.get(backend)
+    if executor is None:
+        from factorminer.operators.torch_executor import (
+            TorchPlanExecutor,
+            torch_executor_available,
+        )
+
+        if not torch_executor_available():
+            raise RuntimeError("evaluation.backend 'gpu' requires PyTorch (install the gpu extra)")
+        import torch
+
+        if not torch.cuda.is_available():
+            raise RuntimeError("evaluation.backend 'gpu' requires a CUDA device; none is visible")
+        executor = _PLAN_EXECUTORS.setdefault(backend, TorchPlanExecutor("cuda"))
+    return executor
+
+
 def compute_batch_signals(
     trees: Sequence,
     data_dict: Mapping[str, np.ndarray],
     returns_shape: tuple[int, int],
     signal_failure_policy: str = "reject",
+    backend: str | None = None,
 ) -> Iterator[tuple[int, np.ndarray | None, Exception | None]]:
     """Evaluate trees through one shared plan, yielding per-formula outcomes.
 
     Each item is ``(index, signals, None)`` or ``(index, None, error)`` where
     ``error`` is what :func:`compute_tree_signals` would have raised for that
     tree alone. Shared subexpressions are evaluated once and released after
-    their last consumer.
+    their last consumer. ``backend`` selects the plan executor
+    (:func:`plan_executor`).
     """
     if not trees:
         return
     batch = compile_batch(trees)
-    for index, value in batch.iter_outputs(data_dict):
+    for index, value in batch.iter_outputs(data_dict, plan_executor(backend)):
         try:
             signals = _finalize_signals(
                 trees[index].to_string(), value, returns_shape, signal_failure_policy
@@ -595,12 +628,18 @@ def compute_tree_signals(
     data_dict: dict[str, np.ndarray],
     returns_shape: tuple[int, int],
     signal_failure_policy: str = "reject",
+    backend: str | None = None,
 ) -> np.ndarray:
     """Evaluate an expression tree under an explicit failure policy."""
-    try:
-        value: np.ndarray | Exception = compile_tree(tree).evaluate(data_dict)
-    except Exception as exc:  # noqa: BLE001 - resolved by the failure policy
-        value = exc
+    executor = plan_executor(backend)
+    value: np.ndarray | BaseException
+    if executor is None:
+        try:
+            value = compile_tree(tree).evaluate(data_dict)
+        except Exception as exc:  # noqa: BLE001 - resolved by the failure policy
+            value = exc
+    else:
+        (_, value), = compile_batch([tree]).iter_outputs(data_dict, executor)
     return _finalize_signals(tree.to_string(), value, returns_shape, signal_failure_policy)
 
 

@@ -77,6 +77,7 @@ class EvaluationKernel:
             data_dict,
             returns_shape,
             signal_failure_policy=signal_failure_policy or self.protocol.signal_failure_policy,
+            backend=self.protocol.evaluation_backend,
         )
         return tree, np.asarray(signals, dtype=np.float64)
 
@@ -115,6 +116,7 @@ class EvaluationKernel:
             data_dict,
             returns_shape,
             signal_failure_policy=signal_failure_policy or self.protocol.signal_failure_policy,
+            backend=self.protocol.evaluation_backend,
         ))
         for formula, tree in zip(formulas, trees, strict=True):
             if tree is None:
