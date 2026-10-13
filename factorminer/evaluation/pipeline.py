@@ -186,6 +186,23 @@ def _evaluate_single_candidate_ic(
 # Validation Pipeline
 # ---------------------------------------------------------------------------
 
+def _fast_screen_subset(returns: np.ndarray, size: int) -> np.ndarray:
+    """Choose the assets used for Stage 1 screening.
+
+    Dense panels keep the historical seeded random draw. When target coverage
+    varies (point-in-time universes mask non-members, listings start late),
+    the best-covered assets are kept so the screen scores roughly as many
+    assets per period as the full evaluation would.
+    """
+    rng = np.random.default_rng(42)
+    coverage = np.isfinite(returns).sum(axis=1)
+    if np.all(coverage == coverage[0]):
+        return rng.choice(returns.shape[0], size=size, replace=False)
+    tie_break = rng.permutation(returns.shape[0])
+    order = np.lexsort((tie_break, -coverage))
+    return np.sort(order[:size])
+
+
 class ValidationPipeline:
     """Multi-stage factor evaluation pipeline.
 
@@ -222,10 +239,9 @@ class ValidationPipeline:
         self.data = data
 
         M, T = returns.shape
-        # Pre-select a random subset of assets for fast screening
+        # Pre-select a subset of assets for fast screening
         if config.fast_screen_assets < M:
-            rng = np.random.default_rng(42)
-            self._fast_idx = rng.choice(M, size=config.fast_screen_assets, replace=False)
+            self._fast_idx = _fast_screen_subset(returns, config.fast_screen_assets)
         else:
             self._fast_idx = np.arange(M)
 

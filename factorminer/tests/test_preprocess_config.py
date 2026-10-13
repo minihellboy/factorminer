@@ -114,3 +114,18 @@ def test_default_preprocess_is_omitted_from_serialised_config_identity():
     assert declared["preprocess"]["standardise"] is False
     assert load_config(overrides=declared).preprocess.standardise is False
 
+
+
+def test_fast_screen_keeps_random_draw_on_dense_panels_and_prefers_coverage_otherwise():
+    from factorminer.evaluation.pipeline import _fast_screen_subset
+
+    dense = np.zeros((50, 20))
+    expected = np.random.default_rng(42).choice(50, size=10, replace=False)
+    np.testing.assert_array_equal(_fast_screen_subset(dense, 10), expected)
+
+    masked = np.full((50, 20), np.nan)
+    members = np.arange(5, 50, 5)  # nine always-members among 50 ever-members
+    masked[members] = 0.0
+    masked[0, :3] = 0.0
+    chosen = _fast_screen_subset(masked, 10)
+    assert set(members) <= set(chosen) and 0 in chosen
