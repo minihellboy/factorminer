@@ -34,7 +34,9 @@ def test_rolling_nanquantile_is_bit_identical_to_numpy(seed):
     np.testing.assert_array_equal(quantile_np(x, window, q), expected)
 
 
-def test_rolling_nanquantile_blocks_large_panels(monkeypatch):
-    monkeypatch.setattr("factorminer.core.expression_tree._QUANTILE_BLOCK_ELEMENTS", 64)
+@pytest.mark.parametrize("budget", [7, 64, 400])  # forces time chunks, row blocks, or both
+def test_rolling_nanquantile_blocks_large_panels(monkeypatch, budget):
+    monkeypatch.setattr("factorminer.core.expression_tree._QUANTILE_BLOCK_ELEMENTS", budget)
     x = np.random.default_rng(0).normal(size=(9, 30))
+    x[x > 1.2] = np.nan
     np.testing.assert_array_equal(rolling_nanquantile(x, 5, 0.8), _reference(x, 5, 0.8))

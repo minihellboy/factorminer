@@ -284,25 +284,36 @@ def rolling_nanquantile(x: np.ndarray, window: int, q: float) -> np.ndarray:
     out = np.full((rows, periods), np.nan, dtype=np.float64)
     if window < 1 or periods < window:
         return out
-    block = max(1, _QUANTILE_BLOCK_ELEMENTS // ((periods - window + 1) * window))
+    outputs = periods - window + 1
+    # Bound the (rows, outputs, window) scratch in both directions so a single
+    # long series (intraday panels) cannot allocate past the budget either.
+    span = max(1, min(outputs, _QUANTILE_BLOCK_ELEMENTS // window))
+    block = max(1, _QUANTILE_BLOCK_ELEMENTS // (span * window))
     for start in range(0, rows, block):
-        windows = np.lib.stride_tricks.sliding_window_view(
-            x[start:start + block], window, axis=1
-        )
-        ordered = np.sort(windows, axis=-1)  # NaN sorts last
-        count = window - np.isnan(windows).sum(axis=-1)
-        virtual = (count - 1) * q
-        lower = np.floor(virtual)
-        gamma = virtual - lower
-        lower_idx = np.clip(lower.astype(np.int64), 0, window - 1)
-        upper_idx = np.clip(lower_idx + 1, 0, np.maximum(count - 1, 0))
-        below = np.take_along_axis(ordered, lower_idx[..., None], axis=-1)[..., 0]
-        above = np.take_along_axis(ordered, upper_idx[..., None], axis=-1)[..., 0]
-        diff = above - below
-        value = np.where(gamma >= 0.5, above - diff * (1 - gamma), below + diff * gamma)
-        value[count == 0] = np.nan
-        out[start:start + block, window - 1:] = value
+        for first in range(0, outputs, span):
+            last = min(outputs, first + span)
+            out[start:start + block, window - 1 + first:window - 1 + last] = _window_quantile(
+                x[start:start + block, first:last + window - 1], window, q
+            )
     return out
+
+
+def _window_quantile(x: np.ndarray, window: int, q: float) -> np.ndarray:
+    """Linear-interpolated nanquantile of every full window in a 2-D block."""
+    windows = np.lib.stride_tricks.sliding_window_view(x, window, axis=1)
+    ordered = np.sort(windows, axis=-1)  # NaN sorts last
+    count = window - np.isnan(windows).sum(axis=-1)
+    virtual = (count - 1) * q
+    lower = np.floor(virtual)
+    gamma = virtual - lower
+    lower_idx = np.clip(lower.astype(np.int64), 0, window - 1)
+    upper_idx = np.clip(lower_idx + 1, 0, np.maximum(count - 1, 0))
+    below = np.take_along_axis(ordered, lower_idx[..., None], axis=-1)[..., 0]
+    above = np.take_along_axis(ordered, upper_idx[..., None], axis=-1)[..., 0]
+    diff = above - below
+    value: np.ndarray = np.where(gamma >= 0.5, above - diff * (1 - gamma), below + diff * gamma)
+    value[count == 0] = np.nan
+    return value
 
 
 def _row_nanmean(sx: np.ndarray, *, keepdims: bool = False) -> np.ndarray:
