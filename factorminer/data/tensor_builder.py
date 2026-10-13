@@ -123,13 +123,33 @@ def compute_targets(
     df: pd.DataFrame,
     target_specs: Sequence[TargetSpec],
 ) -> pd.DataFrame:
-    """Compute one or more named forward-return targets on the same panel."""
+    """Compute one or more named forward-return targets on the same panel.
+
+    Offsets count bars on the panel's shared timestamp grid, the grid formulas
+    are evaluated on. A bar an asset did not trade (a suspension or listing
+    gap) is missing, so its target is NaN rather than a return spanning the gap.
+    """
     df = df.sort_values(["asset_id", "datetime"])
+    calendar = np.sort(df["datetime"].unique())
+    positions = np.searchsorted(calendar, df["datetime"].to_numpy())
+    asset_codes, assets = pd.factorize(df["asset_id"])
+    grids: dict[str, np.ndarray] = {}
+
+    def ahead(column: str, offset: int) -> np.ndarray:
+        if column not in grids:
+            grid = np.full((len(assets), len(calendar)), np.nan, dtype=np.float64)
+            grid[asset_codes, positions] = df[column].to_numpy(dtype=np.float64)
+            grids[column] = grid
+        target = positions + offset
+        values = np.full(len(df), np.nan, dtype=np.float64)
+        inside = target < len(calendar)
+        values[inside] = grids[column][asset_codes[inside], target[inside]]
+        return values
 
     for spec in target_specs:
         start_col, end_col, start_offset, end_offset = _resolve_target_offsets(spec)
-        start_values = df.groupby("asset_id")[start_col].shift(-start_offset)
-        end_values = df.groupby("asset_id")[end_col].shift(-end_offset)
+        start_values = ahead(start_col, start_offset)
+        end_values = ahead(end_col, end_offset)
         if spec.return_transform == "log":
             df[spec.column_name] = np.log(end_values / start_values)
         else:

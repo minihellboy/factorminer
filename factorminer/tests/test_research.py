@@ -369,3 +369,18 @@ def test_portfolio_ic_series_matches_metrics_compute_ic():
         compute_pearson_ic(signal.T, returns.T),
         equal_nan=True,
     )
+
+
+def test_targets_do_not_span_trading_suspensions():
+    dates = pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05"])
+    frame = pd.DataFrame({
+        "datetime": list(dates) + [dates[0], dates[3]],
+        "asset_id": ["A"] * 4 + ["B", "B"],  # B is suspended on the middle two days
+        "close": [10.0, 11.0, 12.0, 13.0, 20.0, 40.0],
+    })
+    spec = TargetSpec(name="paper", entry_delay_bars=0, holding_bars=1, price_pair="close_to_close")
+    targets = compute_targets(frame, [spec]).set_index(["asset_id", "datetime"])["target"]
+    assert targets[("A", dates[0])] == pytest.approx(0.1)
+    # Row shifting would report B's 100% move across the suspension as a one-day return.
+    assert np.isnan(targets[("B", dates[0])])
+    assert np.isnan(targets[("B", dates[3])])
