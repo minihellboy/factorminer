@@ -4,6 +4,8 @@
 diagnostics. Reports label each gate `measured`, `partial`, `not_supplied`, or
 `external_required`. Missing inputs remain explicit. The default admission
 contract remains `paper_ic_v2`; see [metric definitions](reproducibility.md#metric-contract).
+`admission.policy: marginal` instead admits on value beyond an Alpha158 basis
+and the library; see the [Qlib CN benchmark](qlib-cn-benchmark.md#marginal-value-admission).
 
 ## Metrics and inference
 

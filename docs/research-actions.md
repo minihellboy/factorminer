@@ -57,7 +57,8 @@ Enable `research.planner.enabled` and choose `research.planner.policy`:
 
 Generation/refinement estimate admission probability and positive library gain
 within empty/growing/stalled contexts. Library utility sums admitted factors'
-absolute mean IC above the admission threshold. Empty generations count as
+absolute mean IC above the admission threshold; under `admission.policy:
+marginal` it sums their admission-time |partial IC| above `min_partial_ic`. Empty generations count as
 failed proposals; failed or interrupted actions supply no success evidence.
 
 Challenge value estimates the reducible binary decision risk for the specified
