@@ -38,6 +38,14 @@ PROTOCOLS = {
     "recent": {"start": "2013-01-01", "fit_end": "2019-12-31", "valid": ("2020-01-01", "2021-12-31"),
                "test": ("2022-01-01", "2026-09-30")},
 }
+# Walk-forward: disjoint two-year tests, each after 7 training and 2 validation years.
+WALK_FORWARD_YEARS = (2018, 2020, 2022, 2024)
+for _year in WALK_FORWARD_YEARS:
+    PROTOCOLS[f"wf{_year}"] = {
+        "start": f"{_year - 9}-01-01", "fit_end": f"{_year - 3}-12-31",
+        "valid": (f"{_year - 2}-01-01", f"{_year - 1}-12-31"),
+        "test": (f"{_year}-01-01", f"{_year + 1}-12-31"),
+    }
 BENCHMARK_INDEX = {"csi300": "SH000300", "csi500": "SH000905"}
 LABEL = ["Ref($close, -2)/Ref($close, -1) - 1"]
 LGB_PARAMS = {
