@@ -73,7 +73,7 @@ def _audit(campaign: Path, scores: Path | None) -> dict:
         t = compute_hac_mean_test(finite).t_stat
         sd = finite.std(ddof=1)
         stats[key] = {"t": float(t), "p": float(2 * norm.sf(abs(t))) if np.isfinite(t) else 1.0,
-                      "sr": float(abs(finite.mean()) / sd) if sd > 0 else 0.0}
+                      "sr": float(finite.mean() / sd) if sd > 0 else 0.0}
     q = _bh({key: row["p"] for key, row in stats.items()})
     lengths = {len(v) for v in series.values()}
     effective = estimate_effective_trials(np.stack(list(series.values()))) if len(lengths) == 1 else None

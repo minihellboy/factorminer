@@ -187,3 +187,21 @@ def test_recent_decay_check_refuses_a_factor_that_stopped_working(market):
     assert not admitted and "recent partial IC" in reason
     fresh = basis.evaluate(market.novel)
     assert fresh.recent_partial_ic > 0 and passes_marginal_admission(fresh, config)[0]
+
+
+def test_topk_dropout_never_sells_a_name_to_buy_a_worse_one():
+    # Qlib TopkDropout sells held names only from the bottom of held + fresh.
+    assets, periods = 60, 3
+    score = np.tile(np.arange(assets, 0, -1, dtype=np.float64)[:, None], (1, periods))
+    returns = np.zeros((assets, periods))
+    config = MarginalConfig(reference_components=0, min_excess_bps=None, min_assets=5)
+    basis = MarginalBasis(returns, [np.random.default_rng(0).standard_normal((assets, periods))],
+                          config)
+    # A stable ranking: the top-k book is bought once and never traded again.
+    _, turnover, _, _ = basis._bucket(basis._gather(score))
+    assert turnover == 0.0
+
+
+def test_invalid_marginal_settings_fail_config_validation():
+    with pytest.raises(ValueError, match="topk_fraction"):
+        load_config(overrides={"admission": {"policy": "marginal", "topk_fraction": 0.8}})

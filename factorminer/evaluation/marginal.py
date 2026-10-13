@@ -314,9 +314,10 @@ class MarginalBasis:
             fresh = order[~is_held[order]][: drop + max(k - kept, 0)]
             pool = np.concatenate([order[is_held[order]], fresh])
             pool = pool[np.argsort(-values[pool], kind="stable")]
-            worst_held = [i for i in pool[::-1] if is_held[i]][:drop] if kept >= k else []
-            sell = set(worst_held)
-            buys = [i for i in fresh][: len(sell) + max(k - kept, 0)]
+            # Sell held names in the bottom ``drop`` of held + fresh, so a book
+            # never sells a name to buy a worse one.
+            sell = {int(i) for i in pool[-drop:] if is_held[i]}
+            buys = list(fresh[: len(sell) + max(k - kept, 0)])
             book = [i for i in np.flatnonzero(is_held) if i not in sell] + buys
             dropped_out = int(held.sum()) - kept  # holdings that left the universe
             held[:] = False

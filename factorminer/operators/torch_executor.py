@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import math
 import threading
+from collections import OrderedDict
 from collections.abc import Callable, Iterator, Mapping
 from typing import Any
 
@@ -36,6 +37,7 @@ except ImportError:  # pragma: no cover - exercised only without the gpu extra
 
 # Window cells per unfolded block: ~64 MiB per float64 temporary, so several
 # campaigns can share one device.
+_MAX_UPLOADS = 64
 _DEFAULT_BLOCK_ELEMENTS = 1 << 23
 _NAN = float("nan")
 
@@ -68,7 +70,7 @@ class TorchPlanExecutor:
             device = "cuda" if torch.cuda.is_available() else "cpu"
         self.device = torch.device(device)
         self.block_elements = int(block_elements)
-        self._uploads: dict[int, tuple[np.ndarray, Any]] = {}
+        self._uploads: OrderedDict[tuple, tuple[np.ndarray, Any]] = OrderedDict()
         self._lock = threading.Lock()
         self.host_fallbacks = 0  # steps run on the host after a device OOM
 
@@ -131,7 +133,15 @@ class TorchPlanExecutor:
             torch.cuda.empty_cache()
 
     def from_numpy(self, array: np.ndarray) -> Any:
-        return self._to_device(array)
+        try:
+            return self._to_device(array)
+        except (torch.OutOfMemoryError, RuntimeError) as exc:
+            if not _device_full(exc):
+                raise
+            torch.cuda.empty_cache()
+            with self._lock:
+                self.host_fallbacks += 1
+            return array  # stays on the host; later steps accept NumPy inputs
 
     def to_numpy(self, value: Any) -> np.ndarray:
         """A host float64 copy the caller owns."""
@@ -145,14 +155,25 @@ class TorchPlanExecutor:
     # -- helpers -------------------------------------------------------------
 
     def _upload(self, array: np.ndarray) -> Any:
-        """Device copy of a feature panel, uploaded once per array object."""
-        key = id(array)
+        """Device copy of a feature panel, uploaded once per host buffer.
+
+        Keyed by the memory a panel views rather than the array object:
+        callers slice ``data_tensor[:, :, i]`` afresh for every batch, and
+        those views share one upload. The entry holds the array so its buffer
+        cannot be freed and its address reused; the oldest entries are dropped
+        beyond ``_MAX_UPLOADS``.
+        """
+        interface = array.__array_interface__
+        key = (interface["data"][0], array.shape, array.strides, array.dtype.str)
         with self._lock:
             cached = self._uploads.get(key)
-            if cached is not None and cached[0] is array:
+            if cached is not None:
+                self._uploads.move_to_end(key)
                 return cached[1]
             tensor = self._to_device(array)
             self._uploads[key] = (array, tensor)
+            while len(self._uploads) > _MAX_UPLOADS:
+                self._uploads.popitem(last=False)
             return tensor
 
     def _to_device(self, array: np.ndarray) -> Any:

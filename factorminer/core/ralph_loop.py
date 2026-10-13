@@ -190,6 +190,7 @@ class RalphLoop:
             protocol=self.protocol,
             geometry=self.geometry,
             research_config=self.settings.research,
+            device=getattr(getattr(config, "evaluation", None), "gpu_device", None),
         )
         self.pipeline = ValidationPipeline(
             data_tensor=data_tensor,

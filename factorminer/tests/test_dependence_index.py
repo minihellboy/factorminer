@@ -16,6 +16,7 @@ from factorminer.domain.dependence import PearsonDependenceMetric, SpearmanDepen
 from factorminer.evaluation.dependence_index import (
     DependenceIndex,
     IndexedSpearmanMetric,
+    _immutable,
     indexed_dependence_metric,
 )
 from factorminer.evaluation.runtime import compute_tree_signals
@@ -176,11 +177,17 @@ def test_admission_and_replacement_decisions_match_reference():
     assert any(not row[1] and "dependence" in row[4] for row in reference[:-2])
 
 
-def test_computed_signals_are_read_only_views():
+def test_computed_signals_are_immutable_and_never_alias_inputs():
     data = {"$close": np.arange(40.0).reshape(4, 10)}
     signals = compute_tree_signals(parse("$close"), data, (4, 10))
-    assert not signals.flags.writeable
+    assert not signals.flags.writeable and _immutable(signals)
     assert data["$close"].flags.writeable
+    data["$close"][:] = 0.0  # the caller's panel changes; the signals do not
+    assert signals[0, 1] == 1.0
+    assert _immutable(compute_tree_signals(parse("Neg($close)"), data, (4, 10)))
+    view = np.zeros((4, 10)).view()
+    view.flags.writeable = False
+    assert not _immutable(view)  # writable underneath: re-validated on each use
 
 
 def test_dependence_index_fingerprints_read_only_arrays_once(monkeypatch):

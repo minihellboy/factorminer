@@ -179,3 +179,24 @@ def test_leaves_stay_on_the_host_when_the_device_is_full(monkeypatch, inputs):
     (_, value), = plan.iter_outputs(data, executor)
     (_, expected), = plan.iter_outputs(data)
     np.testing.assert_array_equal(value, expected)
+
+
+def test_fresh_views_of_one_panel_share_one_upload(inputs):
+    executor = TorchPlanExecutor(DEVICE)
+    tensor = np.stack(inputs, axis=2)  # (M, T, F) as the mining loop holds it
+    for _ in range(5):  # each batch slices new views of the same buffer
+        for i in range(tensor.shape[2]):
+            executor.leaf("$x", {"$x": tensor[:, :, i]})
+    assert len(executor._uploads) == tensor.shape[2]
+
+
+def test_opaque_results_stay_on_the_host_when_the_device_is_full(monkeypatch, inputs):
+    executor = TorchPlanExecutor(DEVICE)
+
+    def full(*args, **kwargs):
+        raise torch.OutOfMemoryError("simulated")
+
+    monkeypatch.setattr(executor, "_to_device", full)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: None)
+    assert executor.from_numpy(inputs[0]) is inputs[0]
+    assert executor.host_fallbacks == 1

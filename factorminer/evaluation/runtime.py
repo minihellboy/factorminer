@@ -563,21 +563,24 @@ def _record_split_signals(
             )
 
 
-_PLAN_EXECUTORS: dict[str, Any] = {}
+_PLAN_EXECUTORS: dict[tuple[str, str], Any] = {}
 
 
-def plan_executor(backend: str | None) -> Any:
+def plan_executor(backend: str | None, device: str | None = None) -> Any:
     """Executor for ``evaluation.backend``; ``None`` runs the NumPy evaluator.
 
     ``"gpu"`` evaluates plans with :class:`~factorminer.operators.torch_executor.TorchPlanExecutor`
-    on CUDA. One executor is shared per process so feature panels upload once.
+    on CUDA ``device`` (``evaluation.gpu_device``; default the current CUDA
+    device). One executor is shared per process and device so feature panels
+    upload once.
     ``"numpy"`` and ``"c"`` (operator-level only) evaluate trees with NumPy.
     """
     if backend in (None, "numpy", "c"):
         return None
     if backend != "gpu":
         raise ValueError(f"Unknown evaluation backend {backend!r}")
-    executor = _PLAN_EXECUTORS.get(backend)
+    key = (backend, device or "cuda")
+    executor = _PLAN_EXECUTORS.get(key)
     if executor is None:
         from factorminer.operators.torch_executor import (
             TorchPlanExecutor,
@@ -590,7 +593,7 @@ def plan_executor(backend: str | None) -> Any:
 
         if not torch.cuda.is_available():
             raise RuntimeError("evaluation.backend 'gpu' requires a CUDA device; none is visible")
-        executor = _PLAN_EXECUTORS.setdefault(backend, TorchPlanExecutor("cuda"))
+        executor = _PLAN_EXECUTORS.setdefault(key, TorchPlanExecutor(key[1]))
     return executor
 
 
@@ -600,6 +603,7 @@ def compute_batch_signals(
     returns_shape: tuple[int, int],
     signal_failure_policy: str = "reject",
     backend: str | None = None,
+    device: str | None = None,
 ) -> Iterator[tuple[int, np.ndarray | None, Exception | None]]:
     """Evaluate trees through one shared plan, yielding per-formula outcomes.
 
@@ -612,7 +616,7 @@ def compute_batch_signals(
     if not trees:
         return
     batch = compile_batch(trees)
-    executor = plan_executor(backend)
+    executor = plan_executor(backend, device)
     try:
         yield from _finalized_outputs(batch, trees, data_dict, returns_shape,
                                       signal_failure_policy, executor)
@@ -625,7 +629,7 @@ def _finalized_outputs(batch, trees, data_dict, returns_shape, signal_failure_po
     for index, value in batch.iter_outputs(data_dict, executor):
         try:
             signals = _finalize_signals(
-                trees[index].to_string(), value, returns_shape, signal_failure_policy
+                trees[index].to_string(), value, returns_shape, signal_failure_policy, data_dict
             )
         except Exception as exc:  # noqa: BLE001 - reported per formula
             yield index, None, exc
@@ -639,9 +643,10 @@ def compute_tree_signals(
     returns_shape: tuple[int, int],
     signal_failure_policy: str = "reject",
     backend: str | None = None,
+    device: str | None = None,
 ) -> np.ndarray:
     """Evaluate an expression tree under an explicit failure policy."""
-    executor = plan_executor(backend)
+    executor = plan_executor(backend, device)
     value: np.ndarray | BaseException
     if executor is None:
         try:
@@ -649,8 +654,12 @@ def compute_tree_signals(
         except Exception as exc:  # noqa: BLE001 - resolved by the failure policy
             value = exc
     else:
-        (_, value), = compile_batch([tree]).iter_outputs(data_dict, executor)
-    return _finalize_signals(tree.to_string(), value, returns_shape, signal_failure_policy)
+        try:
+            (_, value), = compile_batch([tree]).iter_outputs(data_dict, executor)
+        finally:
+            executor.release()
+    return _finalize_signals(tree.to_string(), value, returns_shape, signal_failure_policy,
+                             data_dict)
 
 
 def _finalize_signals(
@@ -658,6 +667,7 @@ def _finalize_signals(
     value: np.ndarray | BaseException | None,
     returns_shape: tuple[int, int],
     signal_failure_policy: str,
+    data: Mapping[str, np.ndarray] | None = None,
 ) -> np.ndarray:
     if isinstance(value, BaseException):
         if not isinstance(value, Exception):
@@ -677,10 +687,18 @@ def _finalize_signals(
             cause=SignalComputationError("Signal computation produced only NaN values"),
         )
 
-    # A read-only view: callers never write signals in place, and the
-    # dependence index fingerprints read-only arrays once instead of per pair.
-    signals = np.asarray(value, dtype=np.float64).view()
-    signals.flags.writeable = False
+    # Immutable signals: callers never write them in place, and the dependence
+    # index fingerprints an array once when no writable buffer lies beneath
+    # it. Results that alias an input panel (``$close``) are copied so the
+    # caller's data stays writable; the evaluator's own buffers are frozen.
+    signals = np.asarray(value, dtype=np.float64)
+    panels = (data or {}).values()
+    if any(isinstance(p, np.ndarray) and np.may_share_memory(signals, p) for p in panels):
+        signals = signals.copy()
+    owner: Any = signals
+    while isinstance(owner, np.ndarray):
+        owner.flags.writeable = False
+        owner = owner.base
     return signals
 
 

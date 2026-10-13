@@ -87,7 +87,7 @@ class DependenceIndex:
     def _track(self, signals: np.ndarray) -> int:
         """Register *signals* and return its identity; hashes outside the lock."""
         ident = id(signals)
-        read_only = not signals.flags.writeable
+        read_only = _immutable(signals)
         if read_only:
             with self._lock:
                 ref = self._refs.get(ident)
@@ -296,3 +296,13 @@ def indexed_dependence_metric(name: str | None) -> DependenceMetric:
     if type(metric) is SpearmanDependenceMetric:
         return IndexedSpearmanMetric()
     return metric
+
+
+def _immutable(array: np.ndarray) -> bool:
+    """Whether neither *array* nor any array it views can be written."""
+    owner: Any = array
+    while isinstance(owner, np.ndarray):
+        if owner.flags.writeable:
+            return False
+        owner = owner.base
+    return True

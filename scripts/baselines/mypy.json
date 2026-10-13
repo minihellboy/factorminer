@@ -91,12 +91,6 @@
       "path": "factorminer/agent/factor_generator.py"
     },
     {
-      "code": "no-any-return",
-      "count": 3,
-      "message": "Returning Any from function declared to return \"LLMProvider\"",
-      "path": "factorminer/agent/llm_interface.py"
-    },
-    {
       "code": "no-redef",
       "count": 1,
       "message": "Name \"formula\" already defined on line <N>",
@@ -137,6 +131,12 @@
       "count": 2,
       "message": "Cannot determine type of \"_no_admission_streak\"",
       "path": "factorminer/application/helix_validation.py"
+    },
+    {
+      "code": "union-attr",
+      "count": 1,
+      "message": "Item \"None\" of \"Any | None\" has no attribute \"marginal_config\"",
+      "path": "factorminer/application/research_actions.py"
     },
     {
       "code": "arg-type",
@@ -247,12 +247,6 @@
       "path": "factorminer/architecture/partner_review.py"
     },
     {
-      "code": "misc",
-      "count": 1,
-      "message": "\"None\" not callable",
-      "path": "factorminer/architecture/phase2_services.py"
-    },
-    {
       "code": "arg-type",
       "count": 1,
       "message": "Argument 1 to \"float\" has incompatible type \"object\"; expected \"str | Buffer | SupportsFloat | SupportsIndex\"",
@@ -314,7 +308,7 @@
     },
     {
       "code": "attr-defined",
-      "count": 4,
+      "count": 1,
       "message": "\"object\" has no attribute \"append\"",
       "path": "factorminer/benchmark/frozen_evaluation.py"
     },
@@ -452,7 +446,7 @@
     },
     {
       "code": "no-any-return",
-      "count": 25,
+      "count": 23,
       "message": "Returning Any from function declared to return \"ndarray[tuple[Any, ...], dtype[Any]]\"",
       "path": "factorminer/core/expression_tree.py"
     },
@@ -634,12 +628,6 @@
       "code": "assignment",
       "count": 1,
       "message": "Incompatible types in assignment (expression has type \"ndarray[tuple[Any, ...], dtype[Any]] | None\", variable has type \"ndarray[tuple[Any, ...], dtype[Any]]\")",
-      "path": "factorminer/data/tensor_builder.py"
-    },
-    {
-      "code": "import-not-found",
-      "count": 1,
-      "message": "Cannot find implementation or library stub for module named \"cupy\"",
       "path": "factorminer/data/tensor_builder.py"
     },
     {
@@ -1113,19 +1101,7 @@
     {
       "code": "list-item",
       "count": 1,
-      "message": "List item 1 has incompatible type \"dict[str, tuple[function, function]]\"; expected \"dict[str, tuple[Callable[..., Any], Callable[..., Any]]]\"",
-      "path": "factorminer/operators/registry.py"
-    },
-    {
-      "code": "list-item",
-      "count": 1,
       "message": "List item 2 has incompatible type \"dict[str, tuple[function, function]]\"; expected \"dict[str, tuple[Callable[..., Any], Callable[..., Any]]]\"",
-      "path": "factorminer/operators/registry.py"
-    },
-    {
-      "code": "list-item",
-      "count": 1,
-      "message": "List item 3 has incompatible type \"dict[str, tuple[function, function]]\"; expected \"dict[str, tuple[Callable[..., Any], Callable[..., Any]]]\"",
       "path": "factorminer/operators/registry.py"
     },
     {
@@ -1189,12 +1165,6 @@
       "path": "factorminer/utils/tearsheet.py"
     },
     {
-      "code": "attr-defined",
-      "count": 2,
-      "message": "Module has no attribute \"RdYlGn\"",
-      "path": "factorminer/utils/tearsheet.py"
-    },
-    {
       "code": "import-untyped",
       "count": 1,
       "message": "Library stubs not installed for \"pandas\"",
@@ -1213,25 +1183,13 @@
       "path": "factorminer/utils/tearsheet.py"
     },
     {
-      "code": "attr-defined",
-      "count": 1,
-      "message": "Module has no attribute \"RdYlGn\"",
-      "path": "factorminer/utils/visualization.py"
-    },
-    {
-      "code": "attr-defined",
-      "count": 1,
-      "message": "Module has no attribute \"viridis\"",
-      "path": "factorminer/utils/visualization.py"
-    },
-    {
       "code": "import-untyped",
       "count": 1,
       "message": "Library stubs not installed for \"seaborn\"",
       "path": "factorminer/utils/visualization.py"
     }
   ],
-  "error_count": 303,
+  "error_count": 288,
   "scope": "factorminer production package; factorminer/tests excluded",
   "version": 1
 }

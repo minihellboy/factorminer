@@ -755,7 +755,9 @@ class AdmissionConfig:
                 raise ValueError(
                     f"admission.reference must be one of {sorted(REFERENCE_CATALOGS)}"
                 )
-            self.marginal_settings()
+            from factorminer.evaluation.marginal import MarginalConfig
+
+            MarginalConfig(**self.marginal_settings()).validate()
 
     def marginal_settings(self) -> dict[str, Any]:
         """Keyword arguments for ``evaluation.marginal.MarginalConfig``."""
