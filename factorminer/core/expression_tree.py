@@ -267,6 +267,44 @@ def _rolling_apply(
     return out
 
 
+# Rows per sorted block keep the (rows, T, window) scratch near 256 MiB.
+_QUANTILE_BLOCK_ELEMENTS = 1 << 25
+
+
+def rolling_nanquantile(x: np.ndarray, window: int, q: float) -> np.ndarray:
+    """Rolling ``np.nanquantile(..., method="linear")`` along the time axis.
+
+    Sorting every window at once replaces one ``nanquantile`` call per
+    (asset, period) and returns bit-identical values: NumPy's virtual index
+    and its two-sided ``_lerp`` rounding are reproduced exactly. Windows with
+    no observations, and the first ``window - 1`` periods, are NaN.
+    """
+    x = np.asarray(x, dtype=np.float64)
+    rows, periods = x.shape
+    out = np.full((rows, periods), np.nan, dtype=np.float64)
+    if window < 1 or periods < window:
+        return out
+    block = max(1, _QUANTILE_BLOCK_ELEMENTS // ((periods - window + 1) * window))
+    for start in range(0, rows, block):
+        windows = np.lib.stride_tricks.sliding_window_view(
+            x[start:start + block], window, axis=1
+        )
+        ordered = np.sort(windows, axis=-1)  # NaN sorts last
+        count = window - np.isnan(windows).sum(axis=-1)
+        virtual = (count - 1) * q
+        lower = np.floor(virtual)
+        gamma = virtual - lower
+        lower_idx = np.clip(lower.astype(np.int64), 0, window - 1)
+        upper_idx = np.clip(lower_idx + 1, 0, np.maximum(count - 1, 0))
+        below = np.take_along_axis(ordered, lower_idx[..., None], axis=-1)[..., 0]
+        above = np.take_along_axis(ordered, upper_idx[..., None], axis=-1)[..., 0]
+        diff = above - below
+        value = np.where(gamma >= 0.5, above - diff * (1 - gamma), below + diff * gamma)
+        value[count == 0] = np.nan
+        out[start:start + block, window - 1:] = value
+    return out
+
+
 def _row_nanmean(sx: np.ndarray, *, keepdims: bool = False) -> np.ndarray:
     """Row-wise NaN mean that is quiet for rows with no observations."""
     valid_counts = np.sum(~np.isnan(sx), axis=1)
@@ -655,9 +693,7 @@ def _dispatch_operator(
         return _rolling_apply(children[0], w, _ts_rank)
     if name == "Quantile":
         q = params.get("q", 0.5)
-        return _rolling_apply(
-            children[0], w, lambda sx: np.nanquantile(sx, q, axis=1)
-        )
+        return rolling_nanquantile(children[0], w, q)
     if name == "CountNaN":
         return _rolling_apply(
             children[0], w, lambda sx: np.sum(np.isnan(sx), axis=1).astype(np.float64)

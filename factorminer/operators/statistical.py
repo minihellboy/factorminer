@@ -223,13 +223,9 @@ def ts_rank_np(x: np.ndarray, window: int = 10) -> np.ndarray:
 
 
 def quantile_np(x: np.ndarray, window: int = 10, q: float = 0.5) -> np.ndarray:
-    window = int(window)
-    M, T = x.shape
-    w = _rolling_np(x, window)
-    if w is None:
-        return np.full_like(x, np.nan)
-    result = np.nanquantile(w, q, axis=2)
-    return _pad_front(result, window, T)
+    from factorminer.core.expression_tree import rolling_nanquantile
+
+    return rolling_nanquantile(x, int(window), q)
 
 
 def count_nan_np(x: np.ndarray, window: int = 10) -> np.ndarray:
