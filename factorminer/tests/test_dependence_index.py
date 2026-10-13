@@ -11,12 +11,14 @@ import pytest
 
 from factorminer.application.validation_pipeline import ValidationPipeline
 from factorminer.core.factor_library import FactorLibrary
+from factorminer.core.parser import parse
 from factorminer.domain.dependence import PearsonDependenceMetric, SpearmanDependenceMetric
 from factorminer.evaluation.dependence_index import (
     DependenceIndex,
     IndexedSpearmanMetric,
     indexed_dependence_metric,
 )
+from factorminer.evaluation.runtime import compute_tree_signals
 
 REFERENCE = SpearmanDependenceMetric()
 
@@ -172,3 +174,35 @@ def test_admission_and_replacement_decisions_match_reference():
     admitted = [row for row in reference[:-2] if row[1]]
     assert any(row[2] is not None for row in admitted), "exercise at least one replacement"
     assert any(not row[1] and "dependence" in row[4] for row in reference[:-2])
+
+
+def test_computed_signals_are_read_only_views():
+    data = {"$close": np.arange(40.0).reshape(4, 10)}
+    signals = compute_tree_signals(parse("$close"), data, (4, 10))
+    assert not signals.flags.writeable
+    assert data["$close"].flags.writeable
+
+
+def test_dependence_index_fingerprints_read_only_arrays_once(monkeypatch):
+    rng = np.random.default_rng(3)
+    candidate = rng.standard_normal((30, 60))
+    library = [rng.standard_normal((30, 60)) for _ in range(4)]
+    for signals in library:
+        signals.flags.writeable = False
+    index = DependenceIndex()
+    calls: list[int] = []
+    original = DependenceIndex._fingerprint
+    monkeypatch.setattr(
+        DependenceIndex, "_fingerprint",
+        staticmethod(lambda a: calls.append(id(a)) or original(a)),
+    )
+    for _ in range(3):
+        for member in library:
+            index.compute(candidate, member)
+    # The writeable candidate is re-hashed on every call; library members once.
+    assert sum(calls.count(id(member)) for member in library) == len(library)
+    assert calls.count(id(candidate)) == 3 * len(library)
+    # A writeable array is still re-validated: an in-place change invalidates it.
+    before = index.compute(candidate, library[0])
+    candidate[:] = library[0]
+    assert index.compute(candidate, library[0]) != before

@@ -667,7 +667,11 @@ def _finalize_signals(
             cause=SignalComputationError("Signal computation produced only NaN values"),
         )
 
-    return np.asarray(value, dtype=np.float64)
+    # A read-only view: callers never write signals in place, and the
+    # dependence index fingerprints read-only arrays once instead of per pair.
+    signals = np.asarray(value, dtype=np.float64).view()
+    signals.flags.writeable = False
+    return signals
 
 
 def compute_correlation_matrix(
