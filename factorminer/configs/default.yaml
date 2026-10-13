@@ -123,6 +123,23 @@ data:
   default_target: "paper"
 
 # ---------------------------------------------------------------------------
+# Preprocessing applied before formulas are evaluated
+# ---------------------------------------------------------------------------
+# Defaults keep historical behaviour: cross-sectional winsorisation and
+# z-scoring of price/volume leaves. Price-level benchmarks (e.g. Qlib
+# Alpha158 comparisons) set standardise: false, winsor bounds 0/100, and
+# cross_fill_method: "none" so formulas see raw adjusted prices.
+preprocess:
+  winsor_lower: 1.0
+  winsor_upper: 99.0
+  min_nonnan_ratio: 0.5
+  ffill_limit: null
+  cross_fill_method: "median"   # "median", "mean", or "none"
+  standardise: true
+  halt_volume_threshold: 0.0
+  features_to_standardise: [open, high, low, close, volume, amount, vwap, returns]
+
+# ---------------------------------------------------------------------------
 # LLM provider settings
 # ---------------------------------------------------------------------------
 llm:

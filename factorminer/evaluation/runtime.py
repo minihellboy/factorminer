@@ -247,6 +247,51 @@ class FactorEvaluationArtifact:
             self.split_signals.clear()  # type: ignore[attr-defined]
 
 
+UNIVERSE_MASK_COLUMN = "in_universe"
+
+
+def _resolve_preprocess_config(value: Any) -> Any:
+    """Return the configured ``PreprocessConfig``; defaults when none is declared."""
+    from dataclasses import fields
+
+    from factorminer.data.preprocessor import PreprocessConfig
+
+    if value is None:
+        return PreprocessConfig()
+    if isinstance(value, PreprocessConfig):
+        return value
+    if isinstance(value, Mapping):
+        known = {item.name for item in fields(PreprocessConfig)}
+        unknown = sorted(set(value) - known)
+        if unknown:
+            raise ValueError(f"unknown preprocess settings: {unknown}")
+        return PreprocessConfig(**dict(value))
+    raise TypeError(
+        f"preprocess config must be a PreprocessConfig or mapping, got {type(value).__name__}"
+    )
+
+
+def _universe_mask(raw_df: pd.DataFrame, target_df: pd.DataFrame) -> pd.Series | None:
+    """Align an optional point-in-time membership column to *target_df* rows.
+
+    Rows outside the universe keep their prices, so time-series operators see
+    full histories, but their targets are masked out of every metric.
+    """
+    if UNIVERSE_MASK_COLUMN not in raw_df.columns:
+        return None
+    membership = raw_df[["datetime", "asset_id", UNIVERSE_MASK_COLUMN]].copy()
+    flags = pd.to_numeric(membership[UNIVERSE_MASK_COLUMN], errors="coerce")
+    if flags.isna().any() or not flags.isin([0, 1]).all():
+        raise ValueError(f"{UNIVERSE_MASK_COLUMN} must contain only 0/1 or boolean values")
+    membership[UNIVERSE_MASK_COLUMN] = flags.astype(bool)
+    aligned = target_df[["datetime", "asset_id"]].merge(
+        membership, on=["datetime", "asset_id"], how="left", validate="one_to_one"
+    )
+    return pd.Series(
+        aligned[UNIVERSE_MASK_COLUMN].fillna(False).to_numpy(dtype=bool), index=target_df.index
+    )
+
+
 def load_runtime_dataset(
     raw_df: pd.DataFrame,
     cfg,
@@ -254,7 +299,7 @@ def load_runtime_dataset(
     """Load raw market data into a canonical evaluation dataset."""
     from dataclasses import asdict
 
-    from factorminer.data.preprocessor import PreprocessConfig, preprocess
+    from factorminer.data.preprocessor import preprocess
     from factorminer.data.tensor_builder import TensorConfig, build_tensor
 
     if not pd.api.types.is_datetime64_any_dtype(raw_df["datetime"]):
@@ -265,7 +310,10 @@ def load_runtime_dataset(
     target_df = compute_targets(raw_df, target_specs)
     target_columns = [spec.column_name for spec in target_specs]
     merge_columns = ["datetime", "asset_id", *target_columns]
-    preprocess_config = PreprocessConfig()
+    preprocess_config = _resolve_preprocess_config(getattr(cfg, "preprocess", None))
+    universe_mask = _universe_mask(raw_df, target_df)
+    if universe_mask is not None:
+        target_df.loc[~universe_mask, target_columns] = np.nan
     processed_df = preprocess(raw_df, preprocess_config)
     processed_df = processed_df.merge(
         target_df[merge_columns],
@@ -296,6 +344,16 @@ def load_runtime_dataset(
 
     if returns.ndim != 2:
         raise ValueError("Runtime dataset target must be a 2-D (M, T) array")
+
+    preprocessing = {
+        "pipeline": "factorminer.data.preprocessor.preprocess",
+        "config": asdict(preprocess_config),
+        "feature_columns": list(feature_columns),
+        "tensor": {"backend": "numpy", "dtype": "float64"},
+    }
+    if universe_mask is not None:
+        # Recorded only when present, so panels without a mask keep their digest.
+        preprocessing["universe_mask"] = UNIVERSE_MASK_COLUMN
 
     data_dict = {
         _column_to_feature(column): data_tensor[:, :, idx]
@@ -363,12 +421,7 @@ def load_runtime_dataset(
         target_panels=target_panels,
         target_specs={spec.name: spec for spec in target_specs},
         default_target=cfg.data.default_target,
-        preprocessing={
-            "pipeline": "factorminer.data.preprocessor.preprocess",
-            "config": asdict(preprocess_config),
-            "feature_columns": list(feature_columns),
-            "tensor": {"backend": "numpy", "dtype": "float64"},
-        },
+        preprocessing=preprocessing,
     )
 
 

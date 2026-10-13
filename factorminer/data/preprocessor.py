@@ -15,6 +15,8 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+CROSS_FILL_METHODS = frozenset({"median", "mean", "none"})
+
 
 @dataclass
 class PreprocessConfig:
@@ -25,7 +27,8 @@ class PreprocessConfig:
     winsor_lower : float
         Lower percentile for winsorisation (0-100).
     winsor_upper : float
-        Upper percentile for winsorisation (0-100).
+        Upper percentile for winsorisation (0-100). Bounds of ``0`` and
+        ``100`` disable winsorisation.
     min_nonnan_ratio : float
         Minimum fraction of non-NaN values required per cross-section
         for a time step to be kept.
@@ -33,8 +36,9 @@ class PreprocessConfig:
         Maximum number of consecutive NaN values to forward-fill within
         each intraday session.
     cross_fill_method : str
-        Cross-sectional fill method after forward fill.
-        ``"median"`` or ``"mean"``.
+        Cross-sectional fill method after forward fill: ``"median"``,
+        ``"mean"``, or ``"none"`` to leave remaining gaps missing (needed for
+        unstandardised prices, where a peer median is not a valid price).
     standardise : bool
         Whether to apply cross-sectional z-score standardisation.
     halt_volume_threshold : float
@@ -53,6 +57,18 @@ class PreprocessConfig:
     features_to_standardise: list[str] = field(default_factory=lambda: [
         "open", "high", "low", "close", "volume", "amount", "vwap", "returns",
     ])
+
+    def validate(self) -> None:
+        if not 0.0 <= self.winsor_lower < self.winsor_upper <= 100.0:
+            raise ValueError("preprocess winsor bounds must satisfy 0 <= lower < upper <= 100")
+        if not 0.0 <= self.min_nonnan_ratio <= 1.0:
+            raise ValueError("preprocess.min_nonnan_ratio must be in [0, 1]")
+        if self.ffill_limit is not None and self.ffill_limit < 1:
+            raise ValueError("preprocess.ffill_limit must be positive or null")
+        if self.cross_fill_method not in CROSS_FILL_METHODS:
+            raise ValueError(
+                f"preprocess.cross_fill_method must be one of {sorted(CROSS_FILL_METHODS)}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -155,11 +171,12 @@ def fill_missing(
     ffill_limit : int or None
         Max consecutive NaN values to forward-fill.
     cross_fill_method : str
-        ``"median"`` or ``"mean"`` for the cross-sectional stage.
+        ``"median"`` or ``"mean"`` for the cross-sectional stage, or
+        ``"none"`` to skip it.
     columns : sequence of str, optional
         Columns to fill.  Defaults to numeric columns.
     """
-    if cross_fill_method not in {"median", "mean"}:
+    if cross_fill_method not in CROSS_FILL_METHODS:
         raise ValueError(f"Unknown cross_fill_method: {cross_fill_method}")
     df = df.copy()
     if columns is None:
@@ -175,6 +192,8 @@ def fill_missing(
         limit=ffill_limit
     )
 
+    if cross_fill_method == "none":
+        return df
     for col in missing:
         if not df[col].isna().any():
             continue
@@ -203,9 +222,11 @@ def winsorise(
     columns : sequence of str
         Columns to winsorise.
     lower, upper : float
-        Percentile bounds (0-100).
+        Percentile bounds (0-100). ``0`` and ``100`` leave values unchanged.
     """
     df = df.copy()
+    if lower <= 0.0 and upper >= 100.0:
+        return df
     columns = [c for c in columns if c in df.columns]
 
     for col in columns:
@@ -318,6 +339,7 @@ def preprocess(
     """
     if config is None:
         config = PreprocessConfig()
+    config.validate()
 
     logger.info("Preprocessing %d rows ...", len(df))
 

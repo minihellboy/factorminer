@@ -12,6 +12,7 @@ import yaml
 from factorminer.architecture.research_actions import ResearchPlannerConfig
 from factorminer.architecture.research_skills import ResearchSkillsConfig
 from factorminer.configs import DEFAULT_CONFIG_PATH
+from factorminer.data.preprocessor import PreprocessConfig
 
 
 @dataclass
@@ -722,6 +723,7 @@ class Config:
     phase2: Phase2Config = field(default_factory=Phase2Config)
     benchmark: BenchmarkConfig = field(default_factory=BenchmarkConfig)
     research: ResearchConfig = field(default_factory=ResearchConfig)
+    preprocess: PreprocessConfig = field(default_factory=PreprocessConfig)
 
     def validate(self) -> None:
         """Validate all sub-configurations."""
@@ -733,10 +735,16 @@ class Config:
         self.phase2.validate()
         self.benchmark.validate()
         self.research.validate()
+        self.preprocess.validate()
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize config to a plain dictionary."""
-        return asdict(self)
+        payload = asdict(self)
+        # Default preprocessing is omitted so configs that never declared it
+        # keep their historical campaign and config digests.
+        if self.preprocess == PreprocessConfig():
+            del payload["preprocess"]
+        return payload
 
     def save(self, path: str | Path) -> None:
         """Write config to a YAML file."""
@@ -755,6 +763,7 @@ _SECTION_MAP: dict[str, type] = {
     "phase2": Phase2Config,
     "benchmark": BenchmarkConfig,
     "research": ResearchConfig,
+    "preprocess": PreprocessConfig,
 }
 
 _PHASE2_SECTION_MAP: dict[str, type] = {
