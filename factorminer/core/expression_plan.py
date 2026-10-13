@@ -31,7 +31,10 @@ from factorminer.core.types import OperatorSpec, SignatureType
 
 # Bump when any operator's numerical semantics change; it is part of every
 # formula digest so cached signals never outlive the semantics that made them.
-OPERATOR_SEMANTICS_VERSION = "numpy-expression-v1"
+# v2: missing (NaN) inputs never produce values -- NaN denominators, empty
+# windows and missing latest values give NaN, and EMA-type recurrences skip
+# gaps instead of turning NaN for the rest of the series.
+OPERATOR_SEMANTICS_VERSION = "numpy-expression-v2"
 
 # Operators whose output at t depends on inputs t-(window-1)..t.
 _ROLLING_WINDOW_OPERATORS = frozenset(

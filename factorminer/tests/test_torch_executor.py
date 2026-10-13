@@ -82,10 +82,14 @@ def test_device_kernel_matches_numpy_dispatch(executor, inputs, name, window):
         np.testing.assert_array_equal(actual, expected)
 
 
+HOST_OPERATORS = ("EMA", "DEMA", "KAMA", "CumSum", "CumProd", "CsZScore", "CsDemean",
+                  "CsNeutralize", "CsScale", "Scale")
+
+
 def test_registry_operators_without_kernels_use_the_exact_host_path(executor, inputs):
-    fallback = sorted(set(OPERATOR_REGISTRY) - torch_kernel_names())
-    assert {"EMA", "CsZScore", "CumSum"} <= set(fallback)
-    for name in fallback:
+    # Other tests may register custom operators; check the built-in host set.
+    assert not set(HOST_OPERATORS) & torch_kernel_names()
+    for name in HOST_OPERATORS:
         spec = OPERATOR_REGISTRY[name]
         params = {"window": 10.0} if "window" in spec.param_names else {}
         children = inputs[: spec.arity]

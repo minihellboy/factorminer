@@ -202,7 +202,8 @@ def _sequential_prod(x: Any) -> Any:
 
 def _safe_div(a: Any, b: Any) -> Any:
     a, b = torch.broadcast_tensors(a, b)
-    return torch.where(b.abs() > _EPS, a / b, torch.zeros_like(a))
+    fallback = torch.where(torch.isnan(b), _NAN, 0.0).to(a.dtype)
+    return torch.where(b.abs() > _EPS, a / b, fallback)
 
 
 def _sign(x: Any) -> Any:
@@ -289,7 +290,8 @@ def _ts_skew(sx: Any) -> Any:
 
 def _ts_rank(sx: Any) -> Any:
     latest = sx[..., -1:]
-    return _div((sx <= latest).sum(-1).double(), sx.shape[-1])
+    rank = _div((sx <= latest).sum(-1).double(), sx.shape[-1])
+    return torch.where(torch.isnan(latest[..., 0]), _NAN, rank)
 
 
 def _ts_corr(sx: Any, sy: Any) -> Any:
@@ -297,7 +299,8 @@ def _ts_corr(sx: Any, sy: Any) -> Any:
     dy = sy - _nanmean(sy, keepdim=True)
     cov = _nanmean(dx * dy)
     denom = torch.sqrt(_nanvar(sx)) * torch.sqrt(_nanvar(sy))
-    return torch.where(denom > _EPS, cov / denom, torch.zeros_like(cov))
+    fallback = torch.where(torch.isnan(denom), _NAN, 0.0).to(cov.dtype)
+    return torch.where(denom > _EPS, cov / denom, fallback)
 
 
 def _ts_cov(sx: Any, sy: Any) -> Any:
@@ -305,10 +308,13 @@ def _ts_cov(sx: Any, sy: Any) -> Any:
 
 
 def _ts_beta(sx: Any, sy: Any) -> Any:
-    dy = sy - _nanmean(sy, keepdim=True)
+    mean_x, mean_y = _nanmean(sx, keepdim=True), _nanmean(sy, keepdim=True)
+    dy = sy - mean_y
     var_y = _nansum(dy**2)
-    cov_xy = _nansum((sx - _nanmean(sx, keepdim=True)) * dy)
-    return torch.where(var_y > _EPS, cov_xy / var_y, torch.zeros_like(cov_xy))
+    cov_xy = _nansum((sx - mean_x) * dy)
+    empty = torch.isnan(mean_x[..., 0]) | torch.isnan(mean_y[..., 0])
+    fallback = torch.where(empty, _NAN, 0.0).to(cov_xy.dtype)
+    return torch.where(var_y > _EPS, cov_xy / var_y, fallback)
 
 
 def _ts_resid(sx: Any, sy: Any) -> Any:
@@ -401,8 +407,12 @@ def _linreg_resid(ex: TorchPlanExecutor, x: Any, w: int) -> Any:
 def _hma(ex: TorchPlanExecutor, x: Any, w: int) -> Any:
     half_w = max(w // 2, 1)
     sqrt_w = max(int(math.sqrt(w)), 1)
-    diff = 2 * torch.nan_to_num(_wma(ex, x, half_w)) - torch.nan_to_num(_wma(ex, x, w))
+    diff = 2 * _wma(ex, x, half_w) - _wma(ex, x, w)
     return _wma(ex, diff, sqrt_w)
+
+
+def _mask_missing(values: Any, source: Any) -> Any:
+    return torch.where(torch.isnan(source), _NAN, values)
 
 
 def _window(params: dict[str, float]) -> int:
@@ -436,7 +446,8 @@ def _lag(combine: Callable[[Any, Any], Any]) -> Callable[..., Any]:
 
 
 def _log_return(cur: Any, prev: Any) -> Any:
-    denominator = torch.where(prev.abs() > _EPS, prev, torch.ones_like(prev))
+    keep = torch.isnan(prev) | (prev.abs() > _EPS)
+    denominator = torch.where(keep, prev, torch.ones_like(prev))
     return torch.log(_safe_div(cur, denominator).abs() + _EPS)
 
 
@@ -477,10 +488,12 @@ _KERNELS: dict[str, Callable[[TorchPlanExecutor, list[Any], dict[str, float]], A
     "Kurt": _rolling_kernel(lambda sx: _moment(sx, 4) - 3.0),
     "Median": _rolling_kernel(lambda sx: _window_order_stat(sx, 0.5, median=True)),
     "Med": _rolling_kernel(lambda sx: _window_order_stat(sx, 0.5, median=True)),
-    "Sum": _rolling_kernel(_nansum),
-    "Prod": _rolling_kernel(lambda sx: _sequential_prod(torch.where(torch.isnan(sx), 1.0, sx))),
+    "Sum": _rolling_kernel(lambda sx: _masked(sx, _nansum(sx))),
+    "Prod": _rolling_kernel(
+        lambda sx: _masked(sx, _sequential_prod(torch.where(torch.isnan(sx), 1.0, sx)))
+    ),
     "Product": _rolling_kernel(
-        lambda sx: _sequential_prod(torch.where(torch.isnan(sx), 1.0, sx))
+        lambda sx: _masked(sx, _sequential_prod(torch.where(torch.isnan(sx), 1.0, sx)))
     ),
     "TsMax": _rolling_kernel(_ts_max),
     "TsMin": _rolling_kernel(_ts_min),
@@ -501,8 +514,12 @@ _KERNELS: dict[str, Callable[[TorchPlanExecutor, list[Any], dict[str, float]], A
     "WMA": lambda ex, xs, p: _wma(ex, xs[0], _window(p)),
     "Decay": lambda ex, xs, p: _decay(ex, xs[0], _window(p)),
     "TsDecay": lambda ex, xs, p: _decay(ex, xs[0], _window(p)),
-    "CumMax": lambda ex, xs, p: torch.cummax(torch.nan_to_num(xs[0], nan=-math.inf), 1).values,
-    "CumMin": lambda ex, xs, p: torch.cummin(torch.nan_to_num(xs[0], nan=math.inf), 1).values,
+    "CumMax": lambda ex, xs, p: _mask_missing(
+        torch.cummax(torch.nan_to_num(xs[0], nan=-math.inf), 1).values, xs[0]
+    ),
+    "CumMin": lambda ex, xs, p: _mask_missing(
+        torch.cummin(torch.nan_to_num(xs[0], nan=math.inf), 1).values, xs[0]
+    ),
     "HMA": lambda ex, xs, p: _hma(ex, xs[0], _window(p)),
     # Cross-sectional
     "CsRank": lambda ex, xs, p: _cs_rank(xs[0]),
