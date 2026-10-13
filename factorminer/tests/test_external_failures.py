@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -14,6 +15,7 @@ from factorminer.agent.llm_interface import (
     DeepSeekProvider,
     LLMProvider,
     MockProvider,
+    TruncatedResponseError,
     create_provider,
 )
 from factorminer.agent.provider_config import (
@@ -123,6 +125,7 @@ def test_guarded_provider_redacts_credential_from_failures():
         (ModuleNotFoundError("openai"), "missing_dependency"),
         (type("StatusError", (Exception,), {"status_code": 503})(), "server"),
         (ConnectionResetError(), "connection"),
+        (TruncatedResponseError("out of tokens"), "truncated"),
         (ValueError("?"), "unknown"),
     ],
 )
@@ -229,3 +232,30 @@ def test_frozen_evaluation_reports_native_crash_as_unavailable(monkeypatch, tmp_
 
     result = _method_result_from_runtime_payload("alpha101_adapted", summary["alpha101_adapted"], cfg)
     assert math.isnan(result.xgb_ic) and result.unavailable == ["xgboost"]
+
+
+def _completion(content, finish_reason):
+    message = SimpleNamespace(content=content)
+    return SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason=finish_reason)])
+
+
+class _FakeClient:
+    def __init__(self, response):
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=lambda **kwargs: response))
+
+
+def test_reasoning_model_out_of_tokens_is_a_typed_failure_not_an_empty_batch(monkeypatch):
+    provider = DeepSeekProvider(api_key="key")
+    monkeypatch.setattr(provider, "_get_client", lambda: _FakeClient(_completion(None, "length")))
+    guarded = GuardedProvider(provider, role=PRIMARY)
+    with pytest.raises(ProviderCallError) as caught:
+        guarded.generate("s", "u", max_tokens=8192)
+    assert caught.value.kind == "truncated" and not caught.value.retryable
+    assert "llm.max_tokens" in str(caught.value)
+
+
+def test_partially_truncated_answer_is_kept(monkeypatch, caplog):
+    provider = DeepSeekProvider(api_key="key")
+    monkeypatch.setattr(provider, "_get_client", lambda: _FakeClient(_completion("a: Neg($close)", "length")))
+    assert provider.generate("s", "u") == "a: Neg($close)"
+    assert "truncated" in caplog.text

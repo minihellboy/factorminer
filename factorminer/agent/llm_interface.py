@@ -36,6 +36,29 @@ class MissingAPIKeyError(ValueError):
     """Raised when a non-mock provider is used without a configured API key."""
 
 
+class TruncatedResponseError(RuntimeError):
+    """The model hit its output-token limit before writing any answer text."""
+
+
+def _chat_completion_text(response: Any, *, provider: str, max_tokens: int) -> str:
+    """Return a chat completion's text, refusing silent empty truncations.
+
+    Reasoning models spend ``max_tokens`` on hidden reasoning first; when that
+    exhausts the limit the answer is empty. Returning ``""`` would look like a
+    model that proposed nothing, so it is raised as a typed failure instead.
+    """
+    choice = response.choices[0]
+    text = choice.message.content or ""
+    if getattr(choice, "finish_reason", None) == "length":
+        if not text.strip():
+            raise TruncatedResponseError(
+                f"{provider} used all {max_tokens} output tokens before answering; "
+                "raise llm.max_tokens (reasoning models need room for hidden reasoning)"
+            )
+        logger.warning("%s response truncated at %d output tokens", provider, max_tokens)
+    return text
+
+
 class LLMProvider(ABC):
     """Abstract base for LLM text-generation providers."""
 
@@ -201,7 +224,7 @@ class OpenAIProvider(LLMProvider):
             "prompt_cache_key" in kwargs,
         )
         response = client.chat.completions.create(**kwargs)
-        text = response.choices[0].message.content or ""
+        text = _chat_completion_text(response, provider=self.provider_name, max_tokens=max_tokens)
         logger.debug("OpenAI response: %d chars", len(text))
         return text
 
@@ -502,7 +525,7 @@ class OpenAICompatibleProvider(LLMProvider):
             self.timeout_s,
         )
         response = client.chat.completions.create(**kwargs)
-        text = response.choices[0].message.content or ""
+        text = _chat_completion_text(response, provider=self.provider_name, max_tokens=max_tokens)
         logger.debug("OpenAI-compatible response: %d chars", len(text))
         return text
 

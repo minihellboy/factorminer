@@ -90,11 +90,11 @@ def resolve_credential(role: str, provider: str, config: dict[str, Any]) -> Prov
 
 ERROR_KINDS = (
     "auth", "rate_limit", "timeout", "connection", "bad_request", "server",
-    "missing_dependency", "unknown",
+    "missing_dependency", "truncated", "unknown",
 )
 _RETRYABLE = frozenset({"rate_limit", "timeout", "connection", "server"})
 _NAME_KINDS = (
-    ("importerror", "missing_dependency"), ("modulenotfound", "missing_dependency"),
+    ("truncatedresponse", "truncated"), ("importerror", "missing_dependency"), ("modulenotfound", "missing_dependency"),
     ("authentication", "auth"), ("permissiondenied", "auth"), ("missingapikey", "auth"),
     ("unauthenticated", "auth"), ("ratelimit", "rate_limit"), ("resourceexhausted", "rate_limit"),
     ("timeout", "timeout"), ("deadlineexceeded", "timeout"), ("connection", "connection"),
