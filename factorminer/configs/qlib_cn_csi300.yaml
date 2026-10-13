@@ -1,0 +1,85 @@
+# Qlib CN daily benchmark profile (classic Qlib protocol).
+#
+# Matches the splits, label, and universe of Qlib's published
+# Alpha158/Alpha360 benchmarks so FactorMiner factors and Qlib models are
+# scored on the same rows. Build the panel with scripts/qlib_cn/export_panel.py;
+# it carries point-in-time CSI300 membership in `in_universe`.
+#
+#   label  Ref($close, -2) / Ref($close, -1) - 1   (close_to_close, delay 1, hold 1)
+#   train  2008-01-01 .. 2014-12-31
+#   valid  2015-01-01 .. 2016-12-31
+#   test   2017-01-01 .. 2020-08-01
+
+output_dir: "./output/qlib_cn_csi300"
+data_path: null
+
+mining:
+  target_library_size: 50
+  batch_size: 40
+  ic_threshold: 0.02
+  icir_threshold: 0.2
+  correlation_threshold: 0.5
+  replacement_ic_min: 0.05
+  replacement_ic_ratio: 1.3
+
+evaluation:
+  num_workers: 16
+  fast_screen_assets: 300
+  backend: "numpy"
+  signal_failure_policy: "reject"
+
+benchmark:
+  mode: "paper"
+  freeze_top_k: 40
+  freeze_universe: "CSI300"
+  report_universes: ["CSI300"]
+  baselines: ["alpha101_classic", "alpha101_adapted", "factor_miner"]
+  cost_bps: [0.0, 5.0, 10.0, 20.0]
+
+data:
+  market: "a_shares"
+  universe: "CSI300"
+  frequency: "1d"
+  features: ["$open", "$high", "$low", "$close", "$volume", "$amt", "$vwap", "$returns"]
+  train_period: ["2008-01-01", "2014-12-31"]
+  validation_period: ["2015-01-01", "2016-12-31"]
+  test_period: ["2017-01-01", "2020-08-01"]
+  targets:
+    - name: "qlib"
+      entry_delay_bars: 1
+      holding_bars: 1
+      price_pair: "close_to_close"
+      return_transform: "simple"
+  default_target: "qlib"
+  source_version: "chenditc/investment_data 2026-10-12"
+  availability: "bar_close"
+  universe_policy: "point_in_time"
+  adjustment_policy: "split_dividend_adjusted"
+
+# Formulas read adjusted price levels, as Qlib handlers do: no cross-sectional
+# z-scoring, winsorising, or peer-median filling of unlisted instruments.
+preprocess:
+  standardise: false
+  winsor_lower: 0.0
+  winsor_upper: 100.0
+  cross_fill_method: "none"
+  min_nonnan_ratio: 0.0
+
+research:
+  enabled: false
+
+phase2:
+  causal:
+    enabled: false
+  regime:
+    enabled: false
+  capacity:
+    enabled: false
+  significance:
+    enabled: false
+  debate:
+    enabled: false
+  auto_inventor:
+    enabled: false
+  helix:
+    enabled: false

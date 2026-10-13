@@ -104,6 +104,7 @@ available mining, analysis, benchmark, and data workflows.
 | [Research skills](docs/research-skills.md) | Compile, transfer, and inspect procedure memory |
 | [Reproducibility](docs/reproducibility.md) | Data, metrics, splits, and benchmarks |
 | [Evidence protocol](docs/evidence-protocol.md) | Inference, risk residualization, and cost diagnostics |
+| [Qlib CN benchmark](docs/qlib-cn-benchmark.md) | A-share panels, Qlib-conformant splits, and Alpha158 comparisons |
 | [Security](docs/security.md) | Input, model, credential, and MCP boundaries |
 | [Agent integration](integrations/factor-researcher/README.md) | Plugin, managed-agent, and MCP setup |
 
