@@ -612,7 +612,17 @@ def compute_batch_signals(
     if not trees:
         return
     batch = compile_batch(trees)
-    for index, value in batch.iter_outputs(data_dict, plan_executor(backend)):
+    executor = plan_executor(backend)
+    try:
+        yield from _finalized_outputs(batch, trees, data_dict, returns_shape,
+                                      signal_failure_policy, executor)
+    finally:
+        if executor is not None:
+            executor.release()
+
+
+def _finalized_outputs(batch, trees, data_dict, returns_shape, signal_failure_policy, executor):
+    for index, value in batch.iter_outputs(data_dict, executor):
         try:
             signals = _finalize_signals(
                 trees[index].to_string(), value, returns_shape, signal_failure_policy

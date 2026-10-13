@@ -40,6 +40,13 @@ _DEFAULT_BLOCK_ELEMENTS = 1 << 23
 _NAN = float("nan")
 
 
+def _device_full(exc: BaseException) -> bool:
+    """CUDA out-of-memory, from the caching allocator or the runtime itself."""
+    if torch is not None and isinstance(exc, torch.OutOfMemoryError):
+        return True
+    return "out of memory" in str(exc).lower()
+
+
 def torch_executor_available() -> bool:
     return torch is not None
 
@@ -72,7 +79,9 @@ class TorchPlanExecutor:
             raise KeyError(f"Feature '{name}' not found in data. Available: {sorted(data.keys())}")
         try:
             return self._upload(data[name])
-        except torch.OutOfMemoryError:
+        except (torch.OutOfMemoryError, RuntimeError) as exc:
+            if not _device_full(exc):
+                raise
             torch.cuda.empty_cache()
             return data[name].astype(np.float64, copy=False)  # consumers fall back to the host
 
@@ -80,7 +89,9 @@ class TorchPlanExecutor:
         for panel in data.values():
             try:
                 return torch.full(panel.shape, value, dtype=torch.float64, device=self.device)
-            except torch.OutOfMemoryError:
+            except (torch.OutOfMemoryError, RuntimeError) as exc:
+                if not _device_full(exc):
+                    raise
                 torch.cuda.empty_cache()
                 return np.full(panel.shape, value, dtype=np.float64)
         raise ValueError("Cannot evaluate ConstantNode with empty data dict.")
@@ -93,7 +104,9 @@ class TorchPlanExecutor:
             # An input left on the host by an earlier fallback moves back here.
             inputs = [self._to_device(v) if isinstance(v, np.ndarray) else v for v in inputs]
             return kernel(self, inputs, params)
-        except torch.OutOfMemoryError:
+        except (torch.OutOfMemoryError, RuntimeError) as exc:
+            if not _device_full(exc):
+                raise
             # Another process holds the device: release cached blocks and run
             # this step on the exact host path instead of failing the formula.
             torch.cuda.empty_cache()
@@ -106,9 +119,16 @@ class TorchPlanExecutor:
         result = _dispatch_operator(spec, host, params)
         try:
             return self._to_device(result)
-        except torch.OutOfMemoryError:
+        except (torch.OutOfMemoryError, RuntimeError) as exc:
+            if not _device_full(exc):
+                raise
             torch.cuda.empty_cache()
             return result  # stays on the host; later steps accept NumPy inputs
+
+    def release(self) -> None:
+        """Return cached device blocks so processes sharing the card fit."""
+        if self.device.type == "cuda":
+            torch.cuda.empty_cache()
 
     def from_numpy(self, array: np.ndarray) -> Any:
         return self._to_device(array)
