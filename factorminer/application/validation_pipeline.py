@@ -14,6 +14,7 @@ from factorminer.core.factor_library import FactorLibrary
 from factorminer.core.types import get_features
 from factorminer.evaluation.dependence_index import indexed_dependence_metric
 from factorminer.evaluation.metrics import compute_factor_stats
+from factorminer.evaluation.pipeline import coverage_ranked_subset
 from factorminer.evaluation.runtime import SignalComputationError, compute_tree_signals
 
 logger = logging.getLogger(__name__)
@@ -114,9 +115,11 @@ class ValidationPipeline:
         # Pre-compute the fast-screen asset subset indices
         M = returns.shape[0]
         if fast_screen_assets > 0 and fast_screen_assets < M:
-            rng = np.random.RandomState(0)
-            self._fast_indices = rng.choice(M, fast_screen_assets, replace=False)
-            self._fast_indices.sort()
+            ranked = coverage_ranked_subset(returns, fast_screen_assets)
+            if ranked is None:
+                rng = np.random.RandomState(0)
+                ranked = np.sort(rng.choice(M, fast_screen_assets, replace=False))
+            self._fast_indices = ranked
         else:
             self._fast_indices = np.arange(M)
 

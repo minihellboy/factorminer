@@ -186,19 +186,19 @@ def _evaluate_single_candidate_ic(
 # Validation Pipeline
 # ---------------------------------------------------------------------------
 
-def _fast_screen_subset(returns: np.ndarray, size: int) -> np.ndarray:
-    """Choose the assets used for Stage 1 screening.
+def coverage_ranked_subset(returns: np.ndarray, size: int) -> np.ndarray | None:
+    """Best-covered assets for Stage 1 screening, or ``None`` on dense panels.
 
-    Dense panels keep the historical seeded random draw. When target coverage
-    varies (point-in-time universes mask non-members, listings start late),
-    the best-covered assets are kept so the screen scores roughly as many
-    assets per period as the full evaluation would.
+    When target coverage varies (point-in-time universes mask non-members,
+    listings start late), a random subset would screen on few scored assets
+    per period; the best-covered assets are returned instead, ties broken by
+    a seeded permutation. Dense panels return ``None`` so callers keep their
+    historical random draw.
     """
-    rng = np.random.default_rng(42)
     coverage = np.isfinite(returns).sum(axis=1)
     if np.all(coverage == coverage[0]):
-        return rng.choice(returns.shape[0], size=size, replace=False)
-    tie_break = rng.permutation(returns.shape[0])
+        return None
+    tie_break = np.random.default_rng(42).permutation(returns.shape[0])
     order = np.lexsort((tie_break, -coverage))
     return np.sort(order[:size])
 
@@ -241,7 +241,11 @@ class ValidationPipeline:
         M, T = returns.shape
         # Pre-select a subset of assets for fast screening
         if config.fast_screen_assets < M:
-            self._fast_idx = _fast_screen_subset(returns, config.fast_screen_assets)
+            ranked = coverage_ranked_subset(returns, config.fast_screen_assets)
+            if ranked is None:
+                rng = np.random.default_rng(42)
+                ranked = rng.choice(M, size=config.fast_screen_assets, replace=False)
+            self._fast_idx = ranked
         else:
             self._fast_idx = np.arange(M)
 
