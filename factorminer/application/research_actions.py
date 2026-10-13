@@ -353,7 +353,7 @@ def discovery_dataset(dataset: Any) -> Any:
     if len(indices) <= purge + 3 or np.any(np.diff(indices) != 1):
         raise ValueError("Mining requires a contiguous train split with enough periods after target purging")
     indices = indices[:-purge]
-    return build_runtime_dataset_from_arrays(
+    discovery = build_runtime_dataset_from_arrays(
         {name: panel[:, indices] for name, panel in dataset.data_dict.items()},
         dataset.returns[:, indices],
         target_panels={name: panel[:, indices] for name, panel in dataset.target_panels.items()},
@@ -361,3 +361,6 @@ def discovery_dataset(dataset: Any) -> Any:
         split_indices={"train": np.arange(len(indices))},
         timestamps=dataset.timestamps[indices], asset_ids=dataset.asset_ids,
     )
+    # Keep preprocessing provenance so raw-price and z-scored campaigns stay distinguishable.
+    discovery.preprocessing = dict(getattr(dataset, "preprocessing", {}) or {})
+    return discovery

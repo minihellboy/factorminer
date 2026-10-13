@@ -887,6 +887,12 @@ def load_config(
             sections[section_name] = _build_phase2(raw)
         elif section_name == "research":
             sections[section_name] = _build_research(raw)
+        elif section_name == "preprocess":
+            # Typos here silently change every formula input, so reject them.
+            unknown = sorted(set(raw) - {f.name for f in fields(PreprocessConfig)})
+            if unknown:
+                raise ValueError(f"unknown preprocess settings: {unknown}")
+            sections[section_name] = _build_section(section_cls, raw)
         else:
             sections[section_name] = _build_section(section_cls, raw)
 
