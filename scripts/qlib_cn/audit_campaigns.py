@@ -10,9 +10,13 @@ Every candidate a campaign evaluated is in its tamper-evident trial ledger
 * each trial's Newey-West t of mean RankIC and two-sided p-value; Benjamini-
   Hochberg q-values over *all* trials, not just the admitted ones;
 * the effective number of independent trials (Bailey & Lopez de Prado
-  average-correlation estimate) and the cross-trial variance of per-period
-  Sharpe ratios, which set the Deflated Sharpe hurdle for each admitted
-  factor's oriented IC series;
+  average-correlation estimate) and two Deflated Sharpe hurdles for each
+  admitted factor's oriented IC series: ``dsr_null`` uses the null sampling
+  variance 1/(T-1) (does it beat the best of N noise-only trials?), ``dsr``
+  the observed cross-trial variance of signed per-period Sharpe ratios
+  (does it beat the best of N draws from this search's own spread, real
+  effects included? -- the strict reading, which a search whose trials
+  are mostly genuine but similar cannot pass by construction);
 * for marginal-admission campaigns, BH q-values of the partial-IC t over all
   trials that carry marginal statistics;
 * if ``evaluate_library.py`` scored the library (``<scores>/<campaign>/
@@ -88,8 +92,9 @@ def _audit(campaign: Path, scores: Path | None) -> dict:
     marginal_q = _bh(marginal_p)
 
     oos = {}
-    if scores is not None and (scores / campaign.name / "factors.csv").exists():
-        frame = pd.read_csv(scores / campaign.name / "factors.csv")
+    path = scores / campaign.name / "factors.csv" if scores is not None else None
+    if path is not None and path.exists() and path.stat().st_size > 1:
+        frame = pd.read_csv(path)
         for _, row in frame.iterrows():
             if isinstance(row.get("formula"), str) and pd.notna(row.get("test_rank_ic")):
                 oos[row["formula"]] = (float(row["test_rank_ic"]), float(row["test_hac_t"]))
@@ -105,8 +110,9 @@ def _audit(campaign: Path, scores: Path | None) -> dict:
             oriented = values * (1.0 if values.mean() >= 0 else -1.0)
             result = dsr.compute(factor["name"], oriented, n_trials=n_eff,
                                  trial_sharpe_variance=sr_variance)
+            null = dsr.compute(factor["name"], oriented, n_trials=n_eff)
             row.update(train_t=stats[key]["t"], q=q.get(key, 1.0), dsr_z=result.deflated_sharpe,
-                       dsr_p=result.p_value)
+                       dsr_p=result.p_value, dsr_null_p=null.p_value)
         if key in marginal_q:
             row["marginal_q"] = marginal_q[key]
         if factor["formula"] in oos:
@@ -125,14 +131,16 @@ def _audit(campaign: Path, scores: Path | None) -> dict:
         "average_trial_correlation": effective.average_pairwise_correlation if effective else None,
         "admitted": len(factors),
         "admitted_q_below_0.05": share(lambda r: r.get("q", 1) < 0.05, factors),
+        "trial_sharpe_sd": math.sqrt(sr_variance) if sr_variance is not None else None,
+        "admitted_dsr_null_p_below_0.05": share(lambda r: r.get("dsr_null_p", 1) < 0.05, factors),
         "admitted_dsr_p_below_0.05": share(lambda r: r.get("dsr_p", 1) < 0.05, factors),
         "admitted_marginal_q_below_0.05": share(lambda r: r.get("marginal_q", 1) < 0.05,
                                                 [r for r in factors if "marginal_q" in r]),
         "test_sign_held": share(lambda r: r["test_rank_ic"] > 0, scored),
-        "test_sign_held_dsr_pass": share(lambda r: r["test_rank_ic"] > 0,
-                                         [r for r in scored if r.get("dsr_p", 1) < 0.05]),
-        "test_sign_held_dsr_fail": share(lambda r: r["test_rank_ic"] > 0,
-                                         [r for r in scored if r.get("dsr_p", 1) >= 0.05]),
+        "test_sign_held_dsr_null_pass": share(lambda r: r["test_rank_ic"] > 0,
+                                              [r for r in scored if r.get("dsr_null_p", 1) < 0.05]),
+        "test_sign_held_dsr_null_fail": share(lambda r: r["test_rank_ic"] > 0,
+                                              [r for r in scored if r.get("dsr_null_p", 1) >= 0.05]),
         "test_mean_rank_ic": float(np.mean([r["test_rank_ic"] for r in scored])) if scored else math.nan,
     }
     return {"summary": summary, "factors": factors}
@@ -148,7 +156,7 @@ def main() -> None:
     if args.out:
         args.out.write_text(json.dumps(audits, indent=2) + "\n")
     keys = ("trials", "effective_trials", "admitted", "admitted_q_below_0.05",
-            "admitted_dsr_p_below_0.05", "admitted_marginal_q_below_0.05", "test_sign_held",
+            "admitted_dsr_null_p_below_0.05", "admitted_dsr_p_below_0.05", "admitted_marginal_q_below_0.05", "test_sign_held",
             "test_mean_rank_ic")
     print(pd.DataFrame([a["summary"] for a in audits]).set_index("campaign")[list(keys)]
           .round(3).to_string())

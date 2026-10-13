@@ -7,7 +7,10 @@ Run in the FactorMiner environment::
         --baseline factor_miner --out output/qlib_cn/csi300/classic/catalog_factor_miner
 
 ``--library factor_library.json`` scores a mined library instead of a built-in
-catalog; ``--backend gpu`` evaluates the formulas on CUDA. Each formula's sign is fixed on the train split; validation and test
+catalog; ``--backend gpu`` evaluates the formulas on CUDA. ``--marginal`` also
+reports, per split, each factor's partial RankIC beyond the 16 leading
+principal components of Alpha158 (``evaluation.marginal``), oriented by its
+train sign: whether what a factor adds to Alpha158 persists out of sample. Each formula's sign is fixed on the train split; validation and test
 metrics are signed RankIC under that sign, so a factor that flips out of
 sample scores negative rather than being credited by ``abs``. The equal-weight
 composite averages cross-sectional ranks of the oriented factors. Factor
@@ -28,13 +31,16 @@ import pandas as pd
 from factorminer.benchmark.datasets import _get_baseline_entries
 from factorminer.core.library_io import load_library
 from factorminer.core.parser import try_parse
+from factorminer.core.reference_catalogs import reference_catalog
 from factorminer.data.loader import load_market_data
 from factorminer.evaluation.evidence.inference import compute_hac_mean_test
+from factorminer.evaluation.marginal import MarginalBasis, MarginalConfig
 from factorminer.evaluation.metrics import compute_rank_ic
 from factorminer.evaluation.runtime import compute_batch_signals, load_runtime_dataset
 from factorminer.utils.config import load_config
 
 SPLITS = ("train", "validation", "test")
+MARGINAL_SPLITS = ("train", "test")
 
 
 def _formulas(args) -> list[tuple[str, str]]:
@@ -59,6 +65,40 @@ def _summary(ic: np.ndarray) -> dict[str, float]:
             "hac_t": float(hac.t_stat), "win_rate": float((finite > 0).mean()), "periods": int(finite.size)}
 
 
+def _marginal(dataset, signals: dict[str, np.ndarray], split_idx, backend: str):
+    """Per-split partial-IC statistics of each signal beyond Alpha158 PCs."""
+    trees = [try_parse(formula) for _, formula in reference_catalog("alpha158")]
+    trees = [tree for tree in trees if tree is not None]
+    returns = dataset.returns
+    stats: dict[str, dict[str, object]] = {name: {} for name in signals}
+    for split in MARGINAL_SPLITS:
+        masked = np.full_like(returns, np.nan)
+        masked[:, split_idx[split]] = returns[:, split_idx[split]]
+
+        def panels():
+            for _, panel, error in compute_batch_signals(
+                trees, dataset.data_dict, returns.shape, backend=backend
+            ):
+                if error is None and panel is not None:
+                    yield panel
+
+        basis = MarginalBasis(masked, panels(), MarginalConfig(min_excess_bps=None))
+        for name, signal in signals.items():
+            stats[name][split] = basis.evaluate(signal)
+    columns = {}
+    for name, by_split in stats.items():
+        train = by_split["train"]
+        sign = 1.0 if train.partial_ic >= 0 else -1.0
+        row = {}
+        for split, value in by_split.items():
+            oriented = sign * value.partial_ic
+            row[f"{split}_partial_ic"] = oriented
+            row[f"{split}_partial_t"] = float(np.sign(oriented) * value.partial_ic_t)
+            row[f"{split}_residual_share"] = value.residual_share
+        columns[name] = row
+    return columns
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("-c", "--config", required=True)
@@ -69,6 +109,8 @@ def main() -> None:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--no-export", action="store_true")
     parser.add_argument("--backend", default="numpy", help="evaluation backend: numpy or gpu")
+    parser.add_argument("--marginal", action="store_true",
+                        help="add partial RankIC beyond Alpha158 per split")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -109,16 +151,27 @@ def main() -> None:
             oriented.append(direction * _column_ranks(signal))
             values[name] = signal
 
-    frame = pd.DataFrame(rows)
     args.out.mkdir(parents=True, exist_ok=True)
-    frame.to_csv(args.out / "factors.csv", index=False)
     if not oriented:
+        frame = pd.DataFrame(rows)
+        frame.to_csv(args.out / "factors.csv", index=False)
         errors = frame.get("error", pd.Series(dtype=object)).dropna()
         raise SystemExit(f"no formula evaluated; first errors: {errors.head(3).tolist()}")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         composite = np.nanmean(np.stack(oriented), axis=0)
     composite_ic = compute_rank_ic(composite, returns)
+    marginal = {}
+    if args.marginal:
+        with warnings.catch_warnings(), np.errstate(all="ignore"):
+            warnings.simplefilter("ignore")
+            marginal = _marginal(dataset, {**values, "__composite__": composite}, split_idx,
+                                 args.backend)
+        for row in rows:
+            row.update(marginal.get(row["name"], {}))
+
+    frame = pd.DataFrame(rows)
+    frame.to_csv(args.out / "factors.csv", index=False)
     scored = frame.dropna(subset=["test_rank_ic"]) if "test_rank_ic" in frame else frame
     report = {
         "source": str(args.library) if args.library else args.baseline,
@@ -132,6 +185,17 @@ def main() -> None:
             "share_hac_t_gt_2": float((scored["test_hac_t"] > 2).mean()),
         },
     }
+    if marginal:
+        composite_marginal = marginal.pop("__composite__")
+        partial = pd.DataFrame.from_dict(marginal, orient="index")
+        report["marginal_vs_alpha158"] = {
+            "composite": composite_marginal,
+            "mean_train_partial_ic": float(partial["train_partial_ic"].mean()),
+            "mean_test_partial_ic": float(partial["test_partial_ic"].mean()),
+            "share_test_partial_sign_held": float((partial["test_partial_ic"] > 0).mean()),
+            "share_test_partial_t_gt_2": float((partial["test_partial_t"] > 2).mean()),
+            "median_test_residual_share": float(partial["test_residual_share"].median()),
+        }
     (args.out / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
 

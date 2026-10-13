@@ -11,7 +11,11 @@ externally computed factor values (``datetime, instrument, <factor columns>``)
 with the same label, processors, splits, and backtest, so a FactorMiner library
 is compared with Alpha158/Alpha360 under one protocol. ``--handler
 alpha158_plus`` appends those factors to Alpha158's features to measure their
-incremental value.
+incremental value. ``--robust`` gives the Alpha158 handlers the factor
+handler's processors (train-fit robust z-score and zero fill of features,
+cross-sectional rank of the label) instead of Qlib's benchmark default (raw
+features, z-scored label): a stronger Alpha158 + LightGBM baseline to measure
+lift against.
 
 Model hyperparameters, processors, and the TopK-dropout backtest follow Qlib's
 ``examples/benchmarks`` workflow configs. Signal metrics are computed against
@@ -55,10 +59,10 @@ LGB_PARAMS = {
 }
 
 
-def _processors(handler: str) -> tuple[list, list]:
+def _processors(handler: str, robust_features: bool = False) -> tuple[list, list]:
     """Qlib benchmark processors: (infer, learn)."""
     label_norm = {"class": "CSRankNorm", "kwargs": {"fields_group": "label"}}
-    if handler == "alpha158":
+    if handler == "alpha158" and not robust_features:
         return [], [{"class": "DropnaLabel"}, {"class": "CSZScoreNorm", "kwargs": {"fields_group": "label"}}]
     robust = [{"class": "RobustZScoreNorm", "kwargs": {"fields_group": "feature", "clip_outlier": True}},
               {"class": "Fillna", "kwargs": {"fields_group": "feature"}}]
@@ -91,7 +95,8 @@ def _handler(args, split) -> object:
     from qlib.contrib.data.handler import Alpha158, Alpha360
     from qlib.data import D
 
-    infer, learn = _processors("alpha158" if args.handler == "alpha158_plus" else args.handler)
+    infer, learn = _processors("alpha158" if args.handler == "alpha158_plus" else args.handler,
+                               robust_features=args.robust)
     fit = {"fit_start_time": split["start"], "fit_end_time": split["fit_end"]}
     infer = [dict(p, kwargs={**p.get("kwargs", {}), **fit}) if p["class"] == "RobustZScoreNorm" else p
              for p in infer]
@@ -167,6 +172,8 @@ def main() -> None:
     parser.add_argument("--handler", choices=["alpha158", "alpha360", "factors", "alpha158_plus"],
                         required=True)
     parser.add_argument("--factors", type=Path, default=None)
+    parser.add_argument("--robust", action="store_true",
+                        help="robust feature/rank label processors for the Alpha158 handlers")
     parser.add_argument("--model", choices=["lgb", "linear"], default="lgb")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out", type=Path, required=True)
@@ -208,7 +215,7 @@ def main() -> None:
     pred.rename("score").to_frame().reset_index().to_parquet(args.out / "predictions.parquet", index=False)
     (args.out / "metrics.json").write_text(json.dumps({
         "universe": args.universe, "protocol": args.protocol, "split": split,
-        "handler": args.handler, "model": args.model, "seed": args.seed,
+        "handler": args.handler, "robust": args.robust, "model": args.model, "seed": args.seed,
         "label": LABEL[0], "lgb_params": LGB_PARAMS if args.model == "lgb" else None,
         "qlib_version": qlib.__version__, "metrics": metrics,
         "factors_file": str(args.factors) if args.factors else None,
