@@ -109,11 +109,16 @@ def main() -> None:
             oriented.append(direction * _column_ranks(signal))
             values[name] = signal
 
+    frame = pd.DataFrame(rows)
+    args.out.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(args.out / "factors.csv", index=False)
+    if not oriented:
+        errors = frame.get("error", pd.Series(dtype=object)).dropna()
+        raise SystemExit(f"no formula evaluated; first errors: {errors.head(3).tolist()}")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         composite = np.nanmean(np.stack(oriented), axis=0)
     composite_ic = compute_rank_ic(composite, returns)
-    frame = pd.DataFrame(rows)
     scored = frame.dropna(subset=["test_rank_ic"]) if "test_rank_ic" in frame else frame
     report = {
         "source": str(args.library) if args.library else args.baseline,
@@ -127,8 +132,6 @@ def main() -> None:
             "share_hac_t_gt_2": float((scored["test_hac_t"] > 2).mean()),
         },
     }
-    args.out.mkdir(parents=True, exist_ok=True)
-    frame.to_csv(args.out / "factors.csv", index=False)
     (args.out / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
 

@@ -143,3 +143,23 @@ def test_plan_executor_selection(monkeypatch):
     monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
     with pytest.raises(RuntimeError, match="requires a CUDA device"):
         runtime.plan_executor("gpu")
+
+
+def test_device_out_of_memory_falls_back_to_the_exact_host_path(monkeypatch, inputs):
+    from factorminer.operators import torch_executor
+
+    executor = TorchPlanExecutor(DEVICE)
+    real = torch_executor._KERNELS["Mean"]
+
+    def exhausted(*args, **kwargs):
+        raise torch.OutOfMemoryError("simulated: device held by another process")
+
+    monkeypatch.setitem(torch_executor._KERNELS, "Mean", exhausted)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: None)
+    data = {"$close": inputs[0]}
+    plan = compile_batch([parse("CsRank(Sub($close, Mean($close, 10)))")])
+    (_, value), = plan.iter_outputs(data, executor)
+    (_, expected), = plan.iter_outputs(data)
+    np.testing.assert_array_equal(value, expected)
+    assert executor.host_fallbacks == 1
+    monkeypatch.setitem(torch_executor._KERNELS, "Mean", real)

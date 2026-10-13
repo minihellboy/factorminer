@@ -34,7 +34,9 @@ try:
 except ImportError:  # pragma: no cover - exercised only without the gpu extra
     torch = None  # type: ignore[assignment]
 
-_DEFAULT_BLOCK_ELEMENTS = 1 << 24
+# Window cells per unfolded block: ~64 MiB per float64 temporary, so several
+# campaigns can share one device.
+_DEFAULT_BLOCK_ELEMENTS = 1 << 23
 _NAN = float("nan")
 
 
@@ -61,6 +63,7 @@ class TorchPlanExecutor:
         self.block_elements = int(block_elements)
         self._uploads: dict[int, tuple[np.ndarray, Any]] = {}
         self._lock = threading.Lock()
+        self.host_fallbacks = 0  # steps run on the host after a device OOM
 
     # -- executor protocol ---------------------------------------------------
 
@@ -78,11 +81,26 @@ class TorchPlanExecutor:
         kernel = _KERNELS.get(spec.name)
         if kernel is None:
             return self._host_fallback(spec, inputs, params)
-        return kernel(self, inputs, params)
+        try:
+            # An input left on the host by an earlier fallback moves back here.
+            inputs = [self._to_device(v) if isinstance(v, np.ndarray) else v for v in inputs]
+            return kernel(self, inputs, params)
+        except torch.OutOfMemoryError:
+            # Another process holds the device: release cached blocks and run
+            # this step on the exact host path instead of failing the formula.
+            torch.cuda.empty_cache()
+            with self._lock:
+                self.host_fallbacks += 1
+            return self._host_fallback(spec, inputs, params)
 
     def _host_fallback(self, spec: OperatorSpec, inputs: list[Any], params: dict[str, float]) -> Any:
         host = [self.to_numpy(value) for value in inputs]
-        return self._to_device(_dispatch_operator(spec, host, params))
+        result = _dispatch_operator(spec, host, params)
+        try:
+            return self._to_device(result)
+        except torch.OutOfMemoryError:
+            torch.cuda.empty_cache()
+            return result  # stays on the host; later steps accept NumPy inputs
 
     def from_numpy(self, array: np.ndarray) -> Any:
         return self._to_device(array)
@@ -91,6 +109,8 @@ class TorchPlanExecutor:
         """A host float64 copy the caller owns."""
         if isinstance(value, np.ndarray):
             return np.array(value, dtype=np.float64, copy=True)
+        if not hasattr(value, "detach"):
+            raise TypeError(f"unexpected step value {type(value).__name__}")
         result: np.ndarray = value.detach().to("cpu", torch.float64).numpy()
         return result
 
