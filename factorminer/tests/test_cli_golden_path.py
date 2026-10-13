@@ -15,15 +15,10 @@ from factorminer.utils.config import load_config
 def _tiny_raw_panel() -> pd.DataFrame:
     rows = []
     for asset_id, base in [("A", 10.0), ("B", 20.0)]:
+        # Eight train bars leave enough periods after mining's target purge.
         for idx, ts in enumerate(
-            [
-                "2024-01-02 09:30:00",
-                "2024-01-02 09:40:00",
-                "2024-01-02 09:50:00",
-                "2025-01-02 09:30:00",
-                "2025-01-02 09:40:00",
-                "2025-01-02 09:50:00",
-            ]
+            [f"2024-01-02 09:{minute:02d}:00" for minute in range(30, 62, 4)]
+            + [f"2025-01-02 09:{minute:02d}:00" for minute in range(30, 45, 5)]
         ):
             open_px = base + idx * 0.1
             close_px = open_px + (0.05 if asset_id == "A" else -0.03) + idx * 0.01

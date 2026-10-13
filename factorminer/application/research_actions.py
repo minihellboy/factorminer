@@ -340,14 +340,18 @@ def build_research_action_service(loop: Any) -> ResearchActionService | None:
 
 
 def discovery_dataset(dataset: Any) -> Any:
-    """Provide CLI action research only the configured, horizon-purged train panel."""
+    """Restrict mining to the configured train split, purged of forward-target overlap.
+
+    Every mining entry point uses this so admission never scores a candidate on
+    validation or test periods that are later used for selection or reporting.
+    """
     from factorminer.evaluation.runtime import build_runtime_dataset_from_arrays
 
     indices = dataset.get_split("train").indices
     purge = max((spec.entry_delay_bars + spec.holding_bars
                  for spec in dataset.target_specs.values()), default=1)
     if len(indices) <= purge + 3 or np.any(np.diff(indices) != 1):
-        raise ValueError("Research actions require a contiguous train split with enough periods after target purging")
+        raise ValueError("Mining requires a contiguous train split with enough periods after target purging")
     indices = indices[:-purge]
     return build_runtime_dataset_from_arrays(
         {name: panel[:, indices] for name, panel in dataset.data_dict.items()},

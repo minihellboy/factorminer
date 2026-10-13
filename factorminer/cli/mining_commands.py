@@ -143,9 +143,10 @@ def mine(
 
     try:
         dataset = _app._load_runtime_dataset_for_analysis(cfg, data_path, mock)
-        if cfg.research.planner.enabled:
-            from factorminer.application.research_actions import discovery_dataset
-            dataset = discovery_dataset(dataset)
+        # Mining sees only the horizon-purged train split; validation and test
+        # periods stay held out for selection and reporting.
+        from factorminer.application.research_actions import discovery_dataset
+        dataset = discovery_dataset(dataset)
     except Exception as exc:
         click.echo(f"Error loading data: {exc}")
         raise click.Abort() from exc
@@ -266,9 +267,10 @@ def helix(
         click.echo(f"  Resuming from: {resume}")
     try:
         dataset = _app._load_runtime_dataset_for_analysis(cfg, data_path, mock)
-        if cfg.research.planner.enabled:
-            from factorminer.application.research_actions import discovery_dataset
-            dataset = discovery_dataset(dataset)
+        # Mining sees only the horizon-purged train split; validation and test
+        # periods stay held out for selection and reporting.
+        from factorminer.application.research_actions import discovery_dataset
+        dataset = discovery_dataset(dataset)
     except Exception as exc:
         click.echo(f"Error loading data: {exc}")
         raise click.Abort() from exc

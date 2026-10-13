@@ -66,8 +66,8 @@ uv run --env-file .env factorminer \
   -o output/deepseek-research mine --data data/binance_crypto_5m.csv
 ```
 
-The bundled data is a workflow sample. The action lane uses the configured
-training split and purges forward-target overlap. Local mining resumes in the
+The bundled data is a workflow sample. Mining uses only the configured training
+split and purges forward-target overlap. Local mining resumes in the
 same output directory and defaults to no iteration ceiling or model-call/wall-time
 quota. A positive `-n` sets a total campaign iteration boundary for experiments.
 See [research actions](docs/research-actions.md) and

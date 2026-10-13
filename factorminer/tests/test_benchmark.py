@@ -32,6 +32,7 @@ from factorminer.cli import main
 from factorminer.core.factor_library import Factor, FactorLibrary
 from factorminer.core.library_io import save_library
 from factorminer.core.session import MiningSession
+from factorminer.data.tensor_builder import TargetSpec
 from factorminer.evaluation.runtime import DatasetSplit, EvaluationDataset, FactorEvaluationArtifact
 from factorminer.utils.config import load_config
 from scripts import run_phase2_benchmark as phase2_script
@@ -612,35 +613,35 @@ def test_markdown_artifacts_use_expected_paths(tmp_path):
 
 
 def _runtime_dataset_stub():
-    data_tensor = np.ones((2, 6, 8), dtype=np.float64)
-    returns = np.array(
-        [
-            [0.01, 0.02, 0.01, 0.03, 0.02, 0.01],
-            [0.02, 0.01, 0.03, 0.02, 0.01, 0.02],
-        ],
-        dtype=np.float64,
-    )
+    # Eight train periods survive the two-bar target purge applied before mining.
+    periods, train_periods = 12, 8
+    data_tensor = np.ones((2, periods, 8), dtype=np.float64)
+    rng = np.random.default_rng(0)
+    returns = rng.normal(0.01, 0.01, size=(2, periods))
+    timestamps = np.arange(periods)
     splits = {
         "train": SimpleNamespace(
-            indices=np.array([0, 1, 2]),
-            returns=returns[:, :3],
-            timestamps=np.arange(3),
+            indices=np.arange(train_periods),
+            returns=returns[:, :train_periods],
+            timestamps=timestamps[:train_periods],
         ),
         "test": SimpleNamespace(
-            indices=np.array([3, 4, 5]),
-            returns=returns[:, 3:],
-            timestamps=np.arange(3, 6),
+            indices=np.arange(train_periods, periods),
+            returns=returns[:, train_periods:],
+            timestamps=timestamps[train_periods:],
         ),
         "full": SimpleNamespace(
-            indices=np.arange(6),
+            indices=np.arange(periods),
             returns=returns,
-            timestamps=np.arange(6),
+            timestamps=timestamps,
         ),
     }
 
     return SimpleNamespace(
         data_tensor=data_tensor,
         returns=returns,
+        timestamps=timestamps,
+        asset_ids=np.array(["A", "B"]),
         data_dict={
             "$open": data_tensor[:, :, 0],
             "$high": data_tensor[:, :, 1],
@@ -652,7 +653,8 @@ def _runtime_dataset_stub():
             "$returns": data_tensor[:, :, 7],
         },
         target_panels={"paper": returns},
-        target_specs={"paper": SimpleNamespace(holding_bars=1)},
+        target_specs={"paper": TargetSpec(name="paper", entry_delay_bars=1, holding_bars=1)},
+        default_target="paper",
         get_split=lambda name: splits[name],
     )
 
@@ -705,12 +707,16 @@ def test_table1_runtime_methods_instantiate_live_loops(monkeypatch, tmp_path):
         },
     )
 
+    seen_periods = []
+
     def _fake_ralph_run(self, *args, **kwargs):
         calls.append("ralph")
+        seen_periods.append(self.returns.shape[1])
         return _single_factor_library()
 
     def _fake_helix_run(self, *args, **kwargs):
         calls.append("helix")
+        seen_periods.append(self.returns.shape[1])
         return _single_factor_library()
 
     monkeypatch.setattr("factorminer.core.ralph_loop.RalphLoop.run", _fake_ralph_run)
@@ -725,6 +731,8 @@ def test_table1_runtime_methods_instantiate_live_loops(monkeypatch, tmp_path):
     )
 
     assert calls == ["ralph", "helix"]
+    # Loops mine only the 8 train periods minus the 2-bar target purge.
+    assert seen_periods == [6, 6]
     assert payload["ralph_loop"]["provenance"]["kind"] == "runtime_loop"
     assert payload["helix_phase2"]["provenance"]["kind"] == "runtime_loop"
 
