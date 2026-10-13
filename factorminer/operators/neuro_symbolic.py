@@ -654,7 +654,7 @@ def _build_symbolic_candidates(data: dict[str, np.ndarray]) -> dict[str, np.ndar
     Returns a dict mapping formula string -> (M, T) array.
     """
     # Import operators lazily to avoid circular imports
-    from factorminer.core.expression_tree import (  # type: ignore[attr-defined]  # type: ignore[attr-defined]
+    from factorminer.core.expression_tree import (  # type: ignore[attr-defined]
         _ema,
         _rolling_apply,
         _ts_mean,
