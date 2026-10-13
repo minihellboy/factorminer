@@ -70,11 +70,19 @@ class TorchPlanExecutor:
     def leaf(self, name: str, data: Mapping[str, np.ndarray]) -> Any:
         if name not in data:
             raise KeyError(f"Feature '{name}' not found in data. Available: {sorted(data.keys())}")
-        return self._upload(data[name])
+        try:
+            return self._upload(data[name])
+        except torch.OutOfMemoryError:
+            torch.cuda.empty_cache()
+            return data[name].astype(np.float64, copy=False)  # consumers fall back to the host
 
     def constant(self, value: float, data: Mapping[str, np.ndarray]) -> Any:
         for panel in data.values():
-            return torch.full(panel.shape, value, dtype=torch.float64, device=self.device)
+            try:
+                return torch.full(panel.shape, value, dtype=torch.float64, device=self.device)
+            except torch.OutOfMemoryError:
+                torch.cuda.empty_cache()
+                return np.full(panel.shape, value, dtype=np.float64)
         raise ValueError("Cannot evaluate ConstantNode with empty data dict.")
 
     def operator(self, spec: OperatorSpec, inputs: list[Any], params: dict[str, float]) -> Any:

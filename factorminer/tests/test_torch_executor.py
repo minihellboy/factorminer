@@ -163,3 +163,19 @@ def test_device_out_of_memory_falls_back_to_the_exact_host_path(monkeypatch, inp
     np.testing.assert_array_equal(value, expected)
     assert executor.host_fallbacks == 1
     monkeypatch.setitem(torch_executor._KERNELS, "Mean", real)
+
+
+def test_leaves_stay_on_the_host_when_the_device_is_full(monkeypatch, inputs):
+    executor = TorchPlanExecutor(DEVICE)
+
+    def full(*args, **kwargs):
+        raise torch.OutOfMemoryError("simulated")
+
+    monkeypatch.setattr(executor, "_upload", full)
+    monkeypatch.setattr(executor, "_to_device", full)
+    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: None)
+    data = {"$close": inputs[0]}
+    plan = compile_batch([parse("Add(CsRank(Mean($close, 5)), 1)")])
+    (_, value), = plan.iter_outputs(data, executor)
+    (_, expected), = plan.iter_outputs(data)
+    np.testing.assert_array_equal(value, expected)
