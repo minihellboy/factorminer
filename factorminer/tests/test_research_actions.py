@@ -252,6 +252,25 @@ def test_delay_challenge_recomputes_and_rejects_sign_reversal_on_identical_suppo
     assert loop.library.size == 0
 
 
+def test_delay_challenge_records_an_evaluation_failure_as_inconclusive(tmp_path):
+    loop = make_loop(tmp_path)
+    service = loop.research_actions
+    payload = IterationPayload(iteration=1, batch_size=1)
+    decision = plan(service.planner)
+    service.ledger.begin(decision)
+    service.active = decision
+    payload.research_action = decision
+
+    def compute(**kwargs):
+        raise RuntimeError("CUDA error: out of memory")
+
+    loop.evaluation_kernel.compute_signals = compute
+    service.challenge(payload)
+    result = payload.stage_metrics["research_challenge"]
+    assert result["status"] == "inconclusive"
+    assert "out of memory" in result["reason"]
+
+
 @pytest.mark.parametrize("cls", [RalphLoop, HelixLoop])
 @pytest.mark.parametrize("torn", [False, True])
 def test_committed_action_recovers_even_without_a_readable_regular_checkpoint(tmp_path, cls, torn):

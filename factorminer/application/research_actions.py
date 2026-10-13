@@ -265,10 +265,20 @@ class ResearchActionService:
         for formula in (action["parent_formula"], action["formula"]):
             self._contact("delay_challenge", formula, payload.iteration, "dispatched")
             self.evaluations += 1
-            _, signals = kernel.compute_signals(
-                formula=formula, data_dict=data, returns_shape=self.loop.returns.shape,
-                signal_failure_policy="raise",
-            )
+            try:
+                _, signals = kernel.compute_signals(
+                    formula=formula, data_dict=data, returns_shape=self.loop.returns.shape,
+                    signal_failure_policy="raise",
+                )
+            except Exception as exc:  # noqa: BLE001 - recorded as an inconclusive challenge
+                # An evaluation failure (e.g. a full GPU) is not evidence about
+                # retention; record it rather than abort the campaign.
+                payload.stage_metrics["research_challenge"] = {
+                    "parent_formula": action["parent_formula"], "formula": action["formula"],
+                    "status": "inconclusive", "admission_changed": False,
+                    "reason": f"Signal computation failed: {type(exc).__name__}: {exc}"[:500],
+                }
+                return
             panels.append(signals)
         parent, delayed = panels
         mask = np.isfinite(parent) & np.isfinite(delayed) & np.isfinite(self.loop.returns)
