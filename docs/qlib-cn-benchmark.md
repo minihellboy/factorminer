@@ -52,6 +52,75 @@ FactorMiner target.
 Reproducing Qlib's published Alpha158 + LightGBM CSI300 result on this provider
 gives IC 0.0447 and RankIC 0.0484 for seed 0 (published: 0.0448 and 0.0469).
 
+## Missing data
+
+Almost every CSI300 instrument has gaps: listing after the panel start,
+suspensions, delistings. Since operator semantics `numpy-expression-v2`, a gap
+is never turned into a number. NaN denominators give NaN (not 0), empty
+windows and missing latest values give NaN, and EMA/DEMA/KAMA skip gaps
+instead of turning NaN for the rest of the series. Under v1, `EMA($close, 10)`
+was NaN on 98.7% of member cells.
+
+`scripts/qlib_cn/alpha158_conformance.py` compares FactorMiner's Alpha158
+transcription (`core.reference_catalogs.ALPHA158`) with Qlib's raw feature
+values. On CSI300 2008–2014 the median per-feature daily Spearman agreement is
+0.9999998, and 131 of 158 features agree above 0.99. The rest are
+IMAX/IMIN/IMXD. Qlib's `IdxMax` takes `argmax` without skipping NaN, and every
+disagreeing cell has a gap in its window.
+
+## Evaluation backend
+
+`evaluation.backend: gpu` evaluates compiled formula plans on CUDA
+(`operators.torch_executor`). Window sums follow NumPy's pairwise summation
+order, and scalar divisions are true IEEE divisions. Arithmetic, rolling
+moments, regressions, order statistics and ranks are therefore bit-identical
+to NumPy. Only `exp`/`log1p`/`tanh`/`pow` (hence Skew, Kurt) can differ in the
+last ulp. On the CSI300 panel, 178 of 180 catalog and mined formulas are
+bit-identical, and the GPU is 29x faster than the NumPy plan. A step that
+finds the device full runs on the host instead.
+
+## Marginal-value admission
+
+`admission.policy: marginal` admits a candidate only for what it adds beyond a
+basis made of the 16 leading principal components of Alpha158 (77% of its
+variance) plus the admitted library. On each day, members are
+rank-transformed, and the candidate and the target are residualized by ridge
+regression on the basis. The admission rules are:
+
+- Newey-West t of the mean partial rank IC ≥ 3, and |partial IC| ≥ 0.005;
+- residual variance share ≥ 0.2;
+- the residual's long-only TopkDropout book (top 1/6 of members, at most 10%
+  of the book replaced per day) has positive excess return.
+  `min_net_bps` additionally charges 20 bps round trip on its turnover.
+
+Candidates in a batch are admitted greedily, each judged against the earlier
+picks. `recent_periods` also requires the partial IC to hold over the end of
+the discovery window.
+
+Calibration on 175 catalog and mined factors (train to test, CSI300 classic):
+standalone train IC is mostly restated Alpha158 (median residual share 0.29).
+Factors with train partial-IC t ≥ 3 kept their sign out of sample in 97% of
+cases, and had 4x the test partial IC of the others.
+
+## Campaigns, walk-forward and multiplicity
+
+LLM mining is stochastic, so each arm runs three independent campaigns.
+`scripts/qlib_cn/arm_lift.py` scores each campaign's seed-ensembled
+`alpha158_plus` model against the seed-ensembled Alpha158 model, using the
+daily RankIC difference. An arm's lift is the mean campaign lift series
+(Newey-West t). `campaign_sd` shows campaign-to-campaign luck. Arms are compared
+on their lift difference.
+
+The `wf2018`, `wf2020`, `wf2022` and `wf2024` protocols have disjoint two-year
+test windows covering 2018–2025, each after seven training and two
+validation years.
+
+`scripts/qlib_cn/audit_campaigns.py` corrects admitted factors for the whole
+search recorded in each campaign's tamper-evident trial ledger. It reports BH
+q-values over all trials, and the Deflated Sharpe Ratio with the effective
+trial count and the cross-trial Sharpe variance (Bailey & López de Prado,
+2014, on the per-period scale).
+
 ## Running
 
 ```bash
@@ -106,8 +175,7 @@ release, panel SHA-256, splits, model parameters, and seeds.
 - Cross-sectional operators (`CsRank`, ...) rank over every exported
   instrument, including non-members on that date. Member ordering is preserved,
   but nonlinear combinations of ranks differ slightly from member-only ranking.
-- LLM-driven mining is not seeded end to end. Mining comparisons use one
-  campaign per arm, and differences should be read alongside the seed spread of
-  the downstream models.
+- LLM-driven mining is not seeded end to end. Arms run three campaigns each,
+  and `campaign_sd` should be read next to any arm difference.
 - The provider is a community rebuild, not Qlib's original Yahoo-sourced
   dataset. Absolute numbers differ slightly from Qlib's published tables.
