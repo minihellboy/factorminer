@@ -145,6 +145,36 @@ preprocess:
   features_to_standardise: [open, high, low, close, volume, amount, vwap, returns]
 
 # ---------------------------------------------------------------------------
+# Library admission rule
+# ---------------------------------------------------------------------------
+# "paper": the paper's IC/ICIR bar plus a pairwise-correlation cap.
+# "marginal": admit only value beyond a reference basis and the library.
+# Each period's cross-section is rank-transformed and residualized on the
+# leading principal components of the reference catalog plus the admitted
+# factors; a candidate needs a partial rank IC with Newey-West t >= min_t,
+# a residual variance share >= min_residual_share, and a positive long-only
+# TopkDropout book on its residual (top topk_fraction of members, at most
+# drop_fraction of the book replaced per day). min_net_bps also charges
+# cost_bps round trip on that book's turnover; recent_periods requires the
+# partial IC to hold over the discovery panel's last periods.
+admission:
+  policy: "paper"
+  reference: "alpha158"
+  reference_components: 16
+  ridge: 0.001
+  min_assets: 30
+  topk_fraction: 0.16666666666666666
+  drop_fraction: 0.1
+  cost_bps: 20.0
+  min_t: 3.0
+  min_partial_ic: 0.005
+  min_residual_share: 0.2
+  min_excess_bps: 0.0
+  min_net_bps: null
+  recent_periods: 0
+  min_recent_t: 1.0
+
+# ---------------------------------------------------------------------------
 # LLM provider settings
 # ---------------------------------------------------------------------------
 llm:
