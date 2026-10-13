@@ -13,6 +13,7 @@ from factorminer.benchmark.catalogs import (
     ALPHA101_CLASSIC,
     CandidateEntry,
     build_alpha101_adapted,
+    build_alpha158,
     build_alphaagent_style,
     build_alphaforge_style,
     build_factor_miner_catalog,
@@ -139,6 +140,8 @@ def _get_baseline_entries(
         return dedupe_entries(ALPHA101_CLASSIC)
     if baseline == "alpha101_adapted":
         return dedupe_entries(build_alpha101_adapted())
+    if baseline == "alpha158":
+        return dedupe_entries(build_alpha158())
     if baseline == "random_exploration":
         return dedupe_entries(build_random_exploration(seed))
     if baseline == "gplearn":

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from factorminer.core.library_io import PAPER_FACTORS
+from factorminer.core.reference_catalogs import ALPHA158
 
 
 @dataclass(frozen=True)
@@ -222,6 +223,11 @@ def entries_from_library(library) -> list[CandidateEntry]:
         CandidateEntry(name=factor.name, formula=factor.formula, category=factor.category)
         for factor in library.list_factors()
     ]
+
+
+def build_alpha158() -> list[CandidateEntry]:
+    """Qlib's Alpha158 features in the DSL (see ``core.reference_catalogs``)."""
+    return [CandidateEntry(f"alpha158_{name}", formula, "Alpha158") for name, formula in ALPHA158]
 
 
 def dedupe_entries(entries: Iterable[CandidateEntry]) -> list[CandidateEntry]:

@@ -7,7 +7,7 @@ Run in the FactorMiner environment::
         --baseline factor_miner --out output/qlib_cn/csi300/classic/catalog_factor_miner
 
 ``--library factor_library.json`` scores a mined library instead of a built-in
-catalog. Each formula's sign is fixed on the train split; validation and test
+catalog; ``--backend gpu`` evaluates the formulas on CUDA. Each formula's sign is fixed on the train split; validation and test
 metrics are signed RankIC under that sign, so a factor that flips out of
 sample scores negative rather than being credited by ``abs``. The equal-weight
 composite averages cross-sectional ranks of the oriented factors. Factor
@@ -31,7 +31,7 @@ from factorminer.core.parser import try_parse
 from factorminer.data.loader import load_market_data
 from factorminer.evaluation.evidence.inference import compute_hac_mean_test
 from factorminer.evaluation.metrics import compute_rank_ic
-from factorminer.evaluation.runtime import load_runtime_dataset
+from factorminer.evaluation.runtime import compute_batch_signals, load_runtime_dataset
 from factorminer.utils.config import load_config
 
 SPLITS = ("train", "validation", "test")
@@ -68,6 +68,7 @@ def main() -> None:
     source.add_argument("--library", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--no-export", action="store_true")
+    parser.add_argument("--backend", default="numpy", help="evaluation backend: numpy or gpu")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -77,28 +78,36 @@ def main() -> None:
     formulas = _formulas(args)
 
     rows, oriented, values = [], [], {}
+    parsed = []
     for name, formula in formulas:
         tree = try_parse(formula)
         if tree is None:
             rows.append({"name": name, "formula": formula, "error": "parse"})
-            continue
-        with warnings.catch_warnings(), np.errstate(all="ignore"):
-            warnings.simplefilter("ignore")
-            try:
-                signal = np.asarray(tree.evaluate(dataset.data_dict), dtype=np.float64)
-            except Exception as exc:  # noqa: BLE001 - recorded per formula
-                rows.append({"name": name, "formula": formula, "error": f"{type(exc).__name__}: {exc}"})
+        else:
+            parsed.append((name, formula, tree))
+    with warnings.catch_warnings(), np.errstate(all="ignore"):
+        warnings.simplefilter("ignore")
+        outcomes = compute_batch_signals(
+            [tree for _, _, tree in parsed], dataset.data_dict, returns.shape,
+            signal_failure_policy="raise", backend=args.backend,
+        )
+        for (name, formula, _), (_, computed, error) in zip(parsed, outcomes, strict=True):
+            if error is not None or computed is None:
+                rows.append({"name": name, "formula": formula,
+                             "error": f"{type(error).__name__}: {error}"})
                 continue
+            signal = np.array(computed, dtype=np.float64)
             signal[~np.isfinite(signal)] = np.nan
             ic = compute_rank_ic(signal, returns)
-        train = _summary(ic[split_idx["train"]])
-        direction = 1.0 if not np.isfinite(train["rank_ic"]) or train["rank_ic"] >= 0 else -1.0
-        row = {"name": name, "formula": formula, "direction": direction}
-        for split in SPLITS:
-            row.update({f"{split}_{k}": v for k, v in _summary(direction * ic[split_idx[split]]).items()})
-        rows.append(row)
-        oriented.append(direction * _column_ranks(signal))
-        values[name] = signal
+            train = _summary(ic[split_idx["train"]])
+            direction = 1.0 if not np.isfinite(train["rank_ic"]) or train["rank_ic"] >= 0 else -1.0
+            row = {"name": name, "formula": formula, "direction": direction}
+            for split in SPLITS:
+                row.update({f"{split}_{k}": v
+                            for k, v in _summary(direction * ic[split_idx[split]]).items()})
+            rows.append(row)
+            oriented.append(direction * _column_ranks(signal))
+            values[name] = signal
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
