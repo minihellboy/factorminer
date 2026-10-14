@@ -72,7 +72,7 @@ LABEL = ["Ref($close, -2)/Ref($close, -1) - 1"]
 LGB_PARAMS = {
     "loss": "mse", "colsample_bytree": 0.8879, "learning_rate": 0.2, "subsample": 0.8789,
     "lambda_l1": 205.6999, "lambda_l2": 580.9768, "max_depth": 8, "num_leaves": 210,
-    "num_threads": 20,
+    "num_threads": int(os.environ.get("LGB_THREADS", "20")),  # LGB_THREADS shares a machine
 }
 
 
