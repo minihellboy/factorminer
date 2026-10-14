@@ -205,3 +205,37 @@ def test_topk_dropout_never_sells_a_name_to_buy_a_worse_one():
 def test_invalid_marginal_settings_fail_config_validation():
     with pytest.raises(ValueError, match="topk_fraction"):
         load_config(overrides={"admission": {"policy": "marginal", "topk_fraction": 0.8}})
+
+
+def test_top_of_book_statistics_separate_head_from_tail_signal():
+    """A candidate that only orders the bottom of the cross-section has partial
+    IC but no top-of-book value (at its regression weight it only adds noise to
+    the top); one that orders the top has both."""
+    rng = np.random.default_rng(5)
+    reference = [rng.standard_normal((ASSETS, PERIODS)) for _ in range(3)]
+    base = reference[0]
+    novel = rng.standard_normal((ASSETS, PERIODS))
+    noise = rng.standard_normal((ASSETS, PERIODS))
+    rank = base.argsort(axis=0).argsort(axis=0) / (ASSETS - 1)
+    head, tail = rank > 2 / 3, rank < 1 / 3
+    returns = 0.01 * base + 0.01 * noise
+    config = MarginalConfig(reference_components=0, min_excess_bps=None, min_top_t=2.0,
+                            min_top_lift_t=2.0)
+    head_basis = MarginalBasis(returns + 0.02 * novel * head, reference, config)
+    tail_basis = MarginalBasis(returns + 0.02 * novel * tail, reference, config)
+
+    head_stats, tail_stats = head_basis.evaluate(novel), tail_basis.evaluate(novel)
+    assert head_stats.partial_ic_t > 5 and tail_stats.partial_ic_t > 5
+    assert head_stats.top_partial_ic > 0.1 and head_stats.top_partial_ic_t > 5
+    assert head_stats.top_lift_bps > 0 and head_stats.top_lift_t > 3
+    assert tail_stats.top_partial_ic_t < 3 and tail_stats.top_lift_bps < 0
+    assert passes_marginal_admission(head_stats, config)[0]
+    admitted, reason = passes_marginal_admission(tail_stats, config)
+    assert not admitted and "top lift" in reason
+
+
+def test_top_of_book_gates_are_off_by_default(basis, market):
+    stats = basis.evaluate(market.novel)
+    assert stats.top_lift_bps != 0.0
+    assert basis.config.min_top_t is None and basis.config.min_top_lift_t is None
+    assert passes_marginal_admission(stats, basis.config)[0]

@@ -15,7 +15,15 @@ the admitted library by ridge least squares, and reports
 * long-only economics of the oriented residual under the benchmark's
   TopkDropout rule (hold the top ``topk_fraction`` of members, replace at most
   ``drop_fraction`` of the book per day): excess return over the universe
-  mean, daily turnover, and the excess net of round-trip costs on it.
+  mean, daily turnover, and the excess net of round-trip costs on it;
+* top-of-book value, judged where a long-only book trades. A *base score*
+  is the basis's pooled ridge prediction of the target (one coefficient
+  vector over all periods). ``top_partial_ic`` is the partial IC restricted
+  to each period's *contention zone*, the best ``zone_fraction`` of members
+  by base score, where the book picks its names. ``top_lift_bps`` is how
+  much adding the candidate's residual to the base score, at its pooled
+  regression weight, changes the daily top-``topk_fraction`` spread (mean
+  return of the top names minus the period's mean).
 
 Ranks are average ranks among a period's members (finite targets) mapped to
 ``(-0.5, 0.5)``; a member without a value takes the neutral rank 0. Everything
@@ -50,6 +58,10 @@ class MarginalConfig:
     min_net_bps: float | None = None  # admission: daily book excess net of costs
     recent_periods: int = 0  # decay check over the panel's last periods; 0 disables
     min_recent_t: float = 1.0  # admission: same-sign partial IC t over recent_periods
+    zone_fraction: float = 1 / 3  # contention zone: best share of members by base score
+    min_top_t: float | None = None  # admission: same-sign partial IC t in the zone
+    min_top_lift_bps: float | None = None  # admission: top-spread lift over the base score
+    min_top_lift_t: float | None = None  # admission: Newey-West t of that lift
 
     def validate(self) -> None:
         if self.reference_components < 0:
@@ -64,6 +76,8 @@ class MarginalConfig:
             raise ValueError("min_assets must be >= 5")
         if self.recent_periods < 0:
             raise ValueError("recent_periods must be >= 0")
+        if not self.topk_fraction <= self.zone_fraction <= 1.0:
+            raise ValueError("zone_fraction must be in [topk_fraction, 1]")
 
 
 @dataclass(frozen=True)
@@ -83,6 +97,10 @@ class MarginalStats:
     basis_size: int
     recent_partial_ic: float = 0.0  # signed in the full-panel direction
     recent_partial_ic_t: float = 0.0
+    top_partial_ic: float = 0.0  # in the contention zone, signed in the full-panel direction
+    top_partial_ic_t: float = 0.0
+    top_lift_bps: float = 0.0  # daily top-spread change from adding the candidate
+    top_lift_t: float = 0.0
 
     def to_dict(self) -> dict[str, float]:
         return {key: float(value) for key, value in asdict(self).items()}
@@ -107,11 +125,18 @@ def passes_marginal_admission(stats: MarginalStats, config: MarginalConfig) -> t
         failures.append(
             f"recent partial IC t {stats.recent_partial_ic_t:.2f} < {config.min_recent_t:g}"
         )
+    if config.min_top_t is not None and not stats.top_partial_ic_t >= config.min_top_t:
+        failures.append(f"zone partial IC t {stats.top_partial_ic_t:.2f} < {config.min_top_t:g}")
+    if config.min_top_lift_bps is not None and not stats.top_lift_bps > config.min_top_lift_bps:
+        failures.append(f"top lift {stats.top_lift_bps:.2f} bps <= {config.min_top_lift_bps:g}")
+    if config.min_top_lift_t is not None and not stats.top_lift_t >= config.min_top_lift_t:
+        failures.append(f"top lift t {stats.top_lift_t:.2f} < {config.min_top_lift_t:g}")
     if failures:
         return False, "Marginal value: " + "; ".join(failures)
     return True, (
         f"Marginal value: partial IC {stats.partial_ic:+.4f} (t {stats.partial_ic_t:.2f}), "
-        f"residual share {stats.residual_share:.2f}, net {stats.top_net_bps:.2f} bps"
+        f"residual share {stats.residual_share:.2f}, net {stats.top_net_bps:.2f} bps, "
+        f"top lift {stats.top_lift_bps:+.2f} bps (t {stats.top_lift_t:.2f})"
     )
 
 
@@ -234,13 +259,39 @@ class MarginalBasis:
         if k == 0:
             self._chol = None
             self._y_resid = self._y
+            self._set_base_score(np.zeros(self._y.shape))
             return
         gram = np.einsum("pnk,pnj->pkj", self._basis, self._basis)
         scale = np.trace(gram, axis1=1, axis2=2) / k
         ridge = self.config.ridge * np.maximum(scale, 1e-12)
+        pooled = gram.sum(axis=0)
+        pooled[np.arange(k), np.arange(k)] += ridge.sum()
+        beta = np.linalg.solve(pooled, np.einsum("pnk,pn->k", self._basis, self._y))
         gram[:, np.arange(k), np.arange(k)] += ridge[:, None]
         self._chol = np.linalg.cholesky(gram)
         self._y_resid = self._residualize(self._y)
+        self._set_base_score(self._basis @ beta)
+
+    def _set_base_score(self, score: np.ndarray) -> None:
+        """Contention zone and top-book returns of the basis's pooled prediction."""
+        self._base_score = score
+        self._zone = self._top_mask(score, self.config.zone_fraction)
+        self._base_top = self._top_return(score)
+
+    def _top_mask(self, score: np.ndarray, fraction: float) -> np.ndarray:
+        """Members in each period's best ``fraction`` by ``score`` (ties: lower index)."""
+        ordered = np.argsort(np.where(self._active, -score, np.inf), axis=1, kind="stable")
+        position = np.empty_like(ordered)
+        np.put_along_axis(position, ordered, np.arange(ordered.shape[1])[None, :], axis=1)
+        size = np.maximum(1, np.rint(fraction * self._n)).astype(np.int64)
+        return np.asarray(self._active & (position < size[:, None]))
+
+    def _top_return(self, score: np.ndarray) -> np.ndarray:
+        """Mean raw return of each period's top-``topk_fraction`` names minus the mean."""
+        top = self._top_mask(score, self.config.topk_fraction)
+        returns = np.where(self._active, self._raw_returns, 0.0)
+        top_mean = (returns * top).sum(axis=1) / np.maximum(top.sum(axis=1), 1)
+        return np.asarray(top_mean - returns.sum(axis=1) / np.maximum(self._n, 1))
 
     def _residualize(self, values: np.ndarray) -> np.ndarray:
         if self._chol is None:
@@ -273,6 +324,7 @@ class MarginalBasis:
         hac = compute_hac_mean_test(series)
         direction = 1.0 if mean >= 0 else -1.0
         excess, turnover, net, net_t = self._bucket(direction * residual)
+        top_ic, top_t, lift, lift_t = self._top_of_book(residual, direction, usable)
         recent_ic = recent_t = 0.0
         if self.config.recent_periods and recent.sum() >= 3:
             tail = direction * series[recent]
@@ -293,7 +345,36 @@ class MarginalBasis:
             basis_size=self.size,
             recent_partial_ic=recent_ic,
             recent_partial_ic_t=recent_t,
+            top_partial_ic=top_ic,
+            top_partial_ic_t=top_t,
+            top_lift_bps=lift,
+            top_lift_t=lift_t,
         )
+
+    def _top_of_book(
+        self, residual: np.ndarray, direction: float, usable: np.ndarray
+    ) -> tuple[float, float, float, float]:
+        """Zone partial IC (mean, t) and top-spread lift (bps, t) of a residual."""
+        zone = self._zone
+        x = np.where(zone, residual, 0.0)
+        y = np.where(zone, self._y_resid, 0.0)
+        count = np.maximum(zone.sum(axis=1), 1)
+        x = np.where(zone, x - x.sum(axis=1, keepdims=True) / count[:, None], 0.0)
+        y = np.where(zone, y - y.sum(axis=1, keepdims=True) / count[:, None], 0.0)
+        den = np.sqrt(np.sum(x**2, axis=1) * np.sum(y**2, axis=1))
+        ok = usable & (den > 1e-12)
+        zone_series = direction * np.sum(x * y, axis=1)[ok] / den[ok]
+        # Pooled regression weight of the residual, as a linear model would fit it.
+        weight = float(np.sum(residual * self._y_resid) / max(np.sum(residual**2), 1e-300))
+        lift_series = (self._top_return(self._base_score + weight * residual) - self._base_top) * 1e4
+        out = []
+        for series in (zone_series, lift_series):
+            if series.size < 3:
+                out += [0.0, 0.0]
+                continue
+            t = compute_hac_mean_test(series).t_stat
+            out += [float(series.mean()), float(t) if np.isfinite(t) else 0.0]
+        return out[0], out[1], out[2], out[3]
 
     def _bucket(self, score: np.ndarray) -> tuple[float, float, float, float]:
         """TopkDropout book on ``score``: excess, turnover, net (bps/day), net t."""

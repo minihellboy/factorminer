@@ -296,3 +296,22 @@ def test_runtime_dataset_with_extra_feature_column():
     ds = load_runtime_dataset(raw, cfg)
     assert "$eps" in ds.data_dict
     assert ds.data_tensor.shape[2] == len(ds.data_dict) or ds.data_tensor.shape[2] >= 9
+
+
+def test_config_registers_extra_feature_leaves_with_descriptions():
+    """A config that lists non-default leaves registers them on load, so the
+    parser accepts them and the prompt describes them."""
+    reset_features()
+    try:
+        cfg = load_config(overrides={"data": {
+            "features": ["$close", "$volume", "$pe_ttm", "turnover"],
+            "feature_descriptions": {"$pe_ttm": "trailing twelve-month P/E",
+                                     "turnover": "daily turnover rate"},
+        }})
+        assert cfg.data.feature_descriptions["$pe_ttm"] == "trailing twelve-month P/E"
+        assert "$pe_ttm" in get_features() and "$turnover" in get_features()
+        assert parse("Div($close, $pe_ttm)").to_string() == "Div($close, $pe_ttm)"
+        listing = _format_feature_list()
+        assert "trailing twelve-month P/E" in listing and "daily turnover rate" in listing
+    finally:
+        reset_features()

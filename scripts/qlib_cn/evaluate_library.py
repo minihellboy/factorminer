@@ -7,7 +7,8 @@ Run in the FactorMiner environment::
         --baseline factor_miner --out output/qlib_cn/csi300/classic/catalog_factor_miner
 
 ``--library factor_library.json`` scores a mined library instead of a built-in
-catalog; ``--backend gpu`` evaluates the formulas on CUDA. ``--marginal`` also
+catalog (``--formulas`` a ``{"factors": [{"name", "formula"}]}`` file, such as
+``replay_admission.py`` writes); ``--backend gpu`` evaluates the formulas on CUDA. ``--marginal`` also
 reports, per split, each factor's partial RankIC beyond the 16 leading
 principal components of Alpha158 (``evaluation.marginal``), oriented by its
 train sign: whether what a factor adds to Alpha158 persists out of sample. Each formula's sign is fixed on the train split; validation and test
@@ -44,6 +45,8 @@ MARGINAL_SPLITS = ("train", "test")
 
 
 def _formulas(args) -> list[tuple[str, str]]:
+    if args.formulas:
+        return [(f["name"], f["formula"]) for f in json.loads(args.formulas.read_text())["factors"]]
     if args.library:
         library = load_library(str(args.library).removesuffix(".json"))
         return [(f.name or f"factor_{f.id}", f.formula) for f in library.list_factors()]
@@ -106,6 +109,7 @@ def main() -> None:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--baseline")
     source.add_argument("--library", type=Path)
+    source.add_argument("--formulas", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--no-export", action="store_true")
     parser.add_argument("--backend", default="numpy", help="evaluation backend: numpy or gpu")
@@ -174,7 +178,7 @@ def main() -> None:
     frame.to_csv(args.out / "factors.csv", index=False)
     scored = frame.dropna(subset=["test_rank_ic"]) if "test_rank_ic" in frame else frame
     report = {
-        "source": str(args.library) if args.library else args.baseline,
+        "source": str(args.library or args.formulas or args.baseline),
         "formulas": len(formulas), "evaluated": len(oriented),
         "failed": int(frame.get("error", pd.Series(dtype=object)).notna().sum()),
         "composite_equal_weight": {split: _summary(composite_ic[split_idx[split]]) for split in SPLITS},

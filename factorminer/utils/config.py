@@ -97,6 +97,11 @@ class DataConfig:
             "$volume", "$amt", "$vwap", "$returns",
         ]
     )
+    # Prompt descriptions of leaves beyond the OHLCV defaults (``"$pe_ttm":
+    # "trailing P/E"``). Any configured feature that is not a default leaf is
+    # registered on the DSL feature registry when the config loads, so the
+    # parser accepts it and the LLM prompt lists it.
+    feature_descriptions: dict[str, str] = field(default_factory=dict)
     train_period: list[str] = field(
         default_factory=lambda: ["2024-01-01", "2024-12-31"]
     )
@@ -725,8 +730,12 @@ class AdmissionConfig:
     variance share, and long-only TopkDropout economics of the residual (see
     ``evaluation.marginal``); with ``recent_periods`` the partial IC must also
     hold (``t >= min_recent_t``, same sign) over the discovery panel's last
-    periods. Candidates of one batch are admitted greedily, each judged
-    against the ones admitted before it.
+    periods. ``min_top_t`` / ``min_top_lift_bps`` / ``min_top_lift_t`` add
+    top-of-book gates: the partial IC inside the basis's contention zone (best
+    ``zone_fraction`` of members) and the change in the top-``topk_fraction``
+    spread when the candidate joins the basis's prediction. Candidates of one
+    batch are admitted greedily, each judged against the ones admitted before
+    it.
     """
 
     policy: str = "paper"
@@ -744,6 +753,10 @@ class AdmissionConfig:
     min_net_bps: float | None = None
     recent_periods: int = 0
     min_recent_t: float = 1.0
+    zone_fraction: float = 1 / 3
+    min_top_t: float | None = None
+    min_top_lift_bps: float | None = None
+    min_top_lift_t: float | None = None
 
     def validate(self) -> None:
         if self.policy not in ADMISSION_POLICIES:
@@ -959,4 +972,17 @@ def load_config(
 
     config = Config(**sections)
     config.validate()
+    _register_extra_features(config)
     return config
+
+
+def _register_extra_features(config: Config) -> None:
+    """Register configured non-default leaves (fundamentals, flows, ...) on the DSL."""
+    from factorminer.core.types import get_feature_set, normalize_feature_name, register_features
+
+    known = get_feature_set()
+    extras = [normalize_feature_name(f) for f in config.data.features]
+    extras = [f for f in extras if f not in known]
+    if extras:
+        descriptions = {normalize_feature_name(k): v for k, v in config.data.feature_descriptions.items()}
+        register_features(extras, descriptions=descriptions)
