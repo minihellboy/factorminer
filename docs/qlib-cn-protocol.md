@@ -76,6 +76,7 @@ registered).
 | Registration | Frozen | Books | Decision |
 | --- | --- | --- | --- |
 | `docs/registrations/csi300_h5_vs_h1.json` | 2026-10-15, provider to 2026-10-12, 6 boosters | `h5` (5-day training label) vs `h1` (incumbent), Alpha158 default processing, 3 seeds | 2027-10-15: paired NW(20) t > 0 confirms, < −2 refutes |
+| `docs/registrations/csi300_h5_vs_h1_7seeds.json` | 2026-10-15, provider to 2026-10-12, 14 boosters | same books with seeds 0–6 (primary prospective test; the 3-seed pair is reported alongside) | same rule |
 
 ## Prospective holdout
 
