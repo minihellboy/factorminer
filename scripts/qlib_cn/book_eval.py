@@ -47,11 +47,6 @@ day's mean) carries into a blend. ``--costs stamp2023`` scales each day's
 cost by 0.75 from 2023-08-28, when the sell-side stamp tax fell from 0.10% to
 0.05% (close cost 0.15% -> 0.10%; buys and sells are about equal in a
 TopkDropout book, so cost scales by (0.05+0.10)/(0.05+0.15)).
-``--hold-bonus tie,0.02`` adds books whose held names get a score bonus at
-each decision (``_hold_strategy``): ``tie`` keeps incumbents only within exact
-ties; a number b keeps them unless a new name ranks more than b (daily
-percentile) higher.
-
 Tied scores are broken by a stable pseudo-random key (``_untie``), so a
 backtest is reproducible; ``--tie-draws K`` averages each book's daily returns
 over K tie-breaking keys (the expected book under random tie-breaking) and
@@ -64,7 +59,6 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
-import itertools
 import json
 import math
 import sys
@@ -180,23 +174,22 @@ def _frame(report: pd.DataFrame) -> pd.DataFrame:
                          "turnover": report["turnover"]})
 
 
-def _simulate(scores: dict[str, pd.Series], universe: str, n_drop: int, sim: str, salt: int,
-              bonus: str = "0") -> pd.DataFrame:
+def _simulate(scores: dict[str, pd.Series], universe: str, n_drop: int, sim: str, salt: int) -> pd.DataFrame:
     if sim == "reset":
         return pd.concat([_frame(_backtest(scores[p], universe, PROTOCOLS[p], n_drop=n_drop, return_report=True,
-                                           tie_salt=salt, hold_bonus=bonus)[1]) for p in scores]).sort_index()
+                                           tie_salt=salt)[1]) for p in scores]).sort_index()
     spans = sorted(PROTOCOLS[p]["test"] for p in scores)
     score = pd.concat(scores.values()).sort_index()
     _, report = _backtest(score, universe, {"test": (spans[0][0], spans[-1][1])}, n_drop=n_drop,
-                          return_report=True, tie_salt=salt, hold_bonus=bonus)
+                          return_report=True, tie_salt=salt)
     return _frame(report)
 
 
 def _book(universe: str, windows: dict[str, str], patterns: dict[str, str], smooth: float, n_drop: int,
-          sim: str, draws: int = 1, bonus: str = "0") -> tuple[pd.DataFrame, pd.Series, dict[str, float]]:
+          sim: str, draws: int = 1) -> tuple[pd.DataFrame, pd.Series, dict[str, float]]:
     """Daily book returns over all windows, averaged over ``draws`` tie-breaking keys."""
     scores = {p: _signal(_runs(Path(root), patterns[p]), smooth) for p, root in windows.items()}
-    runs = [_simulate(scores, universe, n_drop, sim, salt, bonus) for salt in range(draws)]
+    runs = [_simulate(scores, universe, n_drop, sim, salt) for salt in range(draws)]
     frame = sum(runs) / draws
     score = pd.concat(scores.values()).sort_index()
     ties = {"tie_share": float(score.groupby(level="datetime").apply(lambda d: d.duplicated().mean()).mean()),
@@ -237,7 +230,6 @@ def main() -> None:
     parser.add_argument("--book", action="append", required=True, help="name=glob[,glob...]")
     parser.add_argument("--smooth", default="0", help="comma-separated EMA half-lives (0 = none)")
     parser.add_argument("--n-drop", default="5", help="comma-separated TopkDropout n_drop values")
-    parser.add_argument("--hold-bonus", default="0", help="comma-separated: 0, tie, or a percentile bonus")
     parser.add_argument("--select", action="append", default=[],
                         help="name=book,book,...: per window, the book with the best validation IR")
     parser.add_argument("--sim", choices=["continuous", "reset"], default="continuous")
@@ -280,16 +272,16 @@ def main() -> None:
     daily: dict[str, pd.DataFrame] = {}
     ties: dict[str, dict] = {}
     for name, patterns in per_book.items():
-        for h, n_drop, bonus in itertools.product(smooths, drops, args.hold_bonus.split(",")):
-            key = (name + (f"@ema{h:g}" if h else "") + (f"@drop{n_drop}" if n_drop != 5 else "")
-                   + (f"@hold{bonus}" if bonus != "0" else ""))
-            frame, score, ties[key] = _book(args.universe, windows, patterns, h, n_drop, args.sim,
-                                            args.tie_draws, bonus)
-            frame = frame.join(_daily_top(score, label).rename("top")).join(
-                _daily_ric(score, label).rename("ric"))
-            daily[key] = frame
-            assert daily[key].index.is_unique
-            print(key, json.dumps(_summary(daily[key])), flush=True)
+        for h in smooths:
+            for n_drop in drops:
+                key = name + (f"@ema{h:g}" if h else "") + (f"@drop{n_drop}" if n_drop != 5 else "")
+                frame, score, ties[key] = _book(args.universe, windows, patterns, h, n_drop, args.sim,
+                                                args.tie_draws)
+                frame = frame.join(_daily_top(score, label).rename("top")).join(
+                    _daily_ric(score, label).rename("ric"))
+                daily[key] = frame
+                assert daily[key].index.is_unique
+                print(key, json.dumps(_summary(daily[key])), flush=True)
 
     result = {"windows": list(windows), "books": books, "sim": args.sim, "combine": args.combine,
               "tie_draws": args.tie_draws,
