@@ -39,9 +39,17 @@ evaluated formulas, 500+ model fits.
   pairwise |t| < 1.5; campaign-to-campaign sd (0.0006–0.0019) matches the
   effect sizes.
 
-In progress: point-in-time fundamentals and industry features (Alpha158 +
-features fits; `+fq` mining campaigns), and training on 5- and 10-day labels
-to match the book's ~10-day holding period.
+- **Training on a 5-day label reaches the book.** With everything else
+  Qlib-default, `--horizon 5` raises the pooled after-cost IR from 1.26 to
+  1.52 on CSI300, 0.45 to 0.90 on CSI500 and −0.13 to 0.93 on CSI1000;
+  pooled over the three universes the paired t is 3.0 and the IR gain 0.78
+  (90% CI 0.35–1.24). The 10-day label and a validation-chosen horizon are
+  weaker. This is the adopted model; the prospective holdout from
+  2026-10-16 scores it against the 1-day incumbent.
+
+Dead ends this round: industry-neutral scores, more trees or lower learning
+rates, bagging, refitting on train+validation, fundamentals features, a
+holding bonus for incumbents.
 
 ## Data
 
@@ -371,11 +379,21 @@ Pooled 2018–2025 walk-forward. Baseline: tuned top-stopped LightGBM
   blend 1.41. Choosing the horizon on validation IR gives 1.04: validation
   picked h10 for wf2024 (test −0.14) and h3 for wf2018. Not adopted; h5 is
   up in three windows of four and is being replicated on CSI500.
-- **CSI500 replication of the horizon family** (`book_csi500_horizon.json`,
-  36 fits): h1 0.45, h5 0.90 (t 1.29), h10 0.90 (t 1.19), h5+h10 blend 1.06
-  (t 1.66, ΔIR 90% CI [0.01, 1.21], reality-check p 0.084), validation-
-  selected 0.96. Same direction as CSI300; combined across the two
-  universes the paired t is about 1.4, short of the adoption rule.
+- **Replication of the horizon family on CSI500 and CSI1000** (36 fits
+  each, the hypothesis "h5 beats h1" fixed from the CSI300 result before
+  fitting). CSI500 (`book_csi500_horizon.json`): h1 0.45, h5 0.90 (t 1.29),
+  h10 0.90, h5+h10 1.06 (t 1.66, reality-check p 0.084). CSI1000
+  (`book_csi1000_horizon.json`): h1 −0.13, h5 0.93 (t 4.12, ΔIR 90% CI
+  [0.64, 1.54], reality-check p < 0.001), h10 0.47 (t 2.10). Pooled over
+  the three universes (`cross_universe.py`, day-averaged paired
+  differences): h5 vs h1 t 3.0 at bandwidths 7, 20 and 60, ΔIR +0.78 (CI
+  [0.35, 1.24]), positive in every universe; h10 t 1.5; validation-selected
+  horizon t 1.0. **The 5-day training label is the first change that
+  reaches the book**, and it is adopted as a fixed choice (`--horizon 5`,
+  default processing, 3 seeds), not as a validation-selected procedure,
+  because validation IR picked the wrong horizon in most windows. Caveats:
+  on CSI300 alone t 0.72 and wf2024 loses 0.58 IR; the gain is in 2018–19
+  and 2022–23 on CSI300 and across all windows on CSI1000.
 - **Review-driven variants, 3 seeds** (`book_wf_review3.json`, vs default
   1.26): refit on train+valid 0.73 (t −2.45, CI excludes 0), raw features
   with rank label 0.77 (t −1.85), robust features with z label 1.28
