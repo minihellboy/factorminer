@@ -430,6 +430,10 @@ Pooled 2018–2025 walk-forward. Baseline: tuned top-stopped LightGBM
   1.21 (reality-check p 0.85); turning Qlib's row bagging on (`qlib_bag`,
   seed 0) 0.86 (t −2.15, CI excludes 0). The five-to-forty-tree default is
   not beaten by a model with ten times the trees.
+- **Robust processing under the 5-day label** (`book_wf_h5_robust.json`,
+  7 seeds, 4 draws): robust features with a rank label 1.20 vs default
+  processing 1.47 (t −1.38); their blend 1.35. Default processing stays:
+  the z-scored label's tails matter at 5 days as at 1.
 - **Reference models, seed 0, 1-day label** (`book_wf_reference_s0.json`,
   4 tie draws, vs LightGBM seed 0 at 0.89): XGBoost 1.22 (t 0.94), CatBoost
   0.94, MLP 0.85 (RankIC 0.041, the highest, yet no better book), ALSTM 0.26
