@@ -349,9 +349,14 @@ Pooled 2018–2025 walk-forward. Baseline: tuned top-stopped LightGBM
   classic the gates lift RankIC (t 1.1–2.5) with top lift |t| < 1.
 - **Top-weighted MSE** (`topmse`), best on classic, did not replicate in
   walk-forward: top lift +0.13 bps (t 0.15).
-- **16 tie draws** (`book_wf_ties.json`): default processing 1.27 vs tuned
-  top-stopped 0.96; the three-seed rank average has few ties, so the
-  pre-fix headline stands.
+- **16 tie draws** (`book_wf_ties.json`): default processing 1.27 (draws
+  1.21–1.36) vs tuned top-stopped 0.96 (0.93–1.00), paired t 1.29, ΔIR 90%
+  CI [−0.27, 0.85], reality-check p 0.20. The pre-fix headline stands but is
+  not significant. Single default seeds score 0.92/1.13/1.08 with 22–27% of
+  names tied; the three-seed rank average (21% tied) reaches 1.27, so for
+  this model seed averaging does help, partly by resolving ties with
+  information rather than at random. The tuned model's single seed has no
+  ties and the same IR as its ensemble (1.02 vs 0.96).
 - **Tree count is not a lever under Qlib's parameters.** Fitted to 512
   rounds with no early stopping, the default model (learning rate 0.2, L1
   206) stops by itself when no split clears the penalty: 5 trees on wf2022,
