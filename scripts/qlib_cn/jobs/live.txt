@@ -1,0 +1,7 @@
+# Live protocol (train 2017-10..2024-09, valid 2024-10..2026-09): incumbent h1 and challenger h5, 3 seeds each.
+live alpha158_h1_lgb_s0 --handler alpha158 --model lgb --horizon 1 --seed 0
+live alpha158_h1_lgb_s1 --handler alpha158 --model lgb --horizon 1 --seed 1
+live alpha158_h1_lgb_s2 --handler alpha158 --model lgb --horizon 1 --seed 2
+live alpha158_h5_lgb_s0 --handler alpha158 --model lgb --horizon 5 --seed 0
+live alpha158_h5_lgb_s1 --handler alpha158 --model lgb --horizon 5 --seed 1
+live alpha158_h5_lgb_s2 --handler alpha158 --model lgb --horizon 5 --seed 2

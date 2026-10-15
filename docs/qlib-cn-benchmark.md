@@ -365,6 +365,13 @@ Pooled 2018–2025 walk-forward. Baseline: tuned top-stopped LightGBM
   this model seed averaging does help, partly by resolving ties with
   information rather than at random. The tuned model's single seed has no
   ties and the same IR as its ensemble (1.02 vs 0.96).
+- **Seed count** (`book_wf_seedcount.json`, default 1-day model): seeds
+  0–2 give 1.26, seeds 0–4 1.01 (t −2.00 vs the 3-seed book), seeds 0–6
+  0.95 (t −2.27), seeds 3–6 alone 1.12. The three-seed incumbent is a
+  favourable seed draw; the seed-set spread (about 0.15 IR) is the size of
+  most effects in this table, so every three-seed comparison here carries
+  it. The horizon adoption is being re-judged with seven seeds per book on
+  all three universes.
 - **Tree count is not a lever under Qlib's parameters.** Fitted to 512
   rounds with no early stopping, the default model (learning rate 0.2, L1
   206) stops by itself when no split clears the penalty: 5 trees on wf2022,

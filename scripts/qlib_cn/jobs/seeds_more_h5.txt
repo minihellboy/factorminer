@@ -1,0 +1,17 @@
+# Seeds 3-6 of the 5-day model (CSI300) for the 7-seed robustness check of h5 vs h1.
+wf2018 alpha158_h5_lgb_s3 --handler alpha158 --model lgb --horizon 5 --seed 3
+wf2020 alpha158_h5_lgb_s3 --handler alpha158 --model lgb --horizon 5 --seed 3
+wf2022 alpha158_h5_lgb_s3 --handler alpha158 --model lgb --horizon 5 --seed 3
+wf2024 alpha158_h5_lgb_s3 --handler alpha158 --model lgb --horizon 5 --seed 3
+wf2018 alpha158_h5_lgb_s4 --handler alpha158 --model lgb --horizon 5 --seed 4
+wf2020 alpha158_h5_lgb_s4 --handler alpha158 --model lgb --horizon 5 --seed 4
+wf2022 alpha158_h5_lgb_s4 --handler alpha158 --model lgb --horizon 5 --seed 4
+wf2024 alpha158_h5_lgb_s4 --handler alpha158 --model lgb --horizon 5 --seed 4
+wf2018 alpha158_h5_lgb_s5 --handler alpha158 --model lgb --horizon 5 --seed 5
+wf2020 alpha158_h5_lgb_s5 --handler alpha158 --model lgb --horizon 5 --seed 5
+wf2022 alpha158_h5_lgb_s5 --handler alpha158 --model lgb --horizon 5 --seed 5
+wf2024 alpha158_h5_lgb_s5 --handler alpha158 --model lgb --horizon 5 --seed 5
+wf2018 alpha158_h5_lgb_s6 --handler alpha158 --model lgb --horizon 5 --seed 6
+wf2020 alpha158_h5_lgb_s6 --handler alpha158 --model lgb --horizon 5 --seed 6
+wf2022 alpha158_h5_lgb_s6 --handler alpha158 --model lgb --horizon 5 --seed 6
+wf2024 alpha158_h5_lgb_s6 --handler alpha158 --model lgb --horizon 5 --seed 6
