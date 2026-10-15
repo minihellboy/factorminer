@@ -19,12 +19,11 @@ import math
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from arm_lift import _hac_t  # noqa: E402
-from book_eval import DAYS, _ir, _ir_diff_interval, _nw_t  # noqa: E402
+from book_eval import _ir, _ir_diff_interval, _nw_t  # noqa: E402
 
 
 def main() -> None:

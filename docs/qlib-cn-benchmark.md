@@ -531,7 +531,7 @@ $QPY -I scripts/qlib_cn/data_factors.py --panel panels/csi300_fund.parquet --fun
   --panel-out panels/csi300_fq --factors-out data_factors/csi300_fq.parquet
 
 # Reference matrix; any handler/model/objective/horizon via run_qlib_baselines.py
-scripts/qlib_cn/run_reference_matrix.sh $QPY qlib_cn output/qlib_cn
+QPY=$QPY PROVIDER=qlib_cn UNIVERSE=csi300 scripts/qlib_cn/fit_queue.sh scripts/qlib_cn/jobs/reference.txt
 
 # Campaign configs (arm = JSON override of the marginal template) and mining
 uv run python scripts/qlib_cn/make_campaigns.py --campaigns campaigns \

@@ -12,7 +12,8 @@ run's ``model.txt`` and ``metrics.json``; committing and pushing the file
 timestamps it. The prospective test starts at the first session after the
 provider date recorded here (``PROTOCOLS["live"]`` starts no earlier).
 ``verify`` recomputes the hashes, so predictions made later with
-``run_qlib_baselines.py --load-model`` provably use the frozen boosters.
+``run_qlib_baselines.py --load-model`` provably use the frozen boosters, and
+warns about later runs that match a book's glob but were not registered.
 """
 
 from __future__ import annotations
@@ -83,6 +84,9 @@ def main() -> None:
     changed = sorted(r for r in record["runs"] if current.get(r, {}).get("model.txt") != record["runs"][r]["model.txt"])
     if changed:
         sys.exit(f"boosters changed since registration: {changed}")
+    added = sorted(set(current) - set(record["runs"]))
+    if added:  # the registered runs define the books; later runs matching a glob are not part of them
+        print(f"warning: unregistered runs match the books' globs; score only the registered runs, not {added}")
     print(f"ok: {len(record['runs'])} boosters match {args.registration}")
 
 
