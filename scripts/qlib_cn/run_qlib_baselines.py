@@ -33,6 +33,12 @@ without L1/L2); ``topclass`` is binary logloss on the top-sextile indicator;
 ``softmax(label / --temperature)``, so a low temperature puts the target mass
 on the day's best names.
 
+``--horizon H`` trains on the H-day forward return from the entry close
+(``Ref($close, -H-1) / Ref($close, -1) - 1``) instead of the next day's,
+closer to how long a TopkDropout book holds a name (about ten days at
+``n_drop`` 5 of 50). Top-50 early stopping then uses that label too; every
+reported metric and the backtest stay on the 1-day label.
+
 ``--model dens`` / ``xgb`` / ``cat`` fit Qlib's DoubleEnsemble, XGBoost and
 CatBoost with their Alpha158 benchmark-config hyperparameters.
 
@@ -77,6 +83,11 @@ for _year in WALK_FORWARD_YEARS:
     }
 BENCHMARK_INDEX = {"csi300": "SH000300", "csi500": "SH000905"}
 LABEL = ["Ref($close, -2)/Ref($close, -1) - 1"]
+
+
+def _label(horizon: int) -> list[str]:
+    """Training label: the ``horizon``-day forward return from the entry close (1 = ``LABEL``)."""
+    return LABEL if horizon == 1 else [f"Ref($close, -{horizon + 1})/Ref($close, -1) - 1"]
 LGB_PARAMS = {
     "loss": "mse", "colsample_bytree": 0.8879, "learning_rate": 0.2, "subsample": 0.8789,
     "lambda_l1": 205.6999, "lambda_l2": 580.9768, "max_depth": 8, "num_leaves": 210,
@@ -131,13 +142,14 @@ def _handler(args, split) -> object:
     infer = [dict(p, kwargs={**p.get("kwargs", {}), **fit}) if p["class"] == "RobustZScoreNorm" else p
              for p in infer]
     common = {"instruments": args.universe, "start_time": split["start"], "end_time": split["test"][1], **fit}
+    label = (_label(args.horizon), ["LABEL0"])
     if args.handler == "alpha158":
-        return Alpha158(**common, infer_processors=infer, learn_processors=learn)
+        return Alpha158(**common, infer_processors=infer, learn_processors=learn, label=label)
     if args.handler == "alpha360":
-        return Alpha360(**common, infer_processors=infer, learn_processors=learn)
+        return Alpha360(**common, infer_processors=infer, learn_processors=learn, label=label)
 
     factors = _read_factors(args.factors)
-    labels = D.features(D.instruments(args.universe), LABEL, start_time=split["start"],
+    labels = D.features(D.instruments(args.universe), _label(args.horizon), start_time=split["start"],
                         end_time=split["test"][1]).swaplevel().sort_index()
     labels.columns = ["LABEL0"]
     if args.handler == "alpha158_plus":
@@ -413,6 +425,8 @@ def main() -> None:
                         help="topmse: extra weight on top-sextile rows")
     parser.add_argument("--patience", type=int, default=50,
                         help="early-stopping rounds for the non-default objectives (Qlib: 50)")
+    parser.add_argument("--horizon", type=int, default=1,
+                        help="training label horizon in days (metrics and backtest stay 1-day)")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
@@ -466,6 +480,12 @@ def main() -> None:
     pred = pred.dropna()
 
     raw_label = dataset.prepare("test", col_set="label", data_key=DataHandlerLP.DK_R).iloc[:, 0]
+    if args.horizon != 1:
+        from qlib.data import D
+
+        raw_label = D.features(D.instruments(args.universe), LABEL, start_time=split["test"][0],
+                               end_time=split["test"][1]).swaplevel().sort_index().iloc[:, 0]
+        raw_label = raw_label.reindex(pred.index)
     metrics = {**_ic_metrics(pred, raw_label), **_backtest(pred, args.universe, split)}
     metrics["fit_seconds"] = round(time.monotonic() - started, 1)
     if isinstance(model, RankLGB):
@@ -481,7 +501,7 @@ def main() -> None:
         "top_weight": args.top_weight if args.objective == "topmse" else None,
         "patience": args.patience,
         "temperature": args.temperature if args.objective == "listnet" else None,
-        "label": LABEL[0], "lgb_params": LGB_PARAMS if args.model == "lgb" else None,
+        "label": LABEL[0], "train_label": _label(args.horizon)[0], "horizon": args.horizon, "lgb_params": LGB_PARAMS if args.model == "lgb" else None,
         "qlib_version": qlib.__version__, "metrics": metrics,
         "factors_file": str(args.factors) if args.factors else None,
     }, indent=2) + "\n")
