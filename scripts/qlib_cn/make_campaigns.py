@@ -66,7 +66,10 @@ def _merge(base: dict, override: dict) -> dict:
 
 def _expand_features(cfg: dict) -> None:
     data = cfg["data"]
-    extra = {"+fund": FUND_FEATURES, "+fq": {**FUND_FEATURES, **FQ_FEATURES}}.get(data.get("features"))
+    shorthand = data.get("features")
+    if not isinstance(shorthand, str):
+        return
+    extra = {"+fund": FUND_FEATURES, "+fq": {**FUND_FEATURES, **FQ_FEATURES}}.get(shorthand)
     if extra is not None:
         base = ["$open", "$high", "$low", "$close", "$volume", "$amt", "$vwap", "$returns"]
         data["features"] = base + list(extra)

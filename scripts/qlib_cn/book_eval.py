@@ -19,7 +19,9 @@ costs in every window; daily after-cost excess returns of the disjoint test
 windows are concatenated. Against ``--baseline`` (unsmoothed), the paired
 daily difference of after-cost excess return gets a Newey-West t, which
 removes the market noise both books share and is far tighter than comparing
-IRs across seeds.
+IRs across seeds. Windows must not overlap, every run of a book must cover
+its window's test days, and the daily series of every book are saved next to
+``--out`` (``<out>.daily.parquet``) for bootstraps and attribution.
 """
 
 from __future__ import annotations
@@ -58,7 +60,13 @@ def _rank(path: Path) -> pd.Series:
 
 
 def _signal(groups: list[list[Path]], smooth: float) -> pd.Series:
-    parts = [pd.concat([_rank(r) for r in runs], axis=1).mean(axis=1) for runs in groups]
+    ranks = [[_rank(r) for r in runs] for runs in groups]
+    days = [{r.name: s.index.get_level_values("datetime").unique() for r, s in zip(runs, rs)}
+            for runs, rs in zip(groups, ranks)]
+    spans = {name: (d.min(), d.max(), len(d)) for g in days for name, d in g.items()}
+    if len({v for v in spans.values()}) > 1:
+        raise SystemExit(f"runs cover different test days: {spans}")
+    parts = [pd.concat(rs, axis=1).mean(axis=1) for rs in ranks]
     score = pd.concat(parts, axis=1).mean(axis=1).rename("score")
     if smooth > 0:
         wide = score.unstack("instrument")
@@ -113,6 +121,10 @@ def main() -> None:
     label["instrument"] = label["instrument"].str.upper()
     label = label.set_index(["datetime", "instrument"])["label"]
     windows = dict(w.split("=", 1) for w in args.window)
+    tests = sorted((PROTOCOLS[p]["test"], p) for p in windows)
+    for (a, pa), (b, pb) in zip(tests, tests[1:]):
+        if b[0] <= a[1]:
+            raise SystemExit(f"test windows overlap: {pa} {a} and {pb} {b}")
     books = dict(b.split("=", 1) for b in args.book)
     smooths = [float(h) for h in args.smooth.split(",")]
     drops = [int(n) for n in args.n_drop.split(",")]
@@ -134,10 +146,13 @@ def main() -> None:
                     frame = frame.join(_daily_top(score, label).rename("top")).join(
                         _daily_ric(score, label).rename("ric"))
                     per_window.append(frame.assign(window=protocol))
-                daily[key] = pd.concat(per_window)
+                daily[key] = pd.concat(per_window).sort_index()
+                assert daily[key].index.is_unique
                 print(key, json.dumps(_summary(daily[key])), flush=True)
 
     result = {"windows": list(windows), "books": books, "results": {}}
+    if args.baseline and args.baseline not in daily:
+        raise SystemExit(f"baseline {args.baseline} is not among the evaluated books {sorted(daily)}")
     base = daily.get(args.baseline) if args.baseline else None
     for key, frame in daily.items():
         entry = _summary(frame)
@@ -155,6 +170,7 @@ def main() -> None:
         result["results"][key] = entry
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, indent=2) + "\n")
+    pd.concat(daily, names=["book", "datetime"]).to_parquet(args.out.with_suffix(".daily.parquet"))
 
 
 if __name__ == "__main__":

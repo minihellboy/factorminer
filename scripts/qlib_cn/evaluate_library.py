@@ -205,7 +205,12 @@ def main() -> None:
 
     if not args.no_export and values:
         assets, stamps = np.asarray(dataset.asset_ids), pd.to_datetime(dataset.timestamps)
-        keep = np.isfinite(returns)
+        # Every row with a factor value, whatever its future return: the consumer joins
+        # on its own universe rows, and a feature must not vanish because a later
+        # price is missing (e.g. a suspension).
+        keep = np.zeros(returns.shape, dtype=bool)
+        for signal in values.values():
+            keep |= np.isfinite(signal)
         asset_pos, time_pos = np.nonzero(keep)
         export = pd.DataFrame({"datetime": stamps[time_pos], "instrument": assets[asset_pos]})
         for index, (name, signal) in enumerate(values.items()):
