@@ -16,8 +16,12 @@ Run in an environment with ``pandas`` and ``pyarrow``::
   revenue growth, %), ``cfo_to_book`` (operating cash flow per share / book
   value per share);
 * ``ind_return``: the equal-weight mean daily return of the stock's
-  Eastmoney industry, as of its latest report, among that day's universe
-  members (groups with fewer than five members are left NaN).
+  Eastmoney industry among all panel stocks trading that day (current and
+  past index members; groups with fewer than five stocks are left NaN). The
+  industry is the one of the stock's latest report, and before its first
+  labelled report the earliest known label: industries are nearly static, so
+  this small classification look-ahead fills the early years, where a third
+  of reports carry no label.
 
 ``--factors-out`` writes, for universe-member rows, a fixed set of standard
 data features ranked cross-sectionally to [-1, 1] (``datetime, instrument,
@@ -92,12 +96,11 @@ def main() -> None:
         panel = panel.merge(q, on=["asset_id", "datetime"], how="left")
         fields = QUARTERLY + ["roe_yoy", "industry"]
         panel[fields] = panel.groupby("asset_id")[fields].ffill()
+        panel["industry"] = panel.groupby("asset_id")["industry"].bfill()
         added += QUARTERLY + ["roe_yoy"]
-        members = panel["in_universe"] == 1
-        member_ret = panel["ret"].where(members)
         key = [panel["datetime"], panel["industry"]]
-        size = members.groupby(key).transform("sum")
-        panel["ind_return"] = member_ret.groupby(key).transform("mean").where(size >= MIN_GROUP)
+        size = panel["ret"].notna().groupby(key).transform("sum")
+        panel["ind_return"] = panel["ret"].groupby(key).transform("mean").where(size >= MIN_GROUP)
         added.append("ind_return")
 
     if args.panel_out is not None:

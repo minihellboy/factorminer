@@ -10,7 +10,9 @@ Run in the FactorMiner environment::
 Each arm is a JSON override merged into the ``<protocol>_marginal[_c1]`` config
 of that protocol (``classic:3`` writes three replicates ``_c1.._c3``). The
 ``"+fund"`` feature shorthand appends the BaoStock valuation/size/liquidity
-leaves (``merge_panel_features.py``) with their prompt descriptions. Output
+leaves (``merge_panel_features.py``) with their prompt descriptions; ``"+fq"``
+adds, on top of those, the point-in-time quarterly report and industry leaves
+of ``data_factors.py --panel-out``. Output
 files are ``<campaigns>/<protocol>_<arm>[_cN].yaml``; the campaign's
 ``output_dir`` and ``benchmark.seed`` follow the template's convention.
 """
@@ -38,6 +40,19 @@ FUND_FEATURES = {
                     "use it to strip market moves (relative strength, beta, residual momentum)",
 }
 
+FQ_FEATURES = {
+    "$roe": "return on equity of the latest published report, %, year to date as reported "
+            "(Q1 ~ a quarter's ROE, annual ~ a year's; compare across stocks or vs the same quarter a year ago)",
+    "$gp_margin": "gross margin of the latest published report, % (pricing power / profitability)",
+    "$np_margin": "net income / revenue of the latest published report (net profitability)",
+    "$yoy_ni": "year-on-year net income growth of the latest published report, % (earnings growth; "
+               "heavy-tailed, prefer CsRank)",
+    "$yoy_rev": "year-on-year revenue growth of the latest published report, % (heavy-tailed, prefer CsRank)",
+    "$cfo_to_book": "operating cash flow per share / book value per share, latest report (earnings quality)",
+    "$ind_return": "that day's equal-weight return of the stock's industry among index members "
+                   "(industry momentum / reversal; stock return minus it is the industry-relative move)",
+}
+
 
 def _merge(base: dict, override: dict) -> dict:
     out = copy.deepcopy(base)
@@ -51,10 +66,11 @@ def _merge(base: dict, override: dict) -> dict:
 
 def _expand_features(cfg: dict) -> None:
     data = cfg["data"]
-    if data.get("features") == "+fund":
+    extra = {"+fund": FUND_FEATURES, "+fq": {**FUND_FEATURES, **FQ_FEATURES}}.get(data.get("features"))
+    if extra is not None:
         base = ["$open", "$high", "$low", "$close", "$volume", "$amt", "$vwap", "$returns"]
-        data["features"] = base + list(FUND_FEATURES)
-        data["feature_descriptions"] = dict(FUND_FEATURES)
+        data["features"] = base + list(extra)
+        data["feature_descriptions"] = dict(extra)
 
 
 def main() -> None:
