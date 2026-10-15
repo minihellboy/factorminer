@@ -214,21 +214,51 @@ def _simulate(scores: dict[str, pd.Series], universe: str, n_drop: int, sim: str
     return _frame(report)
 
 
-def _book(universe: str, windows: dict[str, str], patterns: dict[str, str], smooth: float, n_drop: int,
-          sim: str, draws: int = 1, neutral: float = 0.0) -> tuple[pd.DataFrame, pd.Series, dict[str, float]]:
-    """Daily book returns over all windows, averaged over ``draws`` tie-breaking keys."""
-    scores = {p: _neutralize(_signal(_runs(Path(root), patterns[p]), smooth), neutral)
-              for p, root in windows.items()}
-    runs = [_simulate(scores, universe, n_drop, sim, salt) for salt in range(draws)]
-    frame = sum(runs) / draws
-    score = pd.concat(scores.values()).sort_index()
-    ties = {"tie_share": float(score.groupby(level="datetime").apply(lambda d: d.duplicated().mean()).mean()),
-            "tie_draw_ir": [float(r["excess"].mean() / r["excess"].std() * math.sqrt(DAYS)) for r in runs]}
-    frame["window"] = None
-    for p in windows:
-        start, end = PROTOCOLS[p]["test"]
-        frame.loc[start:end, "window"] = p
-    return frame, score, ties
+_SCORES: dict[str, tuple[dict[str, pd.Series], int]] = {}  # key -> (window scores, n_drop); read by forked workers
+JOBS = 1  # --jobs
+
+
+def _simulate_key(key: str, universe: str, sim: str, salt: int) -> pd.DataFrame:
+    scores, n_drop = _SCORES[key]
+    return _simulate(scores, universe, n_drop, sim, salt)
+
+
+def _map(fn, tasks: list[tuple]) -> list:
+    """``fn(*task)`` for every task, in ``JOBS`` forked processes that share the parent's cached Exchange."""
+    if JOBS <= 1 or len(tasks) <= 1:
+        return [fn(*t) for t in tasks]
+    import multiprocessing
+
+    with multiprocessing.get_context("fork").Pool(min(JOBS, len(tasks))) as pool:
+        return pool.starmap(fn, tasks, chunksize=1)
+
+
+def _books(universe: str, windows: dict[str, str], specs: dict[str, tuple], sim: str,
+           draws: int = 1) -> dict[str, tuple[pd.DataFrame, pd.Series, dict[str, float]]]:
+    """Daily book returns over all windows for every ``key -> (patterns, smooth, n_drop, neutral)``,
+    each averaged over ``draws`` tie-breaking keys; all (book, draw) backtests run in parallel."""
+    from run_qlib_baselines import _exchange
+
+    _SCORES.clear()
+    for key, (patterns, smooth, n_drop, neutral) in specs.items():
+        _SCORES[key] = ({p: _neutralize(_signal(_runs(Path(root), patterns[p]), smooth), neutral)
+                         for p, root in windows.items()}, n_drop)
+    _exchange(universe)  # built once, before forking
+    tasks = [(key, universe, sim, salt) for key in specs for salt in range(draws)]
+    reports = dict(zip([(t[0], t[3]) for t in tasks], _map(_simulate_key, tasks)))
+    out = {}
+    for key in specs:
+        runs = [reports[key, salt] for salt in range(draws)]
+        frame = sum(runs) / draws
+        score = pd.concat(_SCORES[key][0].values()).sort_index()
+        ties = {"tie_share": float(score.groupby(level="datetime").apply(lambda d: d.duplicated().mean()).mean()),
+                "tie_draw_ir": [float(r["excess"].mean() / r["excess"].std() * math.sqrt(DAYS)) for r in runs]}
+        frame["window"] = None
+        for p in windows:
+            start, end = PROTOCOLS[p]["test"]
+            frame.loc[start:end, "window"] = p
+        out[key] = (frame, score, ties)
+    return out
 
 
 def _valid_ir(universe: str, root: Path, patterns: str, split: dict, draws: int = 1) -> float:
@@ -270,10 +300,11 @@ def main() -> None:
                         help="industry.parquet[:w,w,...]: also score each book with w x its (day, industry) "
                              "mean removed (default weights 1)")
     parser.add_argument("--baseline", default=None)
+    parser.add_argument("--jobs", type=int, default=8, help="parallel backtest processes")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
-    global COMBINE, COSTS, INDUSTRY
-    COMBINE, COSTS = args.combine, args.costs
+    global COMBINE, COSTS, INDUSTRY, JOBS
+    COMBINE, COSTS, JOBS = args.combine, args.costs, args.jobs
     neutrals = [0.0]
     if args.neutral:
         path, _, weights = args.neutral.partition(":")
@@ -308,19 +339,20 @@ def main() -> None:
 
     per_book = {name: {p: patterns for p in windows} for name, patterns in books.items()}
     per_book.update({name: {p: books[c["chosen"]] for p, c in chosen.items()} for name, chosen in selections.items()})
-    daily: dict[str, pd.DataFrame] = {}
-    ties: dict[str, dict] = {}
+    specs = {}
     for name, patterns in per_book.items():
         for h, n_drop, w in itertools.product(smooths, drops, neutrals):
             key = (name + (f"@ema{h:g}" if h else "") + (f"@drop{n_drop}" if n_drop != 5 else "")
                    + (f"@neutral{w:g}" if w else ""))
-            frame, score, ties[key] = _book(args.universe, windows, patterns, h, n_drop, args.sim,
-                                            args.tie_draws, w)
-            frame = frame.join(_daily_top(score, label).rename("top")).join(
-                _daily_ric(score, label).rename("ric"))
-            daily[key] = frame
-            assert daily[key].index.is_unique
-            print(key, json.dumps(_summary(daily[key])), flush=True)
+            specs[key] = (patterns, h, n_drop, w)
+    daily: dict[str, pd.DataFrame] = {}
+    ties: dict[str, dict] = {}
+    for key, (frame, score, ties[key]) in _books(args.universe, windows, specs, args.sim, args.tie_draws).items():
+        frame = frame.join(_daily_top(score, label).rename("top")).join(
+            _daily_ric(score, label).rename("ric"))
+        daily[key] = frame
+        assert daily[key].index.is_unique
+        print(key, json.dumps(_summary(daily[key])), flush=True)
 
     result = {"windows": list(windows), "books": books, "sim": args.sim, "combine": args.combine,
               "tie_draws": args.tie_draws,
