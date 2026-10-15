@@ -1,0 +1,15 @@
+# Qlib reference workflows (classic and recent protocols); run once per universe.
+classic alpha158_lgb_s0 --handler alpha158 --model lgb --seed 0
+classic alpha360_lgb_s0 --handler alpha360 --model lgb --seed 0
+classic alpha158_lgb_s1 --handler alpha158 --model lgb --seed 1
+classic alpha360_lgb_s1 --handler alpha360 --model lgb --seed 1
+classic alpha158_lgb_s2 --handler alpha158 --model lgb --seed 2
+classic alpha360_lgb_s2 --handler alpha360 --model lgb --seed 2
+recent alpha158_lgb_s0 --handler alpha158 --model lgb --seed 0
+recent alpha360_lgb_s0 --handler alpha360 --model lgb --seed 0
+recent alpha158_lgb_s1 --handler alpha158 --model lgb --seed 1
+recent alpha360_lgb_s1 --handler alpha360 --model lgb --seed 1
+recent alpha158_lgb_s2 --handler alpha158 --model lgb --seed 2
+recent alpha360_lgb_s2 --handler alpha360 --model lgb --seed 2
+classic alpha158_linear_s0 --handler alpha158 --model linear --seed 0
+recent alpha158_linear_s0 --handler alpha158 --model linear --seed 0
