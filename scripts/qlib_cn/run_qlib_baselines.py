@@ -509,13 +509,48 @@ def _untie(pred: pd.Series, salt: int = 0) -> pd.Series:
     return dense + 0.5 * (key.to_numpy() >> np.uint64(11)).astype(np.float64) / 2.0**53
 
 
-def _backtest(pred: pd.Series, universe: str, split, n_drop: int = 5,
-              return_report: bool = False, tie_salt: int = 0):
-    from qlib.backtest import backtest, executor
-    from qlib.contrib.evaluate import risk_analysis
+def _hold_strategy(bonus: str, **kwargs):
+    """TopkDropout whose held names get a score bonus before each decision.
+
+    ``bonus`` "0": Qlib's strategy. "tie": held names win exact ties only (the
+    untied score is dense rank + jitter < 0.5, so +0.5 reorders within a tie).
+    A number b: held names gain b in daily percentile-rank units, so a new name
+    replaces an incumbent only when it ranks more than b above it.
+    """
     from qlib.contrib.strategy import TopkDropoutStrategy
 
-    strategy = TopkDropoutStrategy(signal=_untie(pred, tie_salt).to_frame("score"), topk=TOPK, n_drop=n_drop)
+    class HoldBonus(TopkDropoutStrategy):
+        def generate_trade_decision(self, execute_result=None):
+            signal, held = self.signal, set(self.trade_position.get_stock_list())
+
+            class Shifted:
+                def get_signal(self, start_time, end_time):
+                    score = signal.get_signal(start_time=start_time, end_time=end_time)
+                    if score is None or not held:
+                        return score
+                    if isinstance(score, pd.DataFrame):
+                        score = score.iloc[:, 0]
+                    is_held = score.index.isin(held)
+                    if bonus == "tie":
+                        return score + 0.5 * is_held
+                    return score.rank(pct=True) + float(bonus) * is_held
+
+            self.signal = Shifted()
+            try:
+                return super().generate_trade_decision(execute_result)
+            finally:
+                self.signal = signal
+
+    return (TopkDropoutStrategy if bonus == "0" else HoldBonus)(**kwargs)
+
+
+def _backtest(pred: pd.Series, universe: str, split, n_drop: int = 5,
+              return_report: bool = False, tie_salt: int = 0, hold_bonus: str = "0"):
+    from qlib.backtest import backtest, executor
+    from qlib.contrib.evaluate import risk_analysis
+
+    strategy = _hold_strategy(hold_bonus, signal=_untie(pred, tie_salt).to_frame("score"), topk=TOPK,
+                              n_drop=n_drop)
     # The test window can run past the provider's calendar (protocol live): stop at the last signal.
     end = min(pd.Timestamp(split["test"][1]), pred.index.get_level_values("datetime").max())
     exec_obj = executor.SimulatorExecutor(time_per_step="day", generate_portfolio_metrics=True)
