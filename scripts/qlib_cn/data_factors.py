@@ -81,6 +81,9 @@ def main() -> None:
                         help="directory with fetch_em_fundamentals.py's quarterly.parquet")
     parser.add_argument("--panel-out", type=Path, default=None)
     parser.add_argument("--factors-out", type=Path, default=None)
+    parser.add_argument("--industry-out", type=Path, default=None,
+                        help="parquet of (datetime, instrument, industry) for index members: the Eastmoney "
+                             "industry of the latest report published before each day")
     args = parser.parse_args()
 
     panel = pd.read_parquet(args.panel)
@@ -111,6 +114,17 @@ def main() -> None:
         own = panel["ret"].where(member, 0.0)
         panel["ind_return"] = ((total - own) / peers).where(peers >= MIN_PEERS)
         added.append("ind_return")
+
+    if args.industry_out is not None:
+        if not have_q:
+            raise SystemExit("--industry-out needs --fundamentals")
+        ind = panel.loc[(panel["in_universe"] == 1) & panel["industry"].notna(),
+                        ["datetime", "asset_id", "industry"]].rename(columns={"asset_id": "instrument"})
+        args.industry_out.parent.mkdir(parents=True, exist_ok=True)
+        ind.to_parquet(args.industry_out, index=False)
+        covered = float(panel.loc[panel["in_universe"] == 1, "industry"].notna().mean())
+        print("industry", args.industry_out, len(ind), "industries", ind["industry"].nunique(),
+              "member coverage", round(covered, 3))
 
     if args.panel_out is not None:
         leaves = [c for c in added if c != "roe_yoy"]

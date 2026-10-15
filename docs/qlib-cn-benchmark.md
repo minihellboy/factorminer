@@ -307,8 +307,23 @@ of it reaches the top-50 spread.
 
 ### Book evaluation
 
+**Tied scores.** Qlib's default LightGBM (learning rate 0.2, L1 206,
+loss-stopped at 8–64 trees) emits few distinct scores: about 92% of a day's
+names share their score with another. `TopkDropoutStrategy` sorts them in
+whatever order the index came in, which followed Python's per-process string
+hash, so the same predictions backtested to a wf2024 IR anywhere between
+0.64 and 0.96 across reruns. `_backtest` now breaks ties with a stable
+pseudo-random key (`_untie`), and `book_eval.py --tie-draws K` averages a
+book over K keys and reports the IR spread across draws. Every IR in the
+table below is a single draw from before the fix; the 16-draw re-evaluation
+is in `book_wf_ties.json`. A "holding bonus" for incumbents within ties or
+small percentile margins was tried and removed: TopkDropout only ever sells
+the `n_drop` lowest-ranked holdings against the five best new names, which
+sit far above any incumbent, so a bonus below about 0.5 of the daily range
+changes no decision and a larger one is `n_drop` by another name.
+
 Pooled 2018–2025 walk-forward. Baseline: tuned top-stopped LightGBM
-(`alpha158r_mtop_lgb`), 3 seeds.
+(`alpha158r_mtop_lgb`), 3 seeds. Single tie draw (see above).
 
 | Book (3 seeds unless noted) | After-cost IR | Excess/yr | Top-50 bps | RankIC | Excess diff t |
 | --- | --- | --- | --- | --- | --- |

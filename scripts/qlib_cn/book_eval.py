@@ -47,6 +47,14 @@ day's mean) carries into a blend. ``--costs stamp2023`` scales each day's
 cost by 0.75 from 2023-08-28, when the sell-side stamp tax fell from 0.10% to
 0.05% (close cost 0.15% -> 0.10%; buys and sells are about equal in a
 TopkDropout book, so cost scales by (0.05+0.10)/(0.05+0.15)).
+``--neutral industry.parquet[:w,...]`` adds, for each book, a book whose daily
+score has ``w`` times its (day, industry) mean removed before ranking
+(``w`` 1 is industry-neutral scoring: each industry of five or more names
+centres at zero, so the top 50 no longer carries the model's bets on the
+large sectors; smaller groups and names without an industry keep their
+rank). The map is ``data_factors.py --industry-out``: the Eastmoney industry
+of the latest report published before each day.
+
 Tied scores are broken by a stable pseudo-random key (``_untie``), so a
 backtest is reproducible; ``--tie-draws K`` averages each book's daily returns
 over K tie-breaking keys (the expected book under random tie-breaking) and
@@ -59,6 +67,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import itertools
 import json
 import math
 import sys
@@ -112,6 +121,26 @@ def _runs(root: Path, patterns: str, file: str = "predictions.parquet") -> list[
 COMBINE = "rank"  # --combine: rank (percentile) or zscore
 STAMP_CUT, STAMP_SCALE = pd.Timestamp("2023-08-28"), 0.75
 COSTS = "fixed"  # --costs: fixed (Qlib's) or stamp2023
+INDUSTRY: pd.Series | None = None  # --neutral: industry per (datetime, instrument)
+MIN_GROUP = 5  # smaller (day, industry) groups are centred on the day's mean instead
+
+
+def _neutralize(score: pd.Series, weight: float) -> pd.Series:
+    """Remove ``weight`` times the (day, industry) mean of ``score``.
+
+    The Eastmoney industries are fine (about 80 a day among 300 names, median
+    two names each), so only groups of at least ``MIN_GROUP`` names are centred
+    on their own mean; smaller groups and names without an industry are centred
+    on the day's mean, which leaves their ranks unchanged.
+    """
+    if weight == 0:
+        return score
+    industry = INDUSTRY.reindex(score.index).fillna("_none").to_numpy()
+    keys = [score.index.get_level_values("datetime"), industry]
+    grouped = score.groupby(keys)
+    own = (industry != "_none") & (grouped.transform("size").to_numpy() >= MIN_GROUP)
+    centre = grouped.transform("mean").where(own, score.groupby(level="datetime").transform("mean"))
+    return (score - weight * centre).rename("score")
 
 
 def _rank(path: Path, file: str = "predictions.parquet") -> pd.Series:
@@ -186,9 +215,10 @@ def _simulate(scores: dict[str, pd.Series], universe: str, n_drop: int, sim: str
 
 
 def _book(universe: str, windows: dict[str, str], patterns: dict[str, str], smooth: float, n_drop: int,
-          sim: str, draws: int = 1) -> tuple[pd.DataFrame, pd.Series, dict[str, float]]:
+          sim: str, draws: int = 1, neutral: float = 0.0) -> tuple[pd.DataFrame, pd.Series, dict[str, float]]:
     """Daily book returns over all windows, averaged over ``draws`` tie-breaking keys."""
-    scores = {p: _signal(_runs(Path(root), patterns[p]), smooth) for p, root in windows.items()}
+    scores = {p: _neutralize(_signal(_runs(Path(root), patterns[p]), smooth), neutral)
+              for p, root in windows.items()}
     runs = [_simulate(scores, universe, n_drop, sim, salt) for salt in range(draws)]
     frame = sum(runs) / draws
     score = pd.concat(scores.values()).sort_index()
@@ -236,11 +266,20 @@ def main() -> None:
     parser.add_argument("--combine", choices=["rank", "zscore"], default="rank")
     parser.add_argument("--tie-draws", type=int, default=1, help="average over this many tie-breaking keys")
     parser.add_argument("--costs", choices=["fixed", "stamp2023"], default="fixed")
+    parser.add_argument("--neutral", default=None,
+                        help="industry.parquet[:w,w,...]: also score each book with w x its (day, industry) "
+                             "mean removed (default weights 1)")
     parser.add_argument("--baseline", default=None)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
-    global COMBINE, COSTS
+    global COMBINE, COSTS, INDUSTRY
     COMBINE, COSTS = args.combine, args.costs
+    neutrals = [0.0]
+    if args.neutral:
+        path, _, weights = args.neutral.partition(":")
+        INDUSTRY = pd.read_parquet(path).set_index(["datetime", "instrument"])["industry"]
+        INDUSTRY = INDUSTRY[~INDUSTRY.index.duplicated()]
+        neutrals += [float(w) for w in (weights or "1").split(",")]
 
     import qlib
 
@@ -272,16 +311,16 @@ def main() -> None:
     daily: dict[str, pd.DataFrame] = {}
     ties: dict[str, dict] = {}
     for name, patterns in per_book.items():
-        for h in smooths:
-            for n_drop in drops:
-                key = name + (f"@ema{h:g}" if h else "") + (f"@drop{n_drop}" if n_drop != 5 else "")
-                frame, score, ties[key] = _book(args.universe, windows, patterns, h, n_drop, args.sim,
-                                                args.tie_draws)
-                frame = frame.join(_daily_top(score, label).rename("top")).join(
-                    _daily_ric(score, label).rename("ric"))
-                daily[key] = frame
-                assert daily[key].index.is_unique
-                print(key, json.dumps(_summary(daily[key])), flush=True)
+        for h, n_drop, w in itertools.product(smooths, drops, neutrals):
+            key = (name + (f"@ema{h:g}" if h else "") + (f"@drop{n_drop}" if n_drop != 5 else "")
+                   + (f"@neutral{w:g}" if w else ""))
+            frame, score, ties[key] = _book(args.universe, windows, patterns, h, n_drop, args.sim,
+                                            args.tie_draws, w)
+            frame = frame.join(_daily_top(score, label).rename("top")).join(
+                _daily_ric(score, label).rename("ric"))
+            daily[key] = frame
+            assert daily[key].index.is_unique
+            print(key, json.dumps(_summary(daily[key])), flush=True)
 
     result = {"windows": list(windows), "books": books, "sim": args.sim, "combine": args.combine,
               "tie_draws": args.tie_draws,

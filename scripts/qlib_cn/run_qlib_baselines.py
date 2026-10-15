@@ -509,8 +509,33 @@ def _untie(pred: pd.Series, salt: int = 0) -> pd.Series:
     return dense + 0.5 * (key.to_numpy() >> np.uint64(11)).astype(np.float64) / 2.0**53
 
 
+EXCHANGE = {"freq": "day", "limit_threshold": 0.095, "deal_price": "close",
+            "open_cost": 0.0005, "close_cost": 0.0015, "min_cost": 5}
+_EXCHANGES: dict = {}
+
+
+def _exchange(universe: str):
+    """One Exchange per universe over the provider's whole calendar, built once per process.
+
+    Qlib builds an Exchange (every quote between start and end, all instruments) for each
+    backtest, about a minute for an eight-year book. The book only ever trades names that
+    held membership, so one exchange over those codes and the full calendar answers every
+    backtest of the process with the same fills.
+    """
+    if universe not in _EXCHANGES:
+        from qlib.backtest.exchange import Exchange
+        from qlib.data import D
+
+        calendar = D.calendar(freq="day")
+        codes = D.list_instruments(D.instruments(universe), start_time=calendar[0], end_time=calendar[-1],
+                                   as_list=True)
+        _EXCHANGES[universe] = Exchange(start_time=calendar[0], end_time=calendar[-1], codes=sorted(codes),
+                                        **EXCHANGE)
+    return _EXCHANGES[universe]
+
+
 def _backtest(pred: pd.Series, universe: str, split, n_drop: int = 5,
-              return_report: bool = False, tie_salt: int = 0):
+              return_report: bool = False, tie_salt: int = 0, cache_exchange: bool = True):
     from qlib.backtest import backtest, executor
     from qlib.contrib.evaluate import risk_analysis
     from qlib.contrib.strategy import TopkDropoutStrategy
@@ -522,8 +547,7 @@ def _backtest(pred: pd.Series, universe: str, split, n_drop: int = 5,
     portfolio, _ = backtest(
         start_time=split["test"][0], end_time=end, strategy=strategy, executor=exec_obj,
         benchmark=BENCHMARK_INDEX[universe], account=100_000_000,
-        exchange_kwargs={"freq": "day", "limit_threshold": 0.095, "deal_price": "close",
-                         "open_cost": 0.0005, "close_cost": 0.0015, "min_cost": 5},
+        exchange_kwargs={"exchange": _exchange(universe)} if cache_exchange else dict(EXCHANGE),
     )
     report, _ = portfolio["1day"]
     out: dict[str, float] = {}
