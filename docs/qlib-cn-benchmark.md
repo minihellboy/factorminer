@@ -434,6 +434,11 @@ Pooled 2018–2025 walk-forward. Baseline: tuned top-stopped LightGBM
   7 seeds, 4 draws): robust features with a rank label 1.20 vs default
   processing 1.47 (t −1.38); their blend 1.35. Default processing stays:
   the z-scored label's tails matter at 5 days as at 1.
+- **XGBoost, 7 seeds** (`book_wf_xgb7.json`, 4 draws): 1-day label 1.09
+  (LightGBM 0.95), 5-day label 1.52 (LightGBM 1.47, paired excess t −0.37),
+  blend of both 5-day learners 1.48. XGBoost adds nothing over LightGBM, but
+  the horizon effect replicates in a second learner (+0.43 IR), which is
+  further evidence that the gain belongs to the label, not the model.
 - **Reference models, seed 0, 1-day label** (`book_wf_reference_s0.json`,
   4 tie draws, vs LightGBM seed 0 at 0.89): XGBoost 1.22 (t 0.94), CatBoost
   0.94, MLP 0.85 (RankIC 0.041, the highest, yet no better book), ALSTM 0.26
