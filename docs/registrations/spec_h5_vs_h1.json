@@ -2,8 +2,20 @@
   "name": "csi300_h5_vs_h1",
   "universe": "csi300",
   "description": "Alpha158, Qlib default processing (raw features, z-scored label), Qlib LightGBM parameters, TopkDropout top-50 n_drop 5. Challenger trains on the 5-day forward return (Ref($close,-6)/Ref($close,-1)-1), incumbent on the 1-day return; both predict and trade daily. Three seeds, per-day percentile ranks averaged, ties broken by the stable key.",
-  "books": {"h1": "alpha158_h1_lgb_s?", "h5": "alpha158_h5_lgb_s?"},
+  "books": {
+    "h1": "alpha158_h1_lgb_s?",
+    "h5": "alpha158_h5_lgb_s?"
+  },
   "baseline": "h1",
   "development_evidence": "Pooled walk-forward 2018-2025, 4 tie draws: CSI300 IR 1.26 -> 1.52 (paired NW t 0.72), CSI500 0.45 -> 0.90 (t 1.29), CSI1000 -0.13 -> 0.93 (t 4.12); day-averaged across the three universes t 3.0 at NW 7/20/60, dIR +0.78 (90% CI 0.35-1.24). CSI500/CSI1000 fits were made after the CSI300 result with the hypothesis fixed. Files: book_wf_horizon.json, book_csi500_horizon.json, book_csi1000_horizon.json.",
-  "rule": "Score both books with book_eval.py --window live=... from the first session after provider_last_date. Decide at 2027-10-15 (about 240 sessions): the challenger is confirmed if its paired daily after-cost excess over the incumbent has NW(20) t > 0 and the live IR of h5 is not below h1 by more than 0.5; a paired t below -2 refutes it. No other book, parameter or window may be consulted for this decision."
+  "rule": "Score both books with book_eval.py --window live=... from the first session after provider_last_date. Decide at 2027-10-15 (about 240 sessions): the challenger is confirmed if its paired daily after-cost excess over the incumbent has NW(20) t > 0 and the live IR of h5 is not below h1 by more than 0.5; a paired t below -2 refutes it. No other book, parameter or window may be consulted for this decision.",
+  "live_validation_2024-10_to_2026-09": {
+    "h1_IR_after_cost": 0.44,
+    "h5_IR_after_cost": 0.15,
+    "tie_share": {
+      "h1": 0.067,
+      "h5": 0.112
+    },
+    "note": "Three-seed books of the live fits scored on their own validation segment (from cash, 2 tie keys). The most recent two years on CSI300 favour the 1-day label, as wf2024 did; the development evidence for h5 is pooled across 2018-2025 and three universes. Recorded before freezing so the holdout's prior is explicit."
+  }
 }
