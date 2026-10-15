@@ -496,13 +496,26 @@ def _ic_metrics(pred: pd.Series, label: pd.Series) -> dict[str, float]:
             "test_dates": int(ic.notna().sum()), "test_rows": int(len(frame))}
 
 
+def _untie(pred: pd.Series, salt: int = 0) -> pd.Series:
+    """Same daily order, ties broken by a stable pseudo-random key per (day, instrument, salt).
+
+    Shallow, heavily regularised trees emit few distinct scores (up to ~90% of a
+    day's names tied). TopkDropout then picks among tied names in an order set by
+    Python's per-process string hashing, so the same predictions backtest
+    differently from run to run.
+    """
+    dense = pred.groupby(level="datetime").rank(method="dense")
+    key = pd.util.hash_pandas_object(pred.index.to_frame(index=False).assign(salt=salt), index=False)
+    return dense + 0.5 * (key.to_numpy() >> np.uint64(11)).astype(np.float64) / 2.0**53
+
+
 def _backtest(pred: pd.Series, universe: str, split, n_drop: int = 5,
-              return_report: bool = False):
+              return_report: bool = False, tie_salt: int = 0):
     from qlib.backtest import backtest, executor
     from qlib.contrib.evaluate import risk_analysis
     from qlib.contrib.strategy import TopkDropoutStrategy
 
-    strategy = TopkDropoutStrategy(signal=pred.to_frame("score"), topk=TOPK, n_drop=n_drop)
+    strategy = TopkDropoutStrategy(signal=_untie(pred, tie_salt).to_frame("score"), topk=TOPK, n_drop=n_drop)
     # The test window can run past the provider's calendar (protocol live): stop at the last signal.
     end = min(pd.Timestamp(split["test"][1]), pred.index.get_level_values("datetime").max())
     exec_obj = executor.SimulatorExecutor(time_per_step="day", generate_portfolio_metrics=True)
