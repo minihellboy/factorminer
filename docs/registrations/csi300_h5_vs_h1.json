@@ -1,0 +1,54 @@
+{
+  "spec": {
+    "name": "csi300_h5_vs_h1",
+    "universe": "csi300",
+    "description": "Alpha158, Qlib default processing (raw features, z-scored label), Qlib LightGBM parameters, TopkDropout top-50 n_drop 5. Challenger trains on the 5-day forward return (Ref($close,-6)/Ref($close,-1)-1), incumbent on the 1-day return; both predict and trade daily. Three seeds, per-day percentile ranks averaged, ties broken by the stable key.",
+    "books": {
+      "h1": "alpha158_h1_lgb_s?",
+      "h5": "alpha158_h5_lgb_s?"
+    },
+    "baseline": "h1",
+    "development_evidence": "Pooled walk-forward 2018-2025, 4 tie draws: CSI300 IR 1.26 -> 1.52 (paired NW t 0.72), CSI500 0.45 -> 0.90 (t 1.29), CSI1000 -0.13 -> 0.93 (t 4.12); day-averaged across the three universes t 3.0 at NW 7/20/60, dIR +0.78 (90% CI 0.35-1.24). CSI500/CSI1000 fits were made after the CSI300 result with the hypothesis fixed. Files: book_wf_horizon.json, book_csi500_horizon.json, book_csi1000_horizon.json.",
+    "rule": "Score both books with book_eval.py --window live=... from the first session after provider_last_date. Decide at 2027-10-15 (about 240 sessions): the challenger is confirmed if its paired daily after-cost excess over the incumbent has NW(20) t > 0 and the live IR of h5 is not below h1 by more than 0.5; a paired t below -2 refutes it. No other book, parameter or window may be consulted for this decision.",
+    "live_validation_2024-10_to_2026-09": {
+      "h1_IR_after_cost": 0.44,
+      "h5_IR_after_cost": 0.15,
+      "tie_share": {
+        "h1": 0.067,
+        "h5": 0.112
+      },
+      "note": "Three-seed books of the live fits scored on their own validation segment (from cash, 2 tie keys). The most recent two years on CSI300 favour the 1-day label, as wf2024 did; the development evidence for h5 is pooled across 2018-2025 and three universes. Recorded before freezing so the holdout's prior is explicit."
+    }
+  },
+  "spec_sha256": "32cb87f8c93063e3a167ce64902d04b91bd39362a656b2bd90924cbb8f11b889",
+  "registered": "2026-10-15T21:40:31+0200",
+  "git_commit": "31b30930ccf5893043dfb4c33c4ed636478c83a8",
+  "provider_last_date": "2026-10-12",
+  "runs_root": "output/qlib_cn/csi300/live",
+  "runs": {
+    "alpha158_h1_lgb_s0": {
+      "model.txt": "53c98639a760856a6c9f34cb72bcc2a007c3849a25c0c62e1a40de32761373e5",
+      "metrics.json": "89853813f233ddd973505229e47bb459ea78f91adc610f70b0fd9325e1cc4181"
+    },
+    "alpha158_h1_lgb_s1": {
+      "model.txt": "9ffd708336fda4e742c259018841124b284d6512d742be70bf5154696ada6f23",
+      "metrics.json": "08d88f2fefd315c79d81a555ced5eafa688b2265a8c42bdc0bd5f35058c28783"
+    },
+    "alpha158_h1_lgb_s2": {
+      "model.txt": "2c9da0291ca9617a21e5e00d58d9b37eeb4ba533527c2827aa5fbec04e06c8f6",
+      "metrics.json": "6dd3bb030b5c8d700ac6dd8b76dc09514f57565b6a985841a1a7e6b8eb181552"
+    },
+    "alpha158_h5_lgb_s0": {
+      "model.txt": "d7745a5ea4837d91e01e6f41acecc45f663aded8fa14cec8e73dac1ceca938d6",
+      "metrics.json": "d2e2f49c3772c5541ab60ee68d40be971d0b0a8b767c58aa6032b3a587b84179"
+    },
+    "alpha158_h5_lgb_s1": {
+      "model.txt": "916eb0292074172b94a3510f171f7b3181cd8bf608898ec5a28c6659afdd39a8",
+      "metrics.json": "8c379626ca6ef78c02220e03ba4bc45df64f3bfe9b6662bc3d789c087c27b90d"
+    },
+    "alpha158_h5_lgb_s2": {
+      "model.txt": "759db85fb95fa03cbe10712c0b0e963c13f0cde5d6f9890654638c5657a30fb9",
+      "metrics.json": "6c74166582af4fc933f7c0c0b6d4d969aa19e336a3a1d74449c40926c585e71f"
+    }
+  }
+}
