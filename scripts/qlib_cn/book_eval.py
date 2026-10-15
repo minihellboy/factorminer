@@ -262,6 +262,8 @@ def main() -> None:
             entry["vs_baseline"] = {
                 "annualized_excess_diff": float(diff.mean() * DAYS), "excess_diff_t": _hac_t(diff),
                 "excess_diff_t_nw20": _nw_t(diff, 20), "excess_diff_t_nw60": _nw_t(diff, 60),
+                "excess_diff_drop10_best": float(np.sort(diff)[:-10].mean() * DAYS),
+                "turnover_ratio": float(both["turnover"].mean() / both["turnover_base"].mean()),
                 "ir_diff": float(_ir(ex) - _ir(ex_base)), "ir_diff_90ci": _ir_diff_interval(ex, ex_base),
                 "top_spread_diff_bps": float(np.nanmean(top)), "top_spread_diff_t": _hac_t(top),
                 "RankIC_diff": float((both["ric"] - both["ric_base"]).mean()),
