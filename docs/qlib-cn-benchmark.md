@@ -391,7 +391,10 @@ Pooled 2018–2025 walk-forward. Baseline: tuned top-stopped LightGBM
   horizon t 1.0. **The 5-day training label is the first change that
   reaches the book**, and it is adopted as a fixed choice (`--horizon 5`,
   default processing, 3 seeds), not as a validation-selected procedure,
-  because validation IR picked the wrong horizon in most windows. Caveats:
+  because validation IR picked the wrong horizon in most windows. The gain
+  is not a capacity effect in disguise: the 5-day model does grow more trees
+  (tie share 0.21 → 0.10), but the `slow31`/`slow63` presets with 165–300
+  trees and no ties on the 1-day label gain nothing. Caveats:
   on CSI300 alone t 0.72 and wf2024 loses 0.58 IR; the gain is in 2018–19
   and 2022–23 on CSI300 and across all windows on CSI1000.
 - **Review-driven variants, 3 seeds** (`book_wf_review3.json`, vs default
