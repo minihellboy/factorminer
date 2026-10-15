@@ -509,6 +509,11 @@ def _untie(pred: pd.Series, salt: int = 0) -> pd.Series:
     return dense + 0.5 * (key.to_numpy() >> np.uint64(11)).astype(np.float64) / 2.0**53
 
 
+# TopkDropout's only_tradable: skip names suspended or at their limit on the trade day and buy the
+# next-ranked instead (known at the close the book trades at). Off by default: Qlib's benchmark
+# setting, under which top-ranked suspended names leave their slots in cash (2.5% of the CSI300 book
+# and 8.7% of the CSI1000 book on average over 2018-2025).
+ONLY_TRADABLE = False
 EXCHANGE = {"freq": "day", "limit_threshold": 0.095, "deal_price": "close",
             "open_cost": 0.0005, "close_cost": 0.0015, "min_cost": 5}
 _EXCHANGES: dict = {}
@@ -534,13 +539,83 @@ def _exchange(universe: str):
     return _EXCHANGES[universe]
 
 
+def _band_strategy(**kwargs):
+    """TopkDropout with a rank band instead of a fixed daily count (``band`` = sell rank / topk).
+
+    TopkDropout replaces the ``n_drop`` held names that rank below the best
+    candidates every day, whatever the score gaps. Under proportional costs the
+    optimal rule is a no-trade region: keep a name while it still ranks within
+    ``band * topk`` of the day's universe and sell it once it falls out, then
+    refill the book from the top-ranked names not held. The number of trades
+    follows the signal. Execution (limits, lot rounding, costs, cash split)
+    is TopkDropoutStrategy's own code path.
+    """
+    import copy
+
+    from qlib.backtest.decision import Order, OrderDir, TradeDecisionWO
+    from qlib.contrib.strategy import TopkDropoutStrategy
+
+    class BandStrategy(TopkDropoutStrategy):
+        def __init__(self, *, band: float, **kw):
+            super().__init__(**kw)
+            self.band = band
+
+        def generate_trade_decision(self, execute_result=None):
+            trade_step = self.trade_calendar.get_trade_step()
+            start, end = self.trade_calendar.get_step_time(trade_step)
+            pred_start, pred_end = self.trade_calendar.get_step_time(trade_step, shift=1)
+            score = self.signal.get_signal(start_time=pred_start, end_time=pred_end)
+            if isinstance(score, pd.DataFrame):
+                score = score.iloc[:, 0]
+            if score is None:
+                return TradeDecisionWO([], self)
+            position = copy.deepcopy(self.trade_position)
+            cash = position.get_cash()
+            held = position.get_stock_list()
+            order = score.sort_values(ascending=False).index
+            keep = set(order[: int(round(self.band * self.topk))])
+            sell = [code for code in held if code not in keep]
+            candidates = [code for code in order if code not in set(held)]
+            buy = candidates[: len(sell) + self.topk - len(held)]
+            sells, buys = [], []
+            for code in held:
+                if code not in sell or not self.trade_exchange.is_stock_tradable(
+                        stock_id=code, start_time=start, end_time=end,
+                        direction=None if self.forbid_all_trade_at_limit else OrderDir.SELL):
+                    continue
+                o = Order(stock_id=code, amount=position.get_stock_amount(code=code), start_time=start,
+                          end_time=end, direction=Order.SELL)
+                if self.trade_exchange.check_order(o):
+                    sells.append(o)
+                    value, cost, _ = self.trade_exchange.deal_order(o, position=position)
+                    cash += value - cost
+            value = cash * self.risk_degree / len(buy) if buy else 0
+            for code in buy:
+                if not self.trade_exchange.is_stock_tradable(
+                        stock_id=code, start_time=start, end_time=end,
+                        direction=None if self.forbid_all_trade_at_limit else OrderDir.BUY):
+                    continue
+                price = self.trade_exchange.get_deal_price(stock_id=code, start_time=start, end_time=end,
+                                                           direction=OrderDir.BUY)
+                factor = self.trade_exchange.get_factor(stock_id=code, start_time=start, end_time=end)
+                amount = self.trade_exchange.round_amount_by_trade_unit(value / price, factor)
+                buys.append(Order(stock_id=code, amount=amount, start_time=start, end_time=end,
+                                  direction=Order.BUY))
+            return TradeDecisionWO(sells + buys, self)
+
+    return BandStrategy(**kwargs)
+
+
 def _backtest(pred: pd.Series, universe: str, split, n_drop: int = 5,
-              return_report: bool = False, tie_salt: int = 0, cache_exchange: bool = True):
+              return_report: bool = False, tie_salt: int = 0, cache_exchange: bool = True,
+              band: float | None = None):
     from qlib.backtest import backtest, executor
     from qlib.contrib.evaluate import risk_analysis
     from qlib.contrib.strategy import TopkDropoutStrategy
 
-    strategy = TopkDropoutStrategy(signal=_untie(pred, tie_salt).to_frame("score"), topk=TOPK, n_drop=n_drop)
+    signal = _untie(pred, tie_salt).to_frame("score")
+    strategy = (TopkDropoutStrategy(signal=signal, topk=TOPK, n_drop=n_drop, only_tradable=ONLY_TRADABLE)
+                if band is None else _band_strategy(signal=signal, topk=TOPK, n_drop=n_drop, band=band))
     # The test window can run past the provider's calendar (protocol live): stop at the last signal.
     end = min(pd.Timestamp(split["test"][1]), pred.index.get_level_values("datetime").max())
     exec_obj = executor.SimulatorExecutor(time_per_step="day", generate_portfolio_metrics=True)

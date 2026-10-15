@@ -203,24 +203,25 @@ def _frame(report: pd.DataFrame) -> pd.DataFrame:
                          "turnover": report["turnover"]})
 
 
-def _simulate(scores: dict[str, pd.Series], universe: str, n_drop: int, sim: str, salt: int) -> pd.DataFrame:
+def _simulate(scores: dict[str, pd.Series], universe: str, n_drop: int, sim: str, salt: int,
+              band: float | None = None) -> pd.DataFrame:
     if sim == "reset":
         return pd.concat([_frame(_backtest(scores[p], universe, PROTOCOLS[p], n_drop=n_drop, return_report=True,
-                                           tie_salt=salt)[1]) for p in scores]).sort_index()
+                                           tie_salt=salt, band=band)[1]) for p in scores]).sort_index()
     spans = sorted(PROTOCOLS[p]["test"] for p in scores)
     score = pd.concat(scores.values()).sort_index()
     _, report = _backtest(score, universe, {"test": (spans[0][0], spans[-1][1])}, n_drop=n_drop,
-                          return_report=True, tie_salt=salt)
+                          return_report=True, tie_salt=salt, band=band)
     return _frame(report)
 
 
-_SCORES: dict[str, tuple[dict[str, pd.Series], int]] = {}  # key -> (window scores, n_drop); read by forked workers
+_SCORES: dict[str, tuple[dict[str, pd.Series], int, float | None]] = {}  # key -> (window scores, n_drop, band)
 JOBS = 1  # --jobs
 
 
 def _simulate_key(key: str, universe: str, sim: str, salt: int) -> pd.DataFrame:
-    scores, n_drop = _SCORES[key]
-    return _simulate(scores, universe, n_drop, sim, salt)
+    scores, n_drop, band = _SCORES[key]
+    return _simulate(scores, universe, n_drop, sim, salt, band)
 
 
 def _map(fn, tasks: list[tuple]) -> list:
@@ -235,14 +236,14 @@ def _map(fn, tasks: list[tuple]) -> list:
 
 def _books(universe: str, windows: dict[str, str], specs: dict[str, tuple], sim: str,
            draws: int = 1) -> dict[str, tuple[pd.DataFrame, pd.Series, dict[str, float]]]:
-    """Daily book returns over all windows for every ``key -> (patterns, smooth, n_drop, neutral)``,
+    """Daily book returns over all windows for every ``key -> (patterns, smooth, n_drop, neutral, band)``,
     each averaged over ``draws`` tie-breaking keys; all (book, draw) backtests run in parallel."""
     from run_qlib_baselines import _exchange
 
     _SCORES.clear()
-    for key, (patterns, smooth, n_drop, neutral) in specs.items():
+    for key, (patterns, smooth, n_drop, neutral, band) in specs.items():
         _SCORES[key] = ({p: _neutralize(_signal(_runs(Path(root), patterns[p]), smooth), neutral)
-                         for p, root in windows.items()}, n_drop)
+                         for p, root in windows.items()}, n_drop, band)
     _exchange(universe)  # built once, before forking
     tasks = [(key, universe, sim, salt) for key in specs for salt in range(draws)]
     reports = dict(zip([(t[0], t[3]) for t in tasks], _map(_simulate_key, tasks)))
@@ -290,6 +291,8 @@ def main() -> None:
     parser.add_argument("--book", action="append", required=True, help="name=glob[,glob...]")
     parser.add_argument("--smooth", default="0", help="comma-separated EMA half-lives (0 = none)")
     parser.add_argument("--n-drop", default="5", help="comma-separated TopkDropout n_drop values")
+    parser.add_argument("--band", default=None,
+                        help="comma-separated rank bands (x topk): also trade each book with the band rule")
     parser.add_argument("--select", action="append", default=[],
                         help="name=book,book,...: per window, the book with the best validation IR")
     parser.add_argument("--sim", choices=["continuous", "reset"], default="continuous")
@@ -301,10 +304,15 @@ def main() -> None:
                              "mean removed (default weights 1)")
     parser.add_argument("--baseline", default=None)
     parser.add_argument("--jobs", type=int, default=8, help="parallel backtest processes")
+    parser.add_argument("--tradable", action="store_true",
+                        help="TopkDropout only_tradable: buy the next-ranked name instead of a suspended/limit one")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     global COMBINE, COSTS, INDUSTRY, JOBS
     COMBINE, COSTS, JOBS = args.combine, args.costs, args.jobs
+    import run_qlib_baselines
+
+    run_qlib_baselines.ONLY_TRADABLE = args.tradable
     neutrals = [0.0]
     if args.neutral:
         path, _, weights = args.neutral.partition(":")
@@ -336,15 +344,16 @@ def main() -> None:
         print(name, json.dumps(selections[name]), flush=True)
     smooths = [float(h) for h in args.smooth.split(",")]
     drops = [int(n) for n in args.n_drop.split(",")]
+    bands = [None] + [float(b) for b in args.band.split(",")] if args.band else [None]
 
     per_book = {name: {p: patterns for p in windows} for name, patterns in books.items()}
     per_book.update({name: {p: books[c["chosen"]] for p, c in chosen.items()} for name, chosen in selections.items()})
     specs = {}
     for name, patterns in per_book.items():
-        for h, n_drop, w in itertools.product(smooths, drops, neutrals):
+        for h, n_drop, w, band in itertools.product(smooths, drops, neutrals, bands):
             key = (name + (f"@ema{h:g}" if h else "") + (f"@drop{n_drop}" if n_drop != 5 else "")
-                   + (f"@neutral{w:g}" if w else ""))
-            specs[key] = (patterns, h, n_drop, w)
+                   + (f"@neutral{w:g}" if w else "") + (f"@band{band:g}" if band else ""))
+            specs[key] = (patterns, h, n_drop, w, band)
     daily: dict[str, pd.DataFrame] = {}
     ties: dict[str, dict] = {}
     for key, (frame, score, ties[key]) in _books(args.universe, windows, specs, args.sim, args.tie_draws).items():
@@ -355,6 +364,7 @@ def main() -> None:
         print(key, json.dumps(_summary(daily[key])), flush=True)
 
     result = {"windows": list(windows), "books": books, "sim": args.sim, "combine": args.combine,
+              "tradable": args.tradable,
               "tie_draws": args.tie_draws,
               "costs": args.costs, "selections": selections,
               "results": {}}
