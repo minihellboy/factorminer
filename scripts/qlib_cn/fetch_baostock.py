@@ -5,7 +5,7 @@ the FactorMiner environment)::
 
     bs-venv/bin/python -I scripts/qlib_cn/fetch_baostock.py \\
         --panel ~/fm-data/panels/csi300_2007_2026.parquet --out ~/fm-data/baostock \\
-        --start 2007-01-01 --end 2026-10-13 --workers 6
+        --start 2007-01-01 --end 2026-10-13 --workers 1
 
 BaoStock (www.baostock.com) is a free A-share data service. Per instrument of
 the panel it downloads
@@ -19,7 +19,8 @@ the panel it downloads
 It also downloads the CSI300 and CSI500 index bars. Each instrument's result is
 cached under ``<out>/cache`` so an interrupted run resumes. BaoStock sessions
 are not thread-safe; ``--workers`` runs that many processes, each with one
-login for its lifetime. The outputs are ``daily.parquet``, ``quarterly.parquet`` and
+login for its lifetime. BaoStock blacklists clients that hold several
+sessions at once (8 workers did), so keep ``--workers 1``. The outputs are ``daily.parquet``, ``quarterly.parquet`` and
 ``index.parquet`` under ``--out``, plus ``manifest.json``.
 """
 
@@ -130,7 +131,7 @@ def main() -> None:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--start", default="2007-01-01")
     parser.add_argument("--end", default=dt.date.today().isoformat())
-    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--quarterly", action="store_true",
                         help="also fetch the quarterly report tables (slow endpoint)")
     args = parser.parse_args()
