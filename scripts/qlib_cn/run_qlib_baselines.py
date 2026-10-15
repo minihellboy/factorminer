@@ -45,6 +45,10 @@ reported metric and the backtest stay on the 1-day label.
 set the two halves of ``--robust`` separately. ``--refit`` refits LightGBM on
 train + valid with the early-stopped tree count before predicting test.
 
+``--lgb-config`` picks a LightGBM preset: ``qlib`` (benchmark), ``qlib_bag``
+(row bagging actually on), ``slow63`` / ``slow31`` (lower learning rate, more
+trees, larger leaves' minimum size, lighter L1/L2).
+
 ``--model dens`` / ``xgb`` / ``cat`` fit Qlib's DoubleEnsemble, XGBoost and
 CatBoost with their Alpha158 benchmark-config hyperparameters.
 
@@ -93,6 +97,19 @@ LGB_PARAMS = {
     "loss": "mse", "colsample_bytree": 0.8879, "learning_rate": 0.2, "subsample": 0.8789,
     "lambda_l1": 205.6999, "lambda_l2": 580.9768, "max_depth": 8, "num_leaves": 210,
     "num_threads": int(os.environ.get("LGB_THREADS", "20")),  # LGB_THREADS shares a machine
+}
+
+# --lgb-config presets: (parameter overrides, boosting rounds, early-stopping patience).
+# "qlib" is the benchmark config; its subsample is inert without bagging_freq.
+LGB_CONFIGS = {
+    "qlib": ({}, 1000, 50),
+    "qlib_bag": ({"bagging_freq": 1}, 1000, 50),
+    "slow63": ({"learning_rate": 0.05, "num_leaves": 63, "min_data_in_leaf": 500, "bagging_freq": 1,
+                "colsample_bytree": 0.8, "subsample": 0.8, "lambda_l1": 20.0, "lambda_l2": 60.0},
+               3000, 200),
+    "slow31": ({"learning_rate": 0.03, "num_leaves": 31, "max_depth": -1, "min_data_in_leaf": 1000,
+                "bagging_freq": 1, "colsample_bytree": 0.7, "subsample": 0.8, "lambda_l1": 0.0,
+                "lambda_l2": 10.0}, 4000, 300),
 }
 
 
@@ -192,14 +209,15 @@ TOP_WEIGHT = 4.0  # topmse: extra weight on rows whose label is in the day's top
 
 
 def _model(name: str, objective: str = "mse", early_stop: str = "loss", seed: int = 0,
-           top_weight: float = TOP_WEIGHT, patience: int = 50, temperature: float = 1.0):
+           top_weight: float = TOP_WEIGHT, patience: int = 50, temperature: float = 1.0,
+           rounds: int = 1000):
     if name == "lgb" and (objective, early_stop) != ("mse", "loss"):
-        return RankLGB(objective, early_stop, seed, top_weight=top_weight,
+        return RankLGB(objective, early_stop, seed, top_weight=top_weight, num_boost_round=rounds,
                        early_stopping_rounds=patience, temperature=temperature)
     if name == "lgb":
         from qlib.contrib.model.gbdt import LGBModel
 
-        return LGBModel(**LGB_PARAMS)
+        return LGBModel(**LGB_PARAMS, num_boost_round=rounds, early_stopping_rounds=patience)
     if name == "linear":
         from qlib.contrib.model.linear import LinearModel
 
@@ -483,6 +501,8 @@ def main() -> None:
                         help="label normalisation (default: zscore for alpha158, rank with --robust)")
     parser.add_argument("--purge", choices=["qlib", "full"], default="qlib",
                         help="segment ends: qlib (labels overreach 2 days, as Qlib's) or full")
+    parser.add_argument("--lgb-config", choices=sorted(LGB_CONFIGS), default="qlib",
+                        help="LightGBM hyperparameter preset (qlib: the benchmark config)")
     parser.add_argument("--refit", action="store_true",
                         help="LightGBM: after early stopping, refit on train+valid with that tree count")
     parser.add_argument("--horizon", type=int, default=1,
@@ -528,8 +548,12 @@ def main() -> None:
             fit_dataset = dataset
     else:
         fit_dataset = dataset
+        overrides, rounds, patience = LGB_CONFIGS[args.lgb_config]
+        LGB_PARAMS.update(overrides)
+        if args.lgb_config == "qlib":
+            patience = args.patience
         model = _model(args.model, args.objective, args.early_stop, args.seed, args.top_weight,
-                       args.patience, args.temperature)
+                       patience, args.temperature, rounds)
         if isinstance(model, RankLGB):
             LGB_PARAMS["seed"] = args.seed
         elif args.model == "lgb":
@@ -570,7 +594,7 @@ def main() -> None:
         "temperature": args.temperature if args.objective == "listnet" else None,
         "label": LABEL[0], "train_label": _label(args.horizon)[0], "horizon": args.horizon,
         "segments": segments, "purge": args.purge, "feature_norm": args.feature_norm,
-        "label_norm": args.label_norm, "refit_rounds": refit_rounds, "lgb_params": LGB_PARAMS if args.model == "lgb" else None,
+        "label_norm": args.label_norm, "refit_rounds": refit_rounds, "lgb_config": args.lgb_config, "lgb_params": LGB_PARAMS if args.model == "lgb" else None,
         "qlib_version": qlib.__version__, "metrics": metrics,
         "factors_file": str(args.factors) if args.factors else None,
     }, indent=2) + "\n")
