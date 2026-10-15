@@ -40,12 +40,15 @@ evaluated formulas, 500+ model fits.
   effect sizes.
 
 - **Training on a 5-day label reaches the book.** With everything else
-  Qlib-default, `--horizon 5` raises the pooled after-cost IR from 1.26 to
-  1.52 on CSI300, 0.45 to 0.90 on CSI500 and −0.13 to 0.93 on CSI1000;
-  pooled over the three universes the paired t is 3.0 and the IR gain 0.78
-  (90% CI 0.35–1.24). The 10-day label and a validation-chosen horizon are
-  weaker. This is the adopted model; the prospective holdout from
-  2026-10-16 scores it against the 1-day incumbent.
+  Qlib-default and seven seeds per book, `--horizon 5` raises the pooled
+  after-cost IR from 0.95 to 1.47 on CSI300, 0.43 to 1.06 on CSI500 and
+  −0.16 to 0.79 on CSI1000; pooled over the three universes the paired t is
+  3.8 and the IR gain 0.91 (90% CI 0.51–1.32). The 10-day label and a
+  validation-chosen horizon are weaker. This is the adopted model; the
+  prospective holdout from 2026-10-16 scores it against the 1-day incumbent.
+- **Seed sets matter as much as most ideas.** The three-seed default book
+  quoted at 1.26–1.29 is the best of the 35 three-seed subsets of seven
+  seeds (mean 1.05, sd 0.10). Books are now judged with seven seeds.
 
 Dead ends this round: industry-neutral scores, more trees or lower learning
 rates, bagging, refitting on train+validation, fundamentals features, a
@@ -373,8 +376,16 @@ Pooled 2018–2025 walk-forward. Baseline: tuned top-stopped LightGBM
   seeds 0–2 are the best of the 35; single seeds average 0.98 (sd 0.08).
   The expected default book is therefore about 1.05, not 1.27, and every
   three-seed comparison in this table carries a seed-set sd of 0.10 on each
-  side. The horizon adoption is being re-judged with seven seeds per book
-  on all three universes.
+  side.
+- **Seven-seed re-judgement of the horizon** (`book_csi300_h7b.json`,
+  `book_csi500_h7.json`, `book_csi1000_h7.json`; 4 tie draws). 1-day →
+  5-day label: CSI300 0.95 → 1.47 (paired t 1.93, ΔIR 90% CI [0.08, 0.96],
+  reality-check p 0.044), CSI500 0.43 → 1.06 (t 1.94, p 0.044), CSI1000
+  −0.16 → 0.79 (t 3.87). Day-averaged across the three universes: t 3.8 at
+  bandwidths 7, 20 and 60, ΔIR +0.91 (CI [0.51, 1.32]); the two seed halves
+  (0–2 and 3–6) agree (+0.92 and +0.80). The adoption survives the seed
+  correction; the 5-day book gains about 0.5 IR over a fairly seeded
+  incumbent on every universe.
 - **Tree count is not a lever under Qlib's parameters.** Fitted to 512
   rounds with no early stopping, the default model (learning rate 0.2, L1
   206) stops by itself when no split clears the penalty: 5 trees on wf2022,

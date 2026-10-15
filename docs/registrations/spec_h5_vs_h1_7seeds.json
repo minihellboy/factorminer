@@ -1,0 +1,13 @@
+{
+  "name": "csi300_h5_vs_h1_7seeds",
+  "universe": "csi300",
+  "description": "Alpha158, Qlib default processing (raw features, z-scored label), Qlib LightGBM parameters, TopkDropout top-50 n_drop 5. Challenger trains on the 5-day forward return (Ref($close,-6)/Ref($close,-1)-1), incumbent on the 1-day return; both predict and trade daily. Seven seeds (0-6), per-day percentile ranks averaged, ties broken by the stable key.",
+  "books": {
+    "h1": "alpha158_h1_lgb_s[0123456]",
+    "h5": "alpha158_h5_lgb_s[0123456]"
+  },
+  "baseline": "h1",
+  "development_evidence": "Seven-seed books, pooled walk-forward 2018-2025, 4 tie draws: CSI300 IR 0.95 -> 1.50 (paired NW t 2.03, reality-check p 0.035), CSI500 0.43 -> 1.06 (t 1.94, p 0.044), CSI1000 -0.16 -> 0.79 (t 3.87); day-averaged across the three universes t 3.8 at NW 7/20/60, dIR +0.92 (90% CI 0.52-1.33). The three-seed incumbent registered in csi300_h5_vs_h1 (1.26) is the best of all 35 three-seed subsets (mean 1.05, sd 0.10); seven seeds remove most of that seed-set noise. Files: book_csi300_h7b.json, book_csi500_h7.json, book_csi1000_h7.json, book_wf_seedsets.json.",
+  "rule": "Score both books with book_eval.py --window live=... from the first session after provider_last_date. Decide at 2027-10-15 (about 240 sessions): the challenger is confirmed if its paired daily after-cost excess over the incumbent has NW(20) t > 0 and the live IR of h5 is not below h1 by more than 0.5; a paired t below -2 refutes it. No other book, parameter or window may be consulted for this decision.",
+  "relation": "Companion to csi300_h5_vs_h1 (3 seeds, frozen earlier the same day). Both stay registered; the 7-seed pair is the primary prospective test, the 3-seed pair is reported alongside."
+}
