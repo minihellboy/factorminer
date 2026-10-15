@@ -26,7 +26,15 @@ without them. ``--objective topmse`` keeps the regression loss but weights
 each row ``1 + TOP_WEIGHT`` when its label is in the day's top sextile, so
 the fit is judged mostly on the names a book would hold. ``--early-stop top``
 stops on the validation top-50 spread (mean raw label of the 50 best-scored
-names minus the day's mean) rather than on the loss.
+names minus the day's mean) rather than on the loss. ``--objective xendcg``
+is LightGBM's rank_xendcg (listwise cross-entropy over the same grades, also
+without L1/L2); ``topclass`` is binary logloss on the top-sextile indicator;
+``listnet`` is a custom per-day softmax cross-entropy between the scores and
+``softmax(label / --temperature)``, so a low temperature puts the target mass
+on the day's best names.
+
+``--model dens`` / ``xgb`` / ``cat`` fit Qlib's DoubleEnsemble, XGBoost and
+CatBoost with their Alpha158 benchmark-config hyperparameters.
 
 ``--model mlp`` / ``gru`` / ``alstm`` fit Qlib's PyTorch reference models
 (``pytorch_nn.DNNModelPytorch``, ``pytorch_gru_ts.GRU``, ``pytorch_alstm_ts.ALSTM``)
@@ -145,9 +153,10 @@ TOP_WEIGHT = 4.0  # topmse: extra weight on rows whose label is in the day's top
 
 
 def _model(name: str, objective: str = "mse", early_stop: str = "loss", seed: int = 0,
-           top_weight: float = TOP_WEIGHT):
+           top_weight: float = TOP_WEIGHT, patience: int = 50, temperature: float = 1.0):
     if name == "lgb" and (objective, early_stop) != ("mse", "loss"):
-        return RankLGB(objective, early_stop, seed, top_weight=top_weight)
+        return RankLGB(objective, early_stop, seed, top_weight=top_weight,
+                       early_stopping_rounds=patience, temperature=temperature)
     if name == "lgb":
         from qlib.contrib.model.gbdt import LGBModel
 
@@ -156,6 +165,26 @@ def _model(name: str, objective: str = "mse", early_stop: str = "loss", seed: in
         from qlib.contrib.model.linear import LinearModel
 
         return LinearModel(estimator="ols")
+    threads = LGB_PARAMS["num_threads"]
+    if name == "dens":  # workflow_config_doubleensemble_Alpha158.yaml
+        from qlib.contrib.model.double_ensemble import DEnsembleModel
+
+        lgb = {k: v for k, v in LGB_PARAMS.items() if k != "loss"}
+        return DEnsembleModel(base_model="gbm", loss="mse", num_models=6, enable_sr=True, enable_fs=True,
+                              alpha1=1, alpha2=1, bins_sr=10, bins_fs=5, decay=0.5,
+                              sample_ratios=[0.8, 0.7, 0.6, 0.5, 0.4], sub_weights=[1] * 6, epochs=136,
+                              verbosity=-1, seed=seed, **lgb)
+    if name == "xgb":  # workflow_config_xgboost_Alpha158.yaml
+        from qlib.contrib.model.xgboost import XGBModel
+
+        return XGBModel(eval_metric="rmse", colsample_bytree=0.8879, eta=0.0421, max_depth=8,
+                        n_estimators=647, subsample=0.8789, nthread=threads, seed=seed)
+    if name == "cat":  # workflow_config_catboost_Alpha158.yaml
+        from qlib.contrib.model.catboost_model import CatBoostModel
+
+        return CatBoostModel(loss="RMSE", learning_rate=0.0421, subsample=0.8789, max_depth=6,
+                             num_leaves=100, thread_count=threads, grow_policy="Lossguide",
+                             bootstrap_type="Bernoulli", random_seed=seed)
     raise ValueError(name)
 
 
@@ -233,20 +262,45 @@ class RankLGB:
 
     def __init__(self, objective: str, early_stop: str, seed: int,
                  early_stopping_rounds: int = 50, num_boost_round: int = 1000,
-                 top_weight: float = TOP_WEIGHT) -> None:
+                 top_weight: float = TOP_WEIGHT, temperature: float = 1.0) -> None:
         self.objective, self.early_stop, self.top_weight = objective, early_stop, top_weight
         self.params = {k: v for k, v in LGB_PARAMS.items() if k != "loss"}
         self.params.update(seed=seed, verbosity=-1)
-        if objective == "lambdarank":
-            self.params.update(objective="lambdarank", eval_at=[TOPK],
-                               lambdarank_truncation_level=TOPK + 10,
+        if objective in {"lambdarank", "xendcg"}:
+            self.params.update(objective="lambdarank" if objective == "lambdarank" else "rank_xendcg",
                                lambda_l1=0.0, lambda_l2=0.0)
+            if objective == "lambdarank":
+                self.params.update(eval_at=[TOPK], lambdarank_truncation_level=TOPK + 10)
+        elif objective == "topclass":
+            self.params.update(objective="binary")
+        elif objective == "listnet":
+            self.params.update(objective=self._listnet)
         else:
             self.params.update(objective="regression")
         if early_stop == "top":
             self.params["metric"] = "None"
         self.rounds, self.patience = num_boost_round, early_stopping_rounds
         self.best_iteration = 0
+        self.temperature = temperature
+        self._groups: dict[int, np.ndarray] = {}
+
+    def _listnet(self, pred: np.ndarray, data) -> tuple[np.ndarray, np.ndarray]:
+        """ListNet: per-day softmax cross-entropy between scores and softmax(label / T).
+
+        Gradients are scaled by the day's size so a row's step matches a
+        regression residual and Qlib's L1/L2 penalties keep their meaning.
+        """
+        starts = self._groups[id(data)]
+        sizes = np.diff(np.r_[starts, pred.size])
+        day = np.repeat(np.arange(starts.size), sizes)
+        target = data.get_label() / self.temperature
+
+        def softmax(x: np.ndarray) -> np.ndarray:
+            e = np.exp(x - np.maximum.reduceat(x, starts)[day])
+            return e / np.add.reduceat(e, starts)[day]
+
+        p, q, n = softmax(pred), softmax(target), sizes[day]
+        return (p - q) * n, np.maximum(p * (1 - p) * n, 1e-6)
 
     def _segment(self, dataset, key: str):
         import lightgbm as lgb
@@ -257,10 +311,17 @@ class RankLGB:
         label = frame["label"].iloc[:, 0]
         groups = _day_groups(frame.index)
         grades = _grades(label)
-        target = grades if self.objective == "lambdarank" else label.to_numpy()
+        ranked = self.objective in {"lambdarank", "xendcg"}
+        if ranked:
+            target = grades
+        elif self.objective == "topclass":
+            target = (grades == RANK_GRADES - 1).astype(np.float64)
+        else:
+            target = label.to_numpy()
         weight = 1.0 + self.top_weight * (grades == RANK_GRADES - 1) if self.objective == "topmse" else None
         data = lgb.Dataset(frame["feature"].to_numpy(), label=target, weight=weight,
-                           group=groups if self.objective == "lambdarank" else None)
+                           group=groups if ranked else None, free_raw_data=False)
+        self._groups[id(data)] = np.r_[0, np.cumsum(groups)[:-1]]
         return frame, data, groups
 
     def fit(self, dataset) -> None:
@@ -302,12 +363,13 @@ def _ic_metrics(pred: pd.Series, label: pd.Series) -> dict[str, float]:
             "test_dates": int(ic.notna().sum()), "test_rows": int(len(frame))}
 
 
-def _backtest(pred: pd.Series, universe: str, split) -> dict[str, float]:
+def _backtest(pred: pd.Series, universe: str, split, n_drop: int = 5,
+              return_report: bool = False):
     from qlib.backtest import backtest, executor
     from qlib.contrib.evaluate import risk_analysis
     from qlib.contrib.strategy import TopkDropoutStrategy
 
-    strategy = TopkDropoutStrategy(signal=pred.to_frame("score"), topk=50, n_drop=5)
+    strategy = TopkDropoutStrategy(signal=pred.to_frame("score"), topk=TOPK, n_drop=n_drop)
     exec_obj = executor.SimulatorExecutor(time_per_step="day", generate_portfolio_metrics=True)
     portfolio, _ = backtest(
         start_time=split["test"][0], end_time=split["test"][1], strategy=strategy, executor=exec_obj,
@@ -324,7 +386,7 @@ def _backtest(pred: pd.Series, universe: str, split) -> dict[str, float]:
         out[f"{key}.information_ratio"] = float(risk["information_ratio"])
         out[f"{key}.max_drawdown"] = float(risk["max_drawdown"])
     out["turnover_mean"] = float(report["turnover"].mean())
-    return out
+    return (out, report) if return_report else out
 
 
 def main() -> None:
@@ -337,14 +399,20 @@ def main() -> None:
     parser.add_argument("--factors", type=Path, default=None)
     parser.add_argument("--robust", action="store_true",
                         help="robust feature/rank label processors for the Alpha158 handlers")
-    parser.add_argument("--model", choices=["lgb", "linear", "mlp", "gru", "alstm"], default="lgb")
-    parser.add_argument("--objective", choices=["mse", "topmse", "lambdarank"], default="mse",
-                        help="LightGBM objective: mse, topmse (top-sextile-weighted mse), or "
-                             "lambdarank (ranks each day for a top-50 book)")
+    parser.add_argument("--model", choices=["lgb", "linear", "dens", "xgb", "cat", "mlp", "gru", "alstm"], default="lgb")
+    parser.add_argument("--objective", choices=["mse", "topmse", "lambdarank", "xendcg", "listnet",
+                                                "topclass"], default="mse",
+                        help="LightGBM objective: mse, topmse (top-sextile-weighted mse), lambdarank "
+                             "or xendcg (rank each day on sextile grades), listnet (per-day softmax "
+                             "cross-entropy), topclass (logloss on the top-sextile indicator)")
+    parser.add_argument("--temperature", type=float, default=1.0,
+                        help="listnet: target softmax(label / T); lower T concentrates on the top")
     parser.add_argument("--early-stop", choices=["loss", "top"], default=None,
                         help="validation stopping metric (default: loss for mse, top otherwise)")
     parser.add_argument("--top-weight", type=float, default=TOP_WEIGHT,
                         help="topmse: extra weight on top-sextile rows")
+    parser.add_argument("--patience", type=int, default=50,
+                        help="early-stopping rounds for the non-default objectives (Qlib: 50)")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
@@ -384,7 +452,8 @@ def main() -> None:
             fit_dataset = dataset
     else:
         fit_dataset = dataset
-        model = _model(args.model, args.objective, args.early_stop, args.seed, args.top_weight)
+        model = _model(args.model, args.objective, args.early_stop, args.seed, args.top_weight,
+                       args.patience, args.temperature)
         if isinstance(model, RankLGB):
             LGB_PARAMS["seed"] = args.seed
         elif args.model == "lgb":
@@ -410,6 +479,8 @@ def main() -> None:
         "handler": args.handler, "robust": args.robust, "model": args.model, "seed": args.seed,
         "objective": args.objective, "early_stop": args.early_stop,
         "top_weight": args.top_weight if args.objective == "topmse" else None,
+        "patience": args.patience,
+        "temperature": args.temperature if args.objective == "listnet" else None,
         "label": LABEL[0], "lgb_params": LGB_PARAMS if args.model == "lgb" else None,
         "qlib_version": qlib.__version__, "metrics": metrics,
         "factors_file": str(args.factors) if args.factors else None,
