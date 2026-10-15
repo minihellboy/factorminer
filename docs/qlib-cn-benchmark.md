@@ -457,6 +457,68 @@ Univariate signal of the data features (2017–2025, 1-day label):
   20-day industry momentum +2.7 bps: these are the more book-relevant
   features.
 
+### Round 3: fast loop and mechanism tests
+
+**Loop.** `fast_fit.py` caches Alpha158 and the training labels once per
+universe and protocol start (one cache per start: Qlib's rolling std/corr
+round differently by load start, enough to move a LightGBM bin edge) and
+fits every window, label and seed in one process with Qlib's own processors.
+Refits are bit-identical to `run_qlib_baselines.py` (checked on h1/h5,
+raw/robust, three windows; `fast_fit.py fit --check RUN`). A 7-seed, 4-window
+family takes ~100 s instead of ~10 min; `book_eval.py --jobs` runs every
+(book, tie draw) backtest in forked workers sharing one Exchange (156 s →
+35 s); `family.sh` judges books in CSI300/500/1000 and pools them with
+`cross_universe.py`. A full three-universe judgement takes 2–5 minutes.
+
+Every test below is the adopted h5 book (7 seeds, default processing) against
+a single pre-specified challenger or grid, pooled over the three universes,
+4 tie draws (`output/qlib_cn/family/<tag>_*.json`).
+
+- **Survival-weighted label** (`ew90`). A name ranked on day t earns
+  Σ_k 1[held at t+k] r_{t+k}; the measured TopkDropout exit hazard is ~0.10
+  a day (mean holding 9.9–10.0 days), so the matched target is
+  Σ_{k≤20} 0.9^{k−1} r_{t+k}. Pooled t −0.76, ΔIR −0.05 [−0.32, 0.22]: up
+  in CSI300 (1.59 vs 1.47), down in CSI1000 (0.62 vs 0.80). The alpha-decay
+  profile (`book_diagnostics.py decay`) explains it: the CSI300 book's top-50
+  spread is 27 bps over days 1–5 and 25 bps over days 6–20, while CSI1000's
+  late lags are negative. The unbiased target adds more return noise than the
+  signal it recovers; h5 is the better bias–variance point.
+- **Size exposure.** Regressing each book's excess on equal-weight universe
+  minus index (`book_diagnostics.py size`): the EW-minus-index return is only
+  1.5–2.8%/yr, and h5 − h1 net of size is +4.7%/yr (t 2.16), +4.0%/yr
+  (t 1.50) and +8.9%/yr (t 3.29). The label gain is selection, not a small-cap
+  tilt.
+- **Seed count.** Nested books of 1/3/7/15/32 seeds: pooled IR 1.16, 1.39,
+  1.38, 1.35, 1.20 (k32 vs k7 t −1.7). Three disjoint 7-seed sets give
+  1.31–1.42 (seed noise ≈ 0.05 pooled). Averaging per-model percentile ranks
+  of heavily tied models is the cause: with z-score combining, k32 is 1.31
+  vs k7 1.36 (t −0.5). The ensemble saturates by ~7 seeds; rank averaging is
+  harmless at 7 but should not be used for large ensembles.
+- **Turnover.** `n_drop` 3/4/5/7: pooled 1.31/1.41/1.38/1.18; gross IR rises
+  with turnover and costs take it back. n_drop 5 is on the frontier.
+- **No-trade band** (`--band`, sell a holding once its rank falls below
+  B × 50, refill from the top): pooled 0.19–0.99 for B = 1.5–4, turnover not
+  even monotone in B. The scores re-rank sharply day to day; TopkDropout's
+  fixed daily count acts as the noise filter a band lacks.
+- **Score smoothing** under h5 (EMA half-life 1/2/4 days): pooled ΔIR −0.13,
+  −0.25, −0.31; even gross IR falls. The slow decay belongs to the current
+  score; older scores carry less.
+- **Suspended names.** Qlib's TopkDropout tries to buy top-ranked names that
+  are suspended on the trade day and leaves their slots in cash: 2.2% of the
+  CSI300 h5 book's daily top 50 and 8.5% of CSI1000's are suspended on the
+  signal day (the model ranks NaN-feature rows high), so the books hold 49.2
+  and 46.5 names with 2.5% and 8.7% cash. `book_eval.py --tradable`
+  (`only_tradable`: buy the next-ranked name, as a trader at the close would)
+  lowers IR slightly (CSI300 1.48 → 1.42, CSI1000 0.79 → 0.76); h5 vs h1
+  under it: pooled t 3.1, ΔIR +0.83 [0.37, 1.32]. New tests use `--tradable`.
+- **Fundamentals and valuation under h5** (CSI300, `csi300_fq3`, 20 PIT
+  features appended): 1.41 → 0.96 (t −2.25, ΔIR −0.45 [−0.76, −0.15]),
+  lower in every window, the same verdict as under h1.
+- **Inverse-variance (GLS) weights** (`fast_fit.py --weight invvar`,
+  1/σ²_20d): squared loss on z-scored returns is dominated by volatile names,
+  and GLS is the efficient estimator of the same mean. Pooled t −1.0, ΔIR
+  −0.10 [−0.48, 0.26]; RankIC lower in every universe. Rejected.
+
 ### Does marginal value persist?
 
 Partial IC beyond Alpha158's 16 PCs, oriented by the train sign:

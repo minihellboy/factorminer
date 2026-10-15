@@ -158,8 +158,34 @@ def _ensure_label(labels: pd.DataFrame, name: str, universe: str, start: str) ->
     return column
 
 
+VOL_EXPR = "Std($close/Ref($close, 1) - 1, 20)"  # trailing 20-day daily volatility, known at close t
+VOL_FLOOR = 0.005
+
+
+def _weights(labels: pd.DataFrame, index: pd.MultiIndex, how: str, universe: str, start: str) -> np.ndarray | None:
+    """Per-row training weights (mean 1), or None.
+
+    ``invvar``: 1 / sigma^2 with sigma the name's trailing 20-day volatility (floored at
+    0.5%/day; missing -> the day's median). Under squared loss a name's label noise scales
+    with sigma^2, so unweighted MSE is dominated by volatile names; inverse-variance weights
+    are the GLS (efficient) estimator of the same conditional mean.
+    """
+    if how == "none":
+        return None
+    if "_vol20" not in labels:
+        from qlib.data import D
+
+        end = labels.index.get_level_values("datetime").max()
+        vol = D.features(D.instruments(universe), [VOL_EXPR], start_time=start, end_time=end).swaplevel().sort_index()
+        labels["_vol20"] = vol.iloc[:, 0].reindex(labels.index).astype(np.float32)
+    vol = labels["_vol20"].reindex(index)
+    vol = vol.fillna(vol.groupby(level="datetime").transform("median")).fillna(vol.median())
+    w = 1.0 / np.maximum(vol.to_numpy(np.float64), VOL_FLOOR) ** 2
+    return w / w.mean()
+
+
 def _fit_one(features, labels, universe, protocol, label, seed, out: Path, feature_norm: str,
-             label_norm: str, lgb_config: str, purge: str, threads: int) -> dict:
+             label_norm: str, lgb_config: str, purge: str, threads: int, weight: str = "none") -> dict:
     import lightgbm as lgb
 
     started = time.monotonic()
@@ -188,7 +214,8 @@ def _fit_one(features, labels, universe, protocol, label, seed, out: Path, featu
         x = _segment(x_all, *segments[key])
         y = y_all.reindex(x.index)
         keep = y.notna().to_numpy()
-        sets.append(lgb.Dataset(x.to_numpy()[keep], label=y.to_numpy()[keep]))
+        w = _weights(labels, x.index[keep], weight, universe, split["start"])
+        sets.append(lgb.Dataset(x.to_numpy()[keep], label=y.to_numpy()[keep], weight=w))
     booster = lgb.train(params, sets[0], num_boost_round=rounds, valid_sets=sets, valid_names=["train", "valid"],
                         callbacks=[lgb.early_stopping(patience, verbose=False)])
 
@@ -215,7 +242,7 @@ def _fit_one(features, labels, universe, protocol, label, seed, out: Path, featu
         "model": "lgb", "seed": seed, "objective": "mse", "early_stop": "loss", "patience": patience,
         "label": LABEL[0], "train_label": expr, "label_name": label, "horizon": horizon, "segments": segments,
         "purge": purge, "feature_norm": feature_norm, "label_norm": label_norm, "lgb_config": lgb_config,
-        "lgb_params": params, "metrics": metrics, "fast_fit": True,
+        "lgb_params": params, "metrics": metrics, "fast_fit": True, "n_features": int(features.shape[1]), "weight": weight,
     }, indent=2) + "\n")
     return metrics
 
@@ -243,6 +270,11 @@ def main() -> None:
     fit.add_argument("--horizons", default="1", help="training labels: day counts and/or ew<d> (see _label_spec)")
     fit.add_argument("--seeds", default="0-6", help="e.g. 0-6 or 0,2,5")
     fit.add_argument("--name", default="alpha158_h{h}_lgb_s{s}", help="run name; {h} horizon, {s} seed")
+    fit.add_argument("--weight", choices=["none", "invvar"], default="none",
+                     help="training weights: invvar = 1/sigma_20d^2 (GLS under heteroskedastic noise)")
+    fit.add_argument("--factors", type=Path, default=None,
+                     help="csv/parquet (datetime, instrument, columns...) joined to Alpha158 as fm_<column>; "
+                          "{p} in the path is replaced by the protocol (per-window libraries)")
     fit.add_argument("--feature-norm", choices=["raw", "robust", "robust_noclip"], default="raw")
     fit.add_argument("--label-norm", choices=["zscore", "rank"], default="zscore")
     fit.add_argument("--lgb-config", choices=sorted(LGB_CONFIGS), default="qlib")
@@ -264,10 +296,18 @@ def main() -> None:
 
     def data(protocol: str) -> tuple[pd.DataFrame, pd.DataFrame]:
         start = PROTOCOLS[protocol]["start"]
-        if start not in loaded:
+        factors = Path(str(args.factors).format(p=protocol)) if args.factors is not None else None
+        if (start, factors) not in loaded:
             loaded.clear()
-            loaded[start] = _load(args.cache, args.universe, start)
-        return loaded[start]
+            features, labels = _load(args.cache, args.universe, start)
+            if factors is not None:  # extra columns, as run_qlib_baselines --handler alpha158_plus
+                extra = pd.read_csv(factors) if factors.suffix == ".csv" else pd.read_parquet(factors)
+                extra["datetime"] = pd.to_datetime(extra["datetime"])
+                extra["instrument"] = extra["instrument"].str.upper()
+                extra = extra.set_index(["datetime", "instrument"]).sort_index().astype(np.float32)
+                features = features.join(extra.add_prefix("fm_"), how="left")
+            loaded[start, factors] = features, labels
+        return loaded[start, factors]
 
     if args.check is not None:
         meta = json.loads((args.check / "metrics.json").read_text())
@@ -291,7 +331,7 @@ def main() -> None:
                 if (out / "metrics.json").exists() and not args.force:
                     continue
                 m = _fit_one(*data(protocol), args.universe, protocol, h, s, out, args.feature_norm,
-                             args.label_norm, args.lgb_config, args.purge, args.threads)
+                             args.label_norm, args.lgb_config, args.purge, args.threads, args.weight)
                 print(f"{protocol} {name}: trees {m['best_iteration']} RankIC {m.get('RankIC', float('nan')):.4f} "
                       f"{m['fit_seconds']}s", flush=True)
 
