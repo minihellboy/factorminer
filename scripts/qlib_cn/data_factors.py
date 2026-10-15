@@ -61,8 +61,12 @@ def _quarterly(directory: Path, dates: pd.DatetimeIndex) -> pd.DataFrame:
     position = dates.searchsorted(q["pub"].to_numpy(), side="right")
     q = q[position < len(dates)].assign(datetime=dates[position[position < len(dates)]])
     # Several reports on one day (e.g. annual + Q1 in late April): the newest statement wins.
-    return (q.sort_values(["asset_id", "datetime", "stat"]).drop_duplicates(["asset_id", "datetime"], keep="last")
-            .drop(columns=["pub", "stat", "roe_prior"]))
+    q = (q.sort_values(["asset_id", "datetime", "stat"]).drop_duplicates(["asset_id", "datetime"], keep="last")
+         .drop(columns=["pub", "stat", "roe_prior"]))
+    # A field a report leaves blank keeps the asset's last published value.
+    fields = [*QUARTERLY, "roe_yoy", "industry"]
+    q[fields] = q.groupby("asset_id")[fields].ffill()
+    return q
 
 
 def _cs_rank(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
@@ -84,16 +88,20 @@ def main() -> None:
     panel = panel.sort_values(["asset_id", "datetime"]).reset_index(drop=True)
     dates = pd.DatetimeIndex(np.sort(panel["datetime"].unique()))
     by_asset = panel.groupby("asset_id")
-    ret = by_asset["close"].pct_change(fill_method=None)
+    # A daily return only across consecutive sessions: after a suspension gap it spans several days.
+    previous = pd.Series(dates[np.maximum(dates.searchsorted(panel["datetime"]) - 1, 0)], index=panel.index)
+    ret = by_asset["close"].pct_change(fill_method=None).where(by_asset["datetime"].shift(1) == previous)
     panel["ret"] = ret
     added: list[str] = []
 
     have_q = args.fundamentals is not None and (args.fundamentals / "quarterly.parquet").exists()
     if have_q:
         q = _quarterly(args.fundamentals, dates)
-        panel = panel.merge(q, on=["asset_id", "datetime"], how="left")
-        fields = QUARTERLY + ["roe_yoy", "industry"]
-        panel[fields] = panel.groupby("asset_id")[fields].ffill()
+        # Backward as-of per asset: a report effective on a suspended day applies from the next row.
+        panel = pd.merge_asof(panel.sort_values("datetime"), q.sort_values("datetime"), on="datetime",
+                              by="asset_id", direction="backward")
+        panel = panel.sort_values(["asset_id", "datetime"]).reset_index(drop=True)
+        ret = panel["ret"]
         added += QUARTERLY + ["roe_yoy"]
         member = (panel["in_universe"] == 1) & panel["ret"].notna()
         key = [panel["datetime"], panel["industry"]]
