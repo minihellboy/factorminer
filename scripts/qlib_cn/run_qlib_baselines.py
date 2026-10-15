@@ -36,9 +36,14 @@ on the day's best names.
 ``--horizon H`` trains on the H-day forward return from the entry close
 (``Ref($close, -H-1) / Ref($close, -1) - 1``) instead of the next day's,
 closer to how long a TopkDropout book holds a name (about ten days at
-``n_drop`` 5 of 50). The train and valid segments end ``H - 1`` trading days
-early so their labels never reach into the next segment. Top-50 early stopping then uses that label too; every
+``n_drop`` 5 of 50). Segment ends are moved so every horizon's labels reach
+the same two days past a segment as Qlib's 1-day label (``--purge qlib``),
+or none at all (``--purge full``). Top-50 early stopping then uses that label too; every
 reported metric and the backtest stay on the 1-day label.
+
+``--feature-norm raw|robust|robust_noclip`` and ``--label-norm zscore|rank``
+set the two halves of ``--robust`` separately. ``--refit`` refits LightGBM on
+train + valid with the early-stopped tree count before predicting test.
 
 ``--model dens`` / ``xgb`` / ``cat`` fit Qlib's DoubleEnsemble, XGBoost and
 CatBoost with their Alpha158 benchmark-config hyperparameters.
@@ -96,22 +101,34 @@ def _label(horizon: int) -> list[str]:
     return LABEL if horizon == 1 else [f"Ref($close, -{horizon + 1})/Ref($close, -1) - 1"]
 
 
-def _purged(end: str, horizon: int) -> str:
-    """Last trading day whose ``horizon``-day label ends by ``end``: train/valid labels stay in-segment."""
+def _purged(end: str, horizon: int, purge: str = "qlib") -> str:
+    """Segment end for an ``horizon``-day label.
+
+    A label on day t exits at close t+H+1. ``qlib`` lets the last labels reach
+    two days past ``end``, as Qlib's own 1-day label does, so every horizon has
+    the same overreach; ``full`` ends the segment at T-H-1 so no label leaves it.
+    """
     from qlib.data import D
 
     calendar = D.calendar(end_time=end)
-    return str(calendar[-horizon].date()) if horizon > 1 else end
+    offset = horizon + 2 if purge == "full" else (horizon if horizon > 1 else 1)
+    return str(calendar[-offset].date())
 
 
-def _processors(handler: str, robust_features: bool = False) -> tuple[list, list]:
-    """Qlib benchmark processors: (infer, learn)."""
-    label_norm = {"class": "CSRankNorm", "kwargs": {"fields_group": "label"}}
-    if handler == "alpha158" and not robust_features:
-        return [], [{"class": "DropnaLabel"}, {"class": "CSZScoreNorm", "kwargs": {"fields_group": "label"}}]
-    robust = [{"class": "RobustZScoreNorm", "kwargs": {"fields_group": "feature", "clip_outlier": True}},
-              {"class": "Fillna", "kwargs": {"fields_group": "feature"}}]
-    return robust, [{"class": "DropnaLabel"}, label_norm]
+def _processors(handler: str, robust_features: bool = False, feature_norm: str | None = None,
+                label_norm: str | None = None) -> tuple[list, list]:
+    """Processors (infer, learn). Defaults: Qlib's benchmark ones for ``alpha158`` (raw features,
+    z-scored label), robust features and a ranked label otherwise or with ``robust_features``;
+    ``feature_norm`` (raw | robust | robust_noclip) and ``label_norm`` (zscore | rank) override."""
+    tuned = handler != "alpha158" or robust_features
+    feature_norm = feature_norm or ("robust" if tuned else "raw")
+    label_norm = label_norm or ("rank" if tuned else "zscore")
+    infer = [] if feature_norm == "raw" else [
+        {"class": "RobustZScoreNorm",
+         "kwargs": {"fields_group": "feature", "clip_outlier": feature_norm == "robust"}},
+        {"class": "Fillna", "kwargs": {"fields_group": "feature"}}]
+    norm = {"zscore": "CSZScoreNorm", "rank": "CSRankNorm"}[label_norm]
+    return infer, [{"class": "DropnaLabel"}, {"class": norm, "kwargs": {"fields_group": "label"}}]
 
 
 def _read_factors(path: Path) -> pd.DataFrame:
@@ -141,7 +158,8 @@ def _handler(args, split) -> object:
     from qlib.data import D
 
     infer, learn = _processors("alpha158" if args.handler == "alpha158_plus" else args.handler,
-                               robust_features=args.robust)
+                               robust_features=args.robust, feature_norm=args.feature_norm,
+                               label_norm=args.label_norm)
     if args.model in SEQUENCE_MODELS:
         keep = list(QLIB_TS_COLUMNS)
         if args.factors is not None:
@@ -198,8 +216,13 @@ def _model(name: str, objective: str = "mse", early_stop: str = "loss", seed: in
     if name == "xgb":  # workflow_config_xgboost_Alpha158.yaml
         from qlib.contrib.model.xgboost import XGBModel
 
-        return XGBModel(eval_metric="rmse", colsample_bytree=0.8879, eta=0.0421, max_depth=8,
-                        n_estimators=647, subsample=0.8789, nthread=threads, seed=seed)
+        # Qlib's wrapper ignores n_estimators (rounds are a fit() argument) and predicts with
+        # every tree; fit for the config's 647 rounds without early stopping instead.
+        model = XGBModel(eval_metric="rmse", colsample_bytree=0.8879, eta=0.0421, max_depth=8,
+                         subsample=0.8789, nthread=threads, seed=seed)
+        fit = model.fit
+        model.fit = lambda dataset, **kw: fit(dataset, num_boost_round=647, early_stopping_rounds=10**6, **kw)
+        return model
     if name == "cat":  # workflow_config_catboost_Alpha158.yaml
         from qlib.contrib.model.catboost_model import CatBoostModel
 
@@ -374,6 +397,26 @@ class RankLGB:
                          index=x.index)
 
 
+def _refit(model, dataset, start: str, end: str) -> int:
+    """Refit a fitted LightGBM on ``start..end`` (train + valid) with its selected tree count."""
+    import lightgbm as lgb
+    from qlib.data.dataset.handler import DataHandlerLP
+
+    if isinstance(model, RankLGB):
+        if model.objective not in {"mse", "topmse"}:
+            raise ValueError("--refit supports the mse and topmse objectives")
+        rounds = max(model.best_iteration, 1)
+        _, data, _ = model._segment(dataset, slice(start, end))
+        model.model = lgb.train(model.params, data, num_boost_round=rounds)
+        model.best_iteration = rounds
+        return rounds
+    rounds = max(model.model.best_iteration, 1)
+    frame = dataset.prepare(slice(start, end), col_set=["feature", "label"], data_key=DataHandlerLP.DK_L)
+    data = lgb.Dataset(frame["feature"].to_numpy(), label=frame["label"].iloc[:, 0].to_numpy())
+    model.model = lgb.train(model.params, data, num_boost_round=rounds)
+    return rounds
+
+
 def _ic_metrics(pred: pd.Series, label: pd.Series) -> dict[str, float]:
     frame = pd.DataFrame({"pred": pred, "label": label}).dropna()
     grouped = frame.groupby(level="datetime")
@@ -434,6 +477,14 @@ def main() -> None:
                         help="topmse: extra weight on top-sextile rows")
     parser.add_argument("--patience", type=int, default=50,
                         help="early-stopping rounds for the non-default objectives (Qlib: 50)")
+    parser.add_argument("--feature-norm", choices=["raw", "robust", "robust_noclip"], default=None,
+                        help="feature processing (default: raw for alpha158, robust with --robust)")
+    parser.add_argument("--label-norm", choices=["zscore", "rank"], default=None,
+                        help="label normalisation (default: zscore for alpha158, rank with --robust)")
+    parser.add_argument("--purge", choices=["qlib", "full"], default="qlib",
+                        help="segment ends: qlib (labels overreach 2 days, as Qlib's) or full")
+    parser.add_argument("--refit", action="store_true",
+                        help="LightGBM: after early stopping, refit on train+valid with that tree count")
     parser.add_argument("--horizon", type=int, default=1,
                         help="training label horizon in days (metrics and backtest stay 1-day)")
     parser.add_argument("--seed", type=int, default=0)
@@ -460,8 +511,8 @@ def main() -> None:
     split = PROTOCOLS[args.protocol]
     started = time.monotonic()
     handler = _handler(args, split)
-    segments = {"train": (split["start"], _purged(split["fit_end"], args.horizon)),
-                "valid": (split["valid"][0], _purged(split["valid"][1], args.horizon)),
+    segments = {"train": (split["start"], _purged(split["fit_end"], args.horizon, args.purge)),
+                "valid": (split["valid"][0], _purged(split["valid"][1], args.horizon, args.purge)),
                 "test": split["test"]}
     dataset = DatasetH(handler=handler, segments=segments)
     from qlib.data.dataset.handler import DataHandlerLP
@@ -485,6 +536,11 @@ def main() -> None:
             LGB_PARAMS["seed"] = args.seed
             model.params["seed"] = args.seed
     model.fit(fit_dataset)
+    refit_rounds = None
+    if args.refit:
+        if args.model != "lgb":
+            parser.error("--refit applies to --model lgb only")
+        refit_rounds = _refit(model, dataset, segments["train"][0], segments["valid"][1])
     pred = model.predict(fit_dataset) if args.model in SEQUENCE_MODELS else model.predict(fit_dataset, segment="test")
     if isinstance(pred, pd.DataFrame):
         pred = pred.iloc[:, 0]
@@ -513,7 +569,8 @@ def main() -> None:
         "patience": args.patience,
         "temperature": args.temperature if args.objective == "listnet" else None,
         "label": LABEL[0], "train_label": _label(args.horizon)[0], "horizon": args.horizon,
-        "segments": segments, "lgb_params": LGB_PARAMS if args.model == "lgb" else None,
+        "segments": segments, "purge": args.purge, "feature_norm": args.feature_norm,
+        "label_norm": args.label_norm, "refit_rounds": refit_rounds, "lgb_params": LGB_PARAMS if args.model == "lgb" else None,
         "qlib_version": qlib.__version__, "metrics": metrics,
         "factors_file": str(args.factors) if args.factors else None,
     }, indent=2) + "\n")
