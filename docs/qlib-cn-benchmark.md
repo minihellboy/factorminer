@@ -46,6 +46,17 @@ evaluated formulas, 500+ model fits.
   3.8 and the IR gain 0.91 (90% CI 0.51–1.32). The 10-day label and a
   validation-chosen horizon are weaker. This is the adopted model; the
   prospective holdout from 2026-10-16 scores it against the 1-day incumbent.
+- **Round 3 (2026-10-16): faster loop, mechanism tests.** `fast_fit.py`
+  (bit-identical cached fits) and parallel `book_eval.py` make a
+  three-universe judgement 2–5 minutes. h5 survives every robustness check
+  (size exposure, realistic execution of suspended names, 32 seeds) and
+  replicates in direction on never-used 2012–2017 windows, with a smaller
+  relative gain. The survival-weighted label, GLS weights, seed counts above
+  7, no-trade bands, smoothing, fundamentals and mined libraries (re-exported
+  without a look-ahead) do not raise the book. More training data raises
+  RankIC everywhere but not the book: the model is far better at losers than
+  winners and a top-50 long-only book sees only the winners. Wider books in
+  the larger universes are the open lead.
 - **Seed sets matter as much as most ideas.** The three-seed default book
   quoted at 1.26–1.29 is the best of the 35 three-seed subsets of seven
   seeds (mean 1.05, sd 0.10). Books are now judged with seven seeds.
@@ -545,6 +556,38 @@ a single pre-specified challenger or grid, pooled over the three universes,
   a less efficient market whose 1-day reversal alpha the 1-day label already
   captured. As that alpha was arbitraged away, what remained sits at longer
   horizons, where the 5-day label is matched.
+
+- **Pooled-universe training** (`fast_fit.py --train-universes
+  csi300,csi500,csi1000`: one model on the union of the three indices' rows,
+  ~5.5M instead of ~1.1M, label z-scored over the union, scored in each
+  universe). Early stopping runs much longer (wf2018 51–81 trees, wf2020
+  22–41, vs 2–15 per universe), so the per-universe fits are
+  variance-limited. RankIC rises in every universe (0.034 → 0.038,
+  0.030 → 0.036, 0.041 → 0.047), yet the book does not: 1.54/0.52/0.98 vs
+  1.41/0.91/0.76, pooled t −0.02, ΔIR −0.08 [−0.34, 0.17].
+- **Why RankIC lift misses the book: asymmetric predictability.** Mean
+  5-day excess return by score bucket (h5, 2018–2025): top 50 +27/+17/+19
+  bps (CSI300/500/1000), bottom 20% −33/−29/−40 bps. The model is 1.5–2×
+  better at finding losers than winners, and RankIC counts both tails. Pooled
+  training's gain in CSI500 sits in the bottom 20% (−3.0 bps) with +0.5 bps in
+  the top 50; in CSI1000 it reaches the top (+7.9 bps), the one universe where
+  the pooled book gains. In CSI500 and CSI1000 the top 50 is no better than
+  the rest of the top 20% (17 vs 18, 19 vs 20 bps): the extreme top of the
+  score is saturated.
+- **Book size** (`book_eval.py --size f`: topk = f × N, n_drop scaled with
+  it). A wider book trades the saturated top for breadth and lower tracking
+  error: excess return falls a little and IR rises, so the paired mean t
+  stays near zero while the IR interval moves. 2018–2025, IR for top 50 /
+  20% / 50% / 80% of N: CSI300 1.41/1.50/1.28/0.49, CSI500
+  0.91/1.08/1.26/0.68, CSI1000 0.76/1.34/1.50/1.21; pooled ΔIR of 20% vs 50
+  names +0.36 [0.16, 0.56]; net of size exposure CSI1000 20% is IR 1.09
+  (t 2.92) vs 0.45. Registered check on the early windows
+  (`docs/registrations/spec_book_size_early.json`): CSI500 (50 → 100 names)
+  6.07 → 7.47, ΔIR [0.91, 1.98]; CSI300 (50 → 60) 3.06 → 2.85,
+  [−0.35, −0.05]; pooled −0.10 [−0.29, 0.10]: inconclusive by the registered
+  rule. What both periods agree on: in the larger universes a fixed 50 names
+  is too narrow. Not adopted; a 100-name CSI500 book is the candidate for the
+  next prospective registration.
 
 ### Does marginal value persist?
 
