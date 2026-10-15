@@ -1,0 +1,10 @@
+{
+  "name": "h5_vs_h1_early_windows",
+  "written": "2026-10-16, before any fit or backtest on these windows",
+  "hypothesis": "The 5-day training label (adopted on 2018-2025 walk-forward windows) beats the 1-day label on earlier, never-tested walk-forward windows.",
+  "books": {"h1": "alpha158_h1_lgb_s[0-6]", "h5": "alpha158_h5_lgb_s[0-6]"},
+  "baseline": "h1",
+  "windows": {"csi300": ["wf2012", "wf2014", "wf2016"], "csi500": ["wf2014", "wf2016"]},
+  "settings": "fast_fit.py (Alpha158, Qlib-default processing and LightGBM params, purge qlib), 7 seeds, book_eval.py --tradable --tie-draws 4, continuous simulation over each universe's windows",
+  "rule": "Report the paired NW t of daily after-cost excess (h5 - h1) per universe and pooled over the common days (cross_universe.py). Replicates if the pooled t > 0 and the IR difference is positive in both universes; refuted if the pooled t < -2. No other book or window is consulted."
+}

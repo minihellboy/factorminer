@@ -108,6 +108,15 @@ for _year in WALK_FORWARD_YEARS:
         "valid": (f"{_year - 2}-01-01", f"{_year - 1}-12-31"),
         "test": (f"{_year}-01-01", f"{_year + 1}-12-31"),
     }
+# Earlier walk-forward windows (same lengths), added 2026-10-16 for an out-of-sample replication of
+# the label-horizon result (docs/registrations/spec_h5_vs_h1_early.json). CSI300 membership starts
+# 2005-04 and CSI500 2007-01, so their first training years are shorter.
+for _year in (2012, 2014, 2016):
+    PROTOCOLS[f"wf{_year}"] = {
+        "start": f"{_year - 9}-01-01", "fit_end": f"{_year - 3}-12-31",
+        "valid": (f"{_year - 2}-01-01", f"{_year - 1}-12-31"),
+        "test": (f"{_year}-01-01", f"{_year + 1}-12-31"),
+    }
 # Prospective holdout registered 2026-10-15: no decision may use its test days (docs/qlib-cn-protocol.md).
 PROTOCOLS["live"] = {"start": "2017-10-01", "fit_end": "2024-09-30", "valid": ("2024-10-01", "2026-09-30"),
                      "test": ("2026-10-16", "2030-12-31")}
