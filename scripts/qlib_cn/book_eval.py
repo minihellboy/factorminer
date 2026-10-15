@@ -25,6 +25,23 @@ its window's test days, and the daily series of every book are saved next to
 difference gets a paired circular block bootstrap (20-day blocks, the same
 resampled days for both books) 90% interval, and the mean-difference t is
 also reported at Newey-West bandwidths of 20 and 60 days.
+
+``--sim continuous`` (default) runs one portfolio through all windows: each
+window's models score its own test days, and holdings carry over from one
+window's model to the next under the same TopkDropout rule, so no window
+starts from cash. Windows must then be contiguous. ``--sim reset`` restarts
+each window from cash (the earlier convention).
+
+``--select name=bookA,bookB,...`` adds a procedure book that, in each window,
+trades the listed book with the highest after-cost information ratio on that
+window's validation segment (scored from each run's
+``valid_predictions.parquet``; validation books always start from cash). Its
+test result is an honest estimate of choosing among those books, unlike the
+best book's own test result. Over all books, a paired max-statistic block
+bootstrap (White's reality check) gives the p-value of the best book's mean
+improvement over the baseline, corrected for having tried every book.
+Every evaluated book is also appended to ``registry.jsonl`` next to
+``--out``, so the number of books ever tried on these windows is on record.
 """
 
 from __future__ import annotations
@@ -34,6 +51,7 @@ import fnmatch
 import json
 import math
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -69,24 +87,24 @@ def _ir_diff_interval(a: np.ndarray, b: np.ndarray, seed: int = 0) -> list[float
     return [float(q) for q in np.quantile(diff, [0.05, 0.95])]
 
 
-def _runs(root: Path, patterns: str) -> list[list[Path]]:
+def _runs(root: Path, patterns: str, file: str = "predictions.parquet") -> list[list[Path]]:
     groups = []
     for pattern in patterns.split(","):
         runs = sorted(p for p in root.iterdir() if fnmatch.fnmatch(p.name, pattern)
-                      and (p / "predictions.parquet").exists())
+                      and (p / file).exists())
         if not runs:
             raise SystemExit(f"no runs match {root}/{pattern}")
         groups.append(runs)
     return groups
 
 
-def _rank(path: Path) -> pd.Series:
-    score = pd.read_parquet(path / "predictions.parquet").set_index(["datetime", "instrument"])["score"]
+def _rank(path: Path, file: str = "predictions.parquet") -> pd.Series:
+    score = pd.read_parquet(path / file).set_index(["datetime", "instrument"])["score"]
     return score.groupby(level="datetime").rank(pct=True)
 
 
-def _signal(groups: list[list[Path]], smooth: float) -> pd.Series:
-    ranks = [[_rank(r) for r in runs] for runs in groups]
+def _signal(groups: list[list[Path]], smooth: float, file: str = "predictions.parquet") -> pd.Series:
+    ranks = [[_rank(r, file) for r in runs] for runs in groups]
     days = [{r.name: s.index.get_level_values("datetime").unique() for r, s in zip(runs, rs)}
             for runs, rs in zip(groups, ranks)]
     spans = {name: (d.min(), d.max(), len(d)) for g in days for name, d in g.items()}
@@ -114,6 +132,53 @@ def _daily_ric(score: pd.Series, label: pd.Series) -> pd.Series:
     return frame.groupby(level="datetime").apply(lambda g: g["s"].corr(g["y"], method="spearman"))
 
 
+def _reality_check(diffs: pd.DataFrame, seed: int = 0) -> dict[str, float]:
+    """White's reality check: p-value of the best mean of ``diffs`` columns against all-zero means."""
+    x = diffs.dropna().to_numpy()
+    n = len(x)
+    stat = np.sqrt(n) * x.mean(axis=0)
+    rng = np.random.default_rng(seed)
+    starts = rng.integers(0, n, size=(DRAWS, -(-n // BLOCK)))
+    index = ((starts[:, :, None] + np.arange(BLOCK)) % n).reshape(DRAWS, -1)[:, :n]
+    boot = np.sqrt(n) * (x[index].mean(axis=1) - x.mean(axis=0))
+    best = int(stat.argmax())
+    return {"best": str(diffs.columns[best]), "books": int(x.shape[1]),
+            "p_value": float((boot.max(axis=1) >= stat[best]).mean())}
+
+
+def _frame(report: pd.DataFrame) -> pd.DataFrame:
+    return pd.DataFrame({"gross": report["return"] - report["bench"],
+                         "excess": report["return"] - report["bench"] - report["cost"],
+                         "turnover": report["turnover"]})
+
+
+def _book(universe: str, windows: dict[str, str], patterns: dict[str, str], smooth: float, n_drop: int,
+          sim: str) -> tuple[pd.DataFrame, pd.Series]:
+    """Daily book returns over all windows; ``patterns`` gives each window its run globs."""
+    scores = {p: _signal(_runs(Path(root), patterns[p]), smooth) for p, root in windows.items()}
+    if sim == "reset":
+        parts = [_frame(_backtest(scores[p], universe, PROTOCOLS[p], n_drop=n_drop, return_report=True)[1])
+                 .assign(window=p) for p in windows]
+        return pd.concat(parts).sort_index(), pd.concat(scores.values()).sort_index()
+    score = pd.concat(scores.values()).sort_index()
+    spans = sorted(PROTOCOLS[p]["test"] for p in windows)
+    _, report = _backtest(score, universe, {"test": (spans[0][0], spans[-1][1])}, n_drop=n_drop,
+                          return_report=True)
+    frame = _frame(report)
+    frame["window"] = None
+    for p in windows:
+        start, end = PROTOCOLS[p]["test"]
+        frame.loc[start:end, "window"] = p
+    return frame, score
+
+
+def _valid_ir(universe: str, root: Path, patterns: str, split: dict) -> float:
+    score = _signal(_runs(root, patterns, "valid_predictions.parquet"), 0, "valid_predictions.parquet")
+    _, report = _backtest(score, universe, {"test": split["valid"]}, return_report=True)
+    excess = _frame(report)["excess"]
+    return float(excess.mean() / excess.std() * math.sqrt(DAYS))
+
+
 def _summary(daily: pd.DataFrame) -> dict[str, float]:
     excess = daily["excess"].to_numpy()
     return {
@@ -136,6 +201,9 @@ def main() -> None:
     parser.add_argument("--book", action="append", required=True, help="name=glob[,glob...]")
     parser.add_argument("--smooth", default="0", help="comma-separated EMA half-lives (0 = none)")
     parser.add_argument("--n-drop", default="5", help="comma-separated TopkDropout n_drop values")
+    parser.add_argument("--select", action="append", default=[],
+                        help="name=book,book,...: per window, the book with the best validation IR")
+    parser.add_argument("--sim", choices=["continuous", "reset"], default="continuous")
     parser.add_argument("--baseline", default=None)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
@@ -151,32 +219,35 @@ def main() -> None:
     for (a, pa), (b, pb) in zip(tests, tests[1:]):
         if b[0] <= a[1]:
             raise SystemExit(f"test windows overlap: {pa} {a} and {pb} {b}")
+        if args.sim == "continuous" and pd.Timestamp(b[0]) - pd.Timestamp(a[1]) > pd.Timedelta(days=7):
+            raise SystemExit(f"--sim continuous needs contiguous windows: {pa} {a} then {pb} {b}")
     books = dict(b.split("=", 1) for b in args.book)
+    selections = {}
+    for spec in args.select:
+        name, members = spec.split("=", 1)
+        valid = {p: {m: _valid_ir(args.universe, Path(root), books[m], PROTOCOLS[p]) for m in members.split(",")}
+                 for p, root in windows.items()}
+        selections[name] = {p: {"valid_ir": v, "chosen": max(v, key=v.get)} for p, v in valid.items()}
+        print(name, json.dumps(selections[name]), flush=True)
     smooths = [float(h) for h in args.smooth.split(",")]
     drops = [int(n) for n in args.n_drop.split(",")]
 
+    per_book = {name: {p: patterns for p in windows} for name, patterns in books.items()}
+    per_book.update({name: {p: books[c["chosen"]] for p, c in chosen.items()} for name, chosen in selections.items()})
     daily: dict[str, pd.DataFrame] = {}
-    for name, patterns in books.items():
+    for name, patterns in per_book.items():
         for h in smooths:
             for n_drop in drops:
                 key = name + (f"@ema{h:g}" if h else "") + (f"@drop{n_drop}" if n_drop != 5 else "")
-                per_window = []
-                for protocol, root in windows.items():
-                    split = PROTOCOLS[protocol]
-                    score = _signal(_runs(Path(root), patterns), h)
-                    _, report = _backtest(score, args.universe, split, n_drop=n_drop, return_report=True)
-                    frame = pd.DataFrame({
-                        "gross": report["return"] - report["bench"],
-                        "excess": report["return"] - report["bench"] - report["cost"],
-                        "turnover": report["turnover"]})
-                    frame = frame.join(_daily_top(score, label).rename("top")).join(
-                        _daily_ric(score, label).rename("ric"))
-                    per_window.append(frame.assign(window=protocol))
-                daily[key] = pd.concat(per_window).sort_index()
+                frame, score = _book(args.universe, windows, patterns, h, n_drop, args.sim)
+                frame = frame.join(_daily_top(score, label).rename("top")).join(
+                    _daily_ric(score, label).rename("ric"))
+                daily[key] = frame
                 assert daily[key].index.is_unique
                 print(key, json.dumps(_summary(daily[key])), flush=True)
 
-    result = {"windows": list(windows), "books": books, "results": {}}
+    result = {"windows": list(windows), "books": books, "sim": args.sim, "selections": selections,
+              "results": {}}
     if args.baseline and args.baseline not in daily:
         raise SystemExit(f"baseline {args.baseline} is not among the evaluated books {sorted(daily)}")
     base = daily.get(args.baseline) if args.baseline else None
@@ -197,9 +268,19 @@ def main() -> None:
                 "RankIC_diff_t": _hac_t((both["ric"] - both["ric_base"]).to_numpy()),
             }
         result["results"][key] = entry
+    if base is not None and len(daily) > 1:
+        diffs = pd.DataFrame({k: f["excess"] - base["excess"] for k, f in daily.items() if k != args.baseline})
+        result["reality_check"] = _reality_check(diffs)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, indent=2) + "\n")
     pd.concat(daily, names=["book", "datetime"]).to_parquet(args.out.with_suffix(".daily.parquet"))
+    with open(args.out.parent / "registry.jsonl", "a") as registry:
+        for key, entry in result["results"].items():
+            registry.write(json.dumps({
+                "time": time.strftime("%Y-%m-%dT%H:%M:%S"), "out": str(args.out), "book": key,
+                "runs": per_book[key.split("@")[0]], "sim": args.sim, "windows": list(windows),
+                "information_ratio": entry["information_ratio"],
+                "annualized_excess": entry["annualized_excess"]}) + "\n")
 
 
 if __name__ == "__main__":
