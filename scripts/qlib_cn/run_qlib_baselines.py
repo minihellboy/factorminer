@@ -45,6 +45,15 @@ reported metric and the backtest stay on the 1-day label.
 set the two halves of ``--robust`` separately. ``--refit`` refits LightGBM on
 train + valid with the early-stopped tree count before predicting test.
 
+Every run also saves ``valid_predictions.parquet``, the validation-segment
+scores of the model as fitted on train only (before any refit), so books can
+be compared and selected on validation without touching test, and LightGBM
+runs save the booster that predicted test as ``model.txt``. ``--load-model``
+predicts with a saved booster instead of fitting, for a frozen procedure.
+Protocol ``live`` is the prospective holdout: it trains through 2026-09-30
+and tests from 2026-10-16, the first session after its registration
+(``docs/qlib-cn-protocol.md``); its test extends as the provider is updated.
+
 ``--lgb-config`` picks a LightGBM preset: ``qlib`` (benchmark), ``qlib_bag``
 (row bagging actually on), ``slow63`` / ``slow31`` (lower learning rate, more
 trees, larger leaves' minimum size, lighter L1/L2).
@@ -91,6 +100,9 @@ for _year in WALK_FORWARD_YEARS:
         "valid": (f"{_year - 2}-01-01", f"{_year - 1}-12-31"),
         "test": (f"{_year}-01-01", f"{_year + 1}-12-31"),
     }
+# Prospective holdout registered 2026-10-15: no decision may use its test days (docs/qlib-cn-protocol.md).
+PROTOCOLS["live"] = {"start": "2017-10-01", "fit_end": "2024-09-30", "valid": ("2024-10-01", "2026-09-30"),
+                     "test": ("2026-10-16", "2030-12-31")}
 BENCHMARK_INDEX = {"csi300": "SH000300", "csi500": "SH000905"}
 LABEL = ["Ref($close, -2)/Ref($close, -1) - 1"]
 LGB_PARAMS = {
@@ -435,6 +447,18 @@ def _refit(model, dataset, start: str, end: str) -> int:
     return rounds
 
 
+def _load(model, path: Path) -> None:
+    """Install a saved LightGBM booster in place of fitting."""
+    import lightgbm as lgb
+
+    if not hasattr(model, "model") or not (isinstance(model, RankLGB) or type(model).__name__ == "LGBModel"):
+        raise ValueError("--load-model applies to --model lgb only")
+    model.model = lgb.Booster(model_file=str(path))
+    if isinstance(model, RankLGB):
+        model.best_iteration = model.model.current_iteration()
+        model.best_valid = {}
+
+
 def _ic_metrics(pred: pd.Series, label: pd.Series) -> dict[str, float]:
     frame = pd.DataFrame({"pred": pred, "label": label}).dropna()
     grouped = frame.groupby(level="datetime")
@@ -452,9 +476,11 @@ def _backtest(pred: pd.Series, universe: str, split, n_drop: int = 5,
     from qlib.contrib.strategy import TopkDropoutStrategy
 
     strategy = TopkDropoutStrategy(signal=pred.to_frame("score"), topk=TOPK, n_drop=n_drop)
+    # The test window can run past the provider's calendar (protocol live): stop at the last signal.
+    end = min(pd.Timestamp(split["test"][1]), pred.index.get_level_values("datetime").max())
     exec_obj = executor.SimulatorExecutor(time_per_step="day", generate_portfolio_metrics=True)
     portfolio, _ = backtest(
-        start_time=split["test"][0], end_time=split["test"][1], strategy=strategy, executor=exec_obj,
+        start_time=split["test"][0], end_time=end, strategy=strategy, executor=exec_obj,
         benchmark=BENCHMARK_INDEX[universe], account=100_000_000,
         exchange_kwargs={"freq": "day", "limit_threshold": 0.095, "deal_price": "close",
                          "open_cost": 0.0005, "close_cost": 0.0015, "min_cost": 5},
@@ -505,6 +531,8 @@ def main() -> None:
                         help="LightGBM hyperparameter preset (qlib: the benchmark config)")
     parser.add_argument("--refit", action="store_true",
                         help="LightGBM: after early stopping, refit on train+valid with that tree count")
+    parser.add_argument("--load-model", type=Path, default=None,
+                        help="LightGBM: predict with this saved booster (model.txt) instead of fitting")
     parser.add_argument("--horizon", type=int, default=1,
                         help="training label horizon in days (metrics and backtest stay 1-day)")
     parser.add_argument("--seed", type=int, default=0)
@@ -559,25 +587,39 @@ def main() -> None:
         elif args.model == "lgb":
             LGB_PARAMS["seed"] = args.seed
             model.params["seed"] = args.seed
-    model.fit(fit_dataset)
+    if args.load_model is not None:
+        _load(model, args.load_model)
+    else:
+        model.fit(fit_dataset)
+    valid_pred = model.predict(fit_dataset, segment="valid")
+    if isinstance(valid_pred, pd.DataFrame):
+        valid_pred = valid_pred.iloc[:, 0]
     refit_rounds = None
-    if args.refit:
+    if args.refit and args.load_model is None:
         if args.model != "lgb":
             parser.error("--refit applies to --model lgb only")
         refit_rounds = _refit(model, dataset, segments["train"][0], segments["valid"][1])
-    pred = model.predict(fit_dataset) if args.model in SEQUENCE_MODELS else model.predict(fit_dataset, segment="test")
-    if isinstance(pred, pd.DataFrame):
-        pred = pred.iloc[:, 0]
-    pred = pred.dropna()
+    from qlib.data import D
 
-    raw_label = dataset.prepare("test", col_set="label", data_key=DataHandlerLP.DK_R).iloc[:, 0]
-    if args.horizon != 1:
-        from qlib.data import D
+    if len(D.calendar(start_time=split["test"][0], end_time=split["test"][1])):
+        pred = model.predict(fit_dataset) if args.model in SEQUENCE_MODELS else model.predict(fit_dataset, segment="test")
+        if isinstance(pred, pd.DataFrame):
+            pred = pred.iloc[:, 0]
+        pred = pred.dropna()
+    else:  # protocol live before its first test session: save the model and validation scores only
+        pred = pd.Series(dtype=np.float64, name="score",
+                         index=pd.MultiIndex.from_arrays([pd.DatetimeIndex([]), []], names=["datetime", "instrument"]))
 
-        raw_label = D.features(D.instruments(args.universe), LABEL, start_time=split["test"][0],
-                               end_time=split["test"][1]).swaplevel().sort_index().iloc[:, 0]
-        raw_label = raw_label.reindex(pred.index)
-    metrics = {**_ic_metrics(pred, raw_label), **_backtest(pred, args.universe, split)}
+    if pred.empty:
+        metrics = {"test_dates": 0}
+    else:
+        if args.horizon == 1:
+            raw_label = dataset.prepare("test", col_set="label", data_key=DataHandlerLP.DK_R).iloc[:, 0]
+        else:
+            raw_label = D.features(D.instruments(args.universe), LABEL, start_time=split["test"][0],
+                                   end_time=split["test"][1]).swaplevel().sort_index().iloc[:, 0]
+            raw_label = raw_label.reindex(pred.index)
+        metrics = {**_ic_metrics(pred, raw_label), **_backtest(pred, args.universe, split)}
     metrics["fit_seconds"] = round(time.monotonic() - started, 1)
     if isinstance(model, RankLGB):
         metrics["best_iteration"] = int(model.best_iteration)
@@ -585,6 +627,10 @@ def main() -> None:
 
     args.out.mkdir(parents=True, exist_ok=True)
     pred.rename("score").to_frame().reset_index().to_parquet(args.out / "predictions.parquet", index=False)
+    valid_pred.dropna().rename("score").to_frame().reset_index().to_parquet(
+        args.out / "valid_predictions.parquet", index=False)
+    if args.model == "lgb":
+        model.model.save_model(str(args.out / "model.txt"))
     (args.out / "metrics.json").write_text(json.dumps({
         "universe": args.universe, "protocol": args.protocol, "split": split,
         "handler": args.handler, "robust": args.robust, "model": args.model, "seed": args.seed,
@@ -597,6 +643,7 @@ def main() -> None:
         "label_norm": args.label_norm, "refit_rounds": refit_rounds, "lgb_config": args.lgb_config, "lgb_params": LGB_PARAMS if args.model == "lgb" else None,
         "qlib_version": qlib.__version__, "metrics": metrics,
         "factors_file": str(args.factors) if args.factors else None,
+        "loaded_model": str(args.load_model) if args.load_model else None,
     }, indent=2) + "\n")
     print(json.dumps(metrics, indent=2))
 
