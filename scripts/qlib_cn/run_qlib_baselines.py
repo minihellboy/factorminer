@@ -58,6 +58,9 @@ and tests from 2026-10-16, the first session after its registration
 (row bagging actually on), ``slow63`` / ``slow31`` (lower learning rate, more
 trees, larger leaves' minimum size, lighter L1/L2).
 
+``--model ridge`` is an L2 linear model (``RIDGE_ALPHA``) for blends with the
+trees; it needs filled features (``--feature-norm robust``).
+
 ``--model dens`` / ``xgb`` / ``cat`` fit Qlib's DoubleEnsemble, XGBoost and
 CatBoost with their Alpha158 benchmark-config hyperparameters.
 
@@ -216,6 +219,7 @@ def _handler(args, split) -> object:
 
 
 TOPK = 50  # TopkDropout book size
+RIDGE_ALPHA = 1e5  # --model ridge: ~7% of a robust-scaled feature's sum of squares over ~1.4M train rows
 RANK_GRADES = 6  # LambdaRank relevance: per-day sextile of the label (top grade ~ the book)
 TOP_WEIGHT = 4.0  # topmse: extra weight on rows whose label is in the day's top sextile
 
@@ -234,6 +238,10 @@ def _model(name: str, objective: str = "mse", early_stop: str = "loss", seed: in
         from qlib.contrib.model.linear import LinearModel
 
         return LinearModel(estimator="ols")
+    if name == "ridge":
+        from qlib.contrib.model.linear import LinearModel
+
+        return LinearModel(estimator="ridge", alpha=RIDGE_ALPHA)
     threads = LGB_PARAMS["num_threads"]
     if name == "dens":  # workflow_config_doubleensemble_Alpha158.yaml
         from qlib.contrib.model.double_ensemble import DEnsembleModel
@@ -507,7 +515,7 @@ def main() -> None:
     parser.add_argument("--factors", type=Path, default=None)
     parser.add_argument("--robust", action="store_true",
                         help="robust feature/rank label processors for the Alpha158 handlers")
-    parser.add_argument("--model", choices=["lgb", "linear", "dens", "xgb", "cat", "mlp", "gru", "alstm"], default="lgb")
+    parser.add_argument("--model", choices=["lgb", "linear", "ridge", "dens", "xgb", "cat", "mlp", "gru", "alstm"], default="lgb")
     parser.add_argument("--objective", choices=["mse", "topmse", "lambdarank", "xendcg", "listnet",
                                                 "topclass"], default="mse",
                         help="LightGBM objective: mse, topmse (top-sextile-weighted mse), lambdarank "

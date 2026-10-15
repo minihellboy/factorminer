@@ -1,0 +1,5 @@
+# Linear leg for ridge + GBDT blends (book_eval 'alpha158_lgb_s?,alpha158_ridge').
+wf2018 alpha158_ridge --handler alpha158 --model ridge --feature-norm robust
+wf2020 alpha158_ridge --handler alpha158 --model ridge --feature-norm robust
+wf2022 alpha158_ridge --handler alpha158 --model ridge --feature-norm robust
+wf2024 alpha158_ridge --handler alpha158 --model ridge --feature-norm robust

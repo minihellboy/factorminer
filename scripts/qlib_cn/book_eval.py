@@ -40,6 +40,13 @@ test result is an honest estimate of choosing among those books, unlike the
 best book's own test result. Over all books, a paired max-statistic block
 bootstrap (White's reality check) gives the p-value of the best book's mean
 improvement over the baseline, corrected for having tried every book.
+
+``--combine zscore`` averages each run's per-day z-scored predictions instead
+of percentile ranks, so a model's conviction (how far a name sits from the
+day's mean) carries into a blend. ``--costs stamp2023`` scales each day's
+cost by 0.75 from 2023-08-28, when the sell-side stamp tax fell from 0.10% to
+0.05% (close cost 0.15% -> 0.10%; buys and sells are about equal in a
+TopkDropout book, so cost scales by (0.05+0.10)/(0.05+0.15)).
 Every evaluated book is also appended to ``registry.jsonl`` next to
 ``--out``, so the number of books ever tried on these windows is on record.
 """
@@ -98,9 +105,17 @@ def _runs(root: Path, patterns: str, file: str = "predictions.parquet") -> list[
     return groups
 
 
+COMBINE = "rank"  # --combine: rank (percentile) or zscore
+STAMP_CUT, STAMP_SCALE = pd.Timestamp("2023-08-28"), 0.75
+COSTS = "fixed"  # --costs: fixed (Qlib's) or stamp2023
+
+
 def _rank(path: Path, file: str = "predictions.parquet") -> pd.Series:
     score = pd.read_parquet(path / file).set_index(["datetime", "instrument"])["score"]
-    return score.groupby(level="datetime").rank(pct=True)
+    day = score.groupby(level="datetime")
+    if COMBINE == "zscore":
+        return ((score - day.transform("mean")) / day.transform("std")).clip(-5, 5)
+    return day.rank(pct=True)
 
 
 def _signal(groups: list[list[Path]], smooth: float, file: str = "predictions.parquet") -> pd.Series:
@@ -147,8 +162,11 @@ def _reality_check(diffs: pd.DataFrame, seed: int = 0) -> dict[str, float]:
 
 
 def _frame(report: pd.DataFrame) -> pd.DataFrame:
+    cost = report["cost"]
+    if COSTS == "stamp2023":
+        cost = cost.where(report.index < STAMP_CUT, cost * STAMP_SCALE)
     return pd.DataFrame({"gross": report["return"] - report["bench"],
-                         "excess": report["return"] - report["bench"] - report["cost"],
+                         "excess": report["return"] - report["bench"] - cost,
                          "turnover": report["turnover"]})
 
 
@@ -204,9 +222,13 @@ def main() -> None:
     parser.add_argument("--select", action="append", default=[],
                         help="name=book,book,...: per window, the book with the best validation IR")
     parser.add_argument("--sim", choices=["continuous", "reset"], default="continuous")
+    parser.add_argument("--combine", choices=["rank", "zscore"], default="rank")
+    parser.add_argument("--costs", choices=["fixed", "stamp2023"], default="fixed")
     parser.add_argument("--baseline", default=None)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
+    global COMBINE, COSTS
+    COMBINE, COSTS = args.combine, args.costs
 
     import qlib
 
@@ -246,7 +268,8 @@ def main() -> None:
                 assert daily[key].index.is_unique
                 print(key, json.dumps(_summary(daily[key])), flush=True)
 
-    result = {"windows": list(windows), "books": books, "sim": args.sim, "selections": selections,
+    result = {"windows": list(windows), "books": books, "sim": args.sim, "combine": args.combine,
+              "costs": args.costs, "selections": selections,
               "results": {}}
     if args.baseline and args.baseline not in daily:
         raise SystemExit(f"baseline {args.baseline} is not among the evaluated books {sorted(daily)}")
@@ -280,7 +303,7 @@ def main() -> None:
         for key, entry in result["results"].items():
             registry.write(json.dumps({
                 "time": time.strftime("%Y-%m-%dT%H:%M:%S"), "out": str(args.out), "book": key,
-                "runs": per_book[key.split("@")[0]], "sim": args.sim, "windows": list(windows),
+                "runs": per_book[key.split("@")[0]], "sim": args.sim, "combine": args.combine, "costs": args.costs, "windows": list(windows),
                 "information_ratio": entry["information_ratio"],
                 "annualized_excess": entry["annualized_excess"]}) + "\n")
 
