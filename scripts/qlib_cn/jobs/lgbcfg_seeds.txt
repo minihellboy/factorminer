@@ -1,0 +1,21 @@
+# Lower-learning-rate LightGBM presets (slow31/slow63), seeds 1-2, to pool with s0 (jobs_lgbcfg.txt).
+wf2018 alpha158_slow31_lgb_s1 --handler alpha158 --lgb-config slow31 --seed 1
+wf2020 alpha158_slow31_lgb_s1 --handler alpha158 --lgb-config slow31 --seed 1
+wf2022 alpha158_slow31_lgb_s1 --handler alpha158 --lgb-config slow31 --seed 1
+wf2024 alpha158_slow31_lgb_s1 --handler alpha158 --lgb-config slow31 --seed 1
+classic alpha158_slow31_lgb_s1 --handler alpha158 --lgb-config slow31 --seed 1
+wf2018 alpha158_slow63_lgb_s1 --handler alpha158 --lgb-config slow63 --seed 1
+wf2020 alpha158_slow63_lgb_s1 --handler alpha158 --lgb-config slow63 --seed 1
+wf2022 alpha158_slow63_lgb_s1 --handler alpha158 --lgb-config slow63 --seed 1
+wf2024 alpha158_slow63_lgb_s1 --handler alpha158 --lgb-config slow63 --seed 1
+classic alpha158_slow63_lgb_s1 --handler alpha158 --lgb-config slow63 --seed 1
+wf2018 alpha158_slow31_lgb_s2 --handler alpha158 --lgb-config slow31 --seed 2
+wf2020 alpha158_slow31_lgb_s2 --handler alpha158 --lgb-config slow31 --seed 2
+wf2022 alpha158_slow31_lgb_s2 --handler alpha158 --lgb-config slow31 --seed 2
+wf2024 alpha158_slow31_lgb_s2 --handler alpha158 --lgb-config slow31 --seed 2
+classic alpha158_slow31_lgb_s2 --handler alpha158 --lgb-config slow31 --seed 2
+wf2018 alpha158_slow63_lgb_s2 --handler alpha158 --lgb-config slow63 --seed 2
+wf2020 alpha158_slow63_lgb_s2 --handler alpha158 --lgb-config slow63 --seed 2
+wf2022 alpha158_slow63_lgb_s2 --handler alpha158 --lgb-config slow63 --seed 2
+wf2024 alpha158_slow63_lgb_s2 --handler alpha158 --lgb-config slow63 --seed 2
+classic alpha158_slow63_lgb_s2 --handler alpha158 --lgb-config slow63 --seed 2

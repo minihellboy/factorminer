@@ -349,6 +349,44 @@ Pooled 2018–2025 walk-forward. Baseline: tuned top-stopped LightGBM
   classic the gates lift RankIC (t 1.1–2.5) with top lift |t| < 1.
 - **Top-weighted MSE** (`topmse`), best on classic, did not replicate in
   walk-forward: top lift +0.13 bps (t 0.15).
+- **16 tie draws** (`book_wf_ties.json`): default processing 1.27 vs tuned
+  top-stopped 0.96; the three-seed rank average has few ties, so the
+  pre-fix headline stands.
+- **Tree count is not a lever under Qlib's parameters.** Fitted to 512
+  rounds with no early stopping, the default model (learning rate 0.2, L1
+  206) stops by itself when no split clears the penalty: 5 trees on wf2022,
+  under 64 on every window, so books from the first 64, 128, 256 or 512
+  trees are identical to the early-stopped one and 8 or 16 trees lose
+  slightly (`book_wf_trees.json`). Capacity comes from the preset
+  (`--lgb-config slow31`/`slow63`: lower rate, no or light L1, 165–300
+  trees), which is tested below.
+- **Label horizon** (`--horizon`, train on the 3/5/10-day forward return,
+  trade daily; `book_wf_horizon.json`, 4 tie draws): pooled IR h1 1.26, h3
+  1.07, h5 1.52 (paired t +0.72, reality-check p 0.41), h10 1.29, h5+h10
+  blend 1.41. Choosing the horizon on validation IR gives 1.04: validation
+  picked h10 for wf2024 (test −0.14) and h3 for wf2018. Not adopted; h5 is
+  up in three windows of four and is being replicated on CSI500.
+- **CSI500 replication of the horizon family** (`book_csi500_horizon.json`,
+  36 fits): h1 0.45, h5 0.90 (t 1.29), h10 0.90 (t 1.19), h5+h10 blend 1.06
+  (t 1.66, ΔIR 90% CI [0.01, 1.21], reality-check p 0.084), validation-
+  selected 0.96. Same direction as CSI300; combined across the two
+  universes the paired t is about 1.4, short of the adoption rule.
+- **Review-driven variants, 3 seeds** (`book_wf_review3.json`, vs default
+  1.26): refit on train+valid 0.73 (t −2.45, CI excludes 0), raw features
+  with rank label 0.77 (t −1.85), robust features with z label 1.28
+  (+0.19), top-stopped 0.96, top-stopped refit 0.77, with fundamentals
+  0.81 (t −1.93, CI excludes 0), fundamentals top-stopped 1.14. Nothing from
+  the review helps the book; refitting and the fundamentals features hurt.
+- **LightGBM presets with real capacity** (`book_wf_lgbcfg.json`, 3 seeds,
+  4 tie draws, vs default 1.26): `slow31` (rate 0.03, 31 leaves, no L1, ~300
+  trees) 1.21, `slow63` 1.20, their blend 1.20, validation-selected preset
+  1.21 (reality-check p 0.85); turning Qlib's row bagging on (`qlib_bag`,
+  seed 0) 0.86 (t −2.15, CI excludes 0). The five-to-forty-tree default is
+  not beaten by a model with ten times the trees.
+- **Industry-neutral scores** (`--neutral`, Eastmoney industry of the latest
+  report, groups of five or more names demeaned): pooled IR 1.25 → 0.88 at
+  half weight and 0.60 at full weight. The book's sector tilts are part of
+  its return, not noise to remove.
 
 Univariate signal of the data features (2017–2025, 1-day label):
 - ep, bp, size, cfo_to_book and roe_yoy have RankIC t 4–5 but top-50 spread

@@ -111,7 +111,7 @@ for _year in WALK_FORWARD_YEARS:
 # Prospective holdout registered 2026-10-15: no decision may use its test days (docs/qlib-cn-protocol.md).
 PROTOCOLS["live"] = {"start": "2017-10-01", "fit_end": "2024-09-30", "valid": ("2024-10-01", "2026-09-30"),
                      "test": ("2026-10-16", "2030-12-31")}
-BENCHMARK_INDEX = {"csi300": "SH000300", "csi500": "SH000905"}
+BENCHMARK_INDEX = {"csi300": "SH000300", "csi500": "SH000905", "csi1000": "SH000852"}
 LABEL = ["Ref($close, -2)/Ref($close, -1) - 1"]
 LGB_PARAMS = {
     "loss": "mse", "colsample_bytree": 0.8879, "learning_rate": 0.2, "subsample": 0.8789,
