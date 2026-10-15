@@ -36,7 +36,8 @@ on the day's best names.
 ``--horizon H`` trains on the H-day forward return from the entry close
 (``Ref($close, -H-1) / Ref($close, -1) - 1``) instead of the next day's,
 closer to how long a TopkDropout book holds a name (about ten days at
-``n_drop`` 5 of 50). Top-50 early stopping then uses that label too; every
+``n_drop`` 5 of 50). The train and valid segments end ``H - 1`` trading days
+early so their labels never reach into the next segment. Top-50 early stopping then uses that label too; every
 reported metric and the backtest stay on the 1-day label.
 
 ``--model dens`` / ``xgb`` / ``cat`` fit Qlib's DoubleEnsemble, XGBoost and
@@ -83,16 +84,24 @@ for _year in WALK_FORWARD_YEARS:
     }
 BENCHMARK_INDEX = {"csi300": "SH000300", "csi500": "SH000905"}
 LABEL = ["Ref($close, -2)/Ref($close, -1) - 1"]
-
-
-def _label(horizon: int) -> list[str]:
-    """Training label: the ``horizon``-day forward return from the entry close (1 = ``LABEL``)."""
-    return LABEL if horizon == 1 else [f"Ref($close, -{horizon + 1})/Ref($close, -1) - 1"]
 LGB_PARAMS = {
     "loss": "mse", "colsample_bytree": 0.8879, "learning_rate": 0.2, "subsample": 0.8789,
     "lambda_l1": 205.6999, "lambda_l2": 580.9768, "max_depth": 8, "num_leaves": 210,
     "num_threads": int(os.environ.get("LGB_THREADS", "20")),  # LGB_THREADS shares a machine
 }
+
+
+def _label(horizon: int) -> list[str]:
+    """Training label: the ``horizon``-day forward return from the entry close (1 = ``LABEL``)."""
+    return LABEL if horizon == 1 else [f"Ref($close, -{horizon + 1})/Ref($close, -1) - 1"]
+
+
+def _purged(end: str, horizon: int) -> str:
+    """Last trading day whose ``horizon``-day label ends by ``end``: train/valid labels stay in-segment."""
+    from qlib.data import D
+
+    calendar = D.calendar(end_time=end)
+    return str(calendar[-horizon].date()) if horizon > 1 else end
 
 
 def _processors(handler: str, robust_features: bool = False) -> tuple[list, list]:
@@ -451,7 +460,9 @@ def main() -> None:
     split = PROTOCOLS[args.protocol]
     started = time.monotonic()
     handler = _handler(args, split)
-    segments = {"train": (split["start"], split["fit_end"]), "valid": split["valid"], "test": split["test"]}
+    segments = {"train": (split["start"], _purged(split["fit_end"], args.horizon)),
+                "valid": (split["valid"][0], _purged(split["valid"][1], args.horizon)),
+                "test": split["test"]}
     dataset = DatasetH(handler=handler, segments=segments)
     from qlib.data.dataset.handler import DataHandlerLP
 
@@ -501,7 +512,8 @@ def main() -> None:
         "top_weight": args.top_weight if args.objective == "topmse" else None,
         "patience": args.patience,
         "temperature": args.temperature if args.objective == "listnet" else None,
-        "label": LABEL[0], "train_label": _label(args.horizon)[0], "horizon": args.horizon, "lgb_params": LGB_PARAMS if args.model == "lgb" else None,
+        "label": LABEL[0], "train_label": _label(args.horizon)[0], "horizon": args.horizon,
+        "segments": segments, "lgb_params": LGB_PARAMS if args.model == "lgb" else None,
         "qlib_version": qlib.__version__, "metrics": metrics,
         "factors_file": str(args.factors) if args.factors else None,
     }, indent=2) + "\n")
