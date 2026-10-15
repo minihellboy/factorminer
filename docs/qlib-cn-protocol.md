@@ -61,6 +61,22 @@ A challenger replaces the incumbent only if all hold:
 A change that fails stays out. The response is never a search over more
 thresholds on the same windows.
 
+**Replication universes.** CSI500 and CSI1000 (labels, protocols and books
+as for CSI300) are confirmation data for a hypothesis fixed on CSI300
+before their fits are made. `cross_universe.py` averages the paired daily
+differences across universes day by day and reports the pooled NW t, so a
+change that is too small to show on one universe can be judged on three.
+The adoption rule then applies to the pooled series, and a validation-
+selected procedure is only required when validation actually picks the
+right book (for the label horizon it did not, so the fixed choice was
+registered).
+
+## Registered procedures
+
+| Registration | Frozen | Books | Decision |
+| --- | --- | --- | --- |
+| `docs/registrations/csi300_h5_vs_h1.json` | 2026-10-15, provider to 2026-10-12, 6 boosters | `h5` (5-day training label) vs `h1` (incumbent), Alpha158 default processing, 3 seeds | 2027-10-15: paired NW(20) t > 0 confirms, < −2 refutes |
+
 ## Prospective holdout
 
 1. **Fit.** Fit the procedure's runs under `--protocol live`: train
