@@ -1,0 +1,9 @@
+# Live protocol seeds 3-6 for the 7-seed registration.
+live alpha158_h1_lgb_s3 --handler alpha158 --model lgb --horizon 1 --seed 3
+live alpha158_h1_lgb_s4 --handler alpha158 --model lgb --horizon 1 --seed 4
+live alpha158_h1_lgb_s5 --handler alpha158 --model lgb --horizon 1 --seed 5
+live alpha158_h1_lgb_s6 --handler alpha158 --model lgb --horizon 1 --seed 6
+live alpha158_h5_lgb_s3 --handler alpha158 --model lgb --horizon 5 --seed 3
+live alpha158_h5_lgb_s4 --handler alpha158 --model lgb --horizon 5 --seed 4
+live alpha158_h5_lgb_s5 --handler alpha158 --model lgb --horizon 5 --seed 5
+live alpha158_h5_lgb_s6 --handler alpha158 --model lgb --horizon 5 --seed 6

@@ -1,0 +1,9 @@
+{
+  "name": "book_size_20pct_early_windows",
+  "written": "2026-10-16, after the 2018-2025 size grid (size_h5) and before any size test on the early windows",
+  "hypothesis": "A TopkDropout book of 20% of the universe (n_drop scaled to keep n_drop/topk = 0.1) has a higher after-cost IR than the fixed top-50 book.",
+  "book": "alpha158_h5_lgb_s[0-6] (adopted h5 model)",
+  "windows": {"csi300": ["wf2012", "wf2014", "wf2016"], "csi500": ["wf2014", "wf2016"]},
+  "settings": "book_eval.py --tradable --tie-draws 4 --size 0.2, continuous simulation",
+  "rule": "Statistic: pooled IR difference (cross_universe.py, day-averaged excess over the two universes) and its paired block-bootstrap 90% interval. Confirmed if the pooled IR difference > 0 and positive in CSI500 (the universe where the book changes from 50 to 100 names; CSI300 changes only 50 -> 60); refuted if the pooled 90% interval lies below 0."
+}

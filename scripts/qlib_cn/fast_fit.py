@@ -111,6 +111,10 @@ def _load(cache: Path, universe: str, start: str) -> tuple[pd.DataFrame, pd.Data
     return features, labels
 
 
+def _load_index(cache: Path, universe: str, start: str) -> pd.Index:
+    return pd.read_parquet(_cache_path(cache, universe, start), columns=["label/h1"]).index
+
+
 def _norm_label(label: pd.Series, how: str) -> pd.Series:
     """Qlib's DropnaLabel then CSZScoreNorm / CSRankNorm on the label."""
     from qlib.utils.data import zscore
@@ -185,7 +189,8 @@ def _weights(labels: pd.DataFrame, index: pd.MultiIndex, how: str, universe: str
 
 
 def _fit_one(features, labels, universe, protocol, label, seed, out: Path, feature_norm: str,
-             label_norm: str, lgb_config: str, purge: str, threads: int, weight: str = "none") -> dict:
+             label_norm: str, lgb_config: str, purge: str, threads: int, weight: str = "none",
+             outputs: dict[Path, pd.Index | None] | None = None, train_universes: list[str] | None = None) -> dict:
     import lightgbm as lgb
 
     started = time.monotonic()
@@ -215,7 +220,7 @@ def _fit_one(features, labels, universe, protocol, label, seed, out: Path, featu
         y = y_all.reindex(x.index)
         keep = y.notna().to_numpy()
         w = _weights(labels, x.index[keep], weight, universe, split["start"])
-        sets.append(lgb.Dataset(x.to_numpy()[keep], label=y.to_numpy()[keep], weight=w))
+        sets.append(lgb.Dataset(x.to_numpy()[keep], label=y.to_numpy()[keep], weight=w, free_raw_data=False))
     booster = lgb.train(params, sets[0], num_boost_round=rounds, valid_sets=sets, valid_names=["train", "valid"],
                         callbacks=[lgb.early_stopping(patience, verbose=False)])
 
@@ -223,27 +228,32 @@ def _fit_one(features, labels, universe, protocol, label, seed, out: Path, featu
         x = _segment(x_all, *seg)
         return pd.Series(booster.predict(x.to_numpy()), index=x.index, name="score")
 
-    valid_pred = predict(segments["valid"])
-    pred = predict(segments["test"]).dropna()
-    metrics = {}
-    if len(pred):
-        metrics.update(_ic_metrics(pred, labels["h1"].reindex(pred.index)))
-    else:
-        metrics["test_dates"] = 0
-    metrics["best_iteration"] = int(booster.best_iteration)
-    metrics["fit_seconds"] = round(time.monotonic() - started, 1)
+    valid_all = predict(segments["valid"])
+    pred_all = predict(segments["test"]).dropna()
+    # outputs: run dir -> rows (index) of the universe it serves; None keeps every row
+    for run, rows in (outputs or {out: None}).items():
+        valid_pred = valid_all if rows is None else valid_all[valid_all.index.isin(rows)]
+        pred = pred_all if rows is None else pred_all[pred_all.index.isin(rows)]
+        metrics = {}
+        if len(pred):
+            metrics.update(_ic_metrics(pred, labels["h1"].reindex(pred.index)))
+        else:
+            metrics["test_dates"] = 0
+        metrics["best_iteration"] = int(booster.best_iteration)
+        metrics["fit_seconds"] = round(time.monotonic() - started, 1)
 
-    out.mkdir(parents=True, exist_ok=True)
-    pred.to_frame().reset_index().to_parquet(out / "predictions.parquet", index=False)
-    valid_pred.dropna().to_frame().reset_index().to_parquet(out / "valid_predictions.parquet", index=False)
-    booster.save_model(str(out / "model.txt"))
-    (out / "metrics.json").write_text(json.dumps({
-        "universe": universe, "protocol": protocol, "split": split, "handler": "alpha158", "robust": False,
-        "model": "lgb", "seed": seed, "objective": "mse", "early_stop": "loss", "patience": patience,
-        "label": LABEL[0], "train_label": expr, "label_name": label, "horizon": horizon, "segments": segments,
-        "purge": purge, "feature_norm": feature_norm, "label_norm": label_norm, "lgb_config": lgb_config,
-        "lgb_params": params, "metrics": metrics, "fast_fit": True, "n_features": int(features.shape[1]), "weight": weight,
-    }, indent=2) + "\n")
+        run.mkdir(parents=True, exist_ok=True)
+        pred.to_frame().reset_index().to_parquet(run / "predictions.parquet", index=False)
+        valid_pred.dropna().to_frame().reset_index().to_parquet(run / "valid_predictions.parquet", index=False)
+        booster.save_model(str(run / "model.txt"))
+        (run / "metrics.json").write_text(json.dumps({
+            "universe": universe, "protocol": protocol, "split": split, "handler": "alpha158", "robust": False,
+            "model": "lgb", "seed": seed, "objective": "mse", "early_stop": "loss", "patience": patience,
+            "label": LABEL[0], "train_label": expr, "label_name": label, "horizon": horizon, "segments": segments,
+            "purge": purge, "feature_norm": feature_norm, "label_norm": label_norm, "lgb_config": lgb_config,
+            "lgb_params": params, "metrics": metrics, "fast_fit": True, "n_features": int(features.shape[1]),
+            "weight": weight, "train_universes": train_universes, "train_rows": int(sets[0].num_data()),
+        }, indent=2) + "\n")
     return metrics
 
 
@@ -270,6 +280,9 @@ def main() -> None:
     fit.add_argument("--horizons", default="1", help="training labels: day counts and/or ew<d> (see _label_spec)")
     fit.add_argument("--seeds", default="0-6", help="e.g. 0-6 or 0,2,5")
     fit.add_argument("--name", default="alpha158_h{h}_lgb_s{s}", help="run name; {h} horizon, {s} seed")
+    fit.add_argument("--train-universes", default=None,
+                     help="comma-separated universes whose rows are pooled for training; the fit is written "
+                          "to <out>/<u>/<protocol>/<name> for each, scored on that universe's rows")
     fit.add_argument("--weight", choices=["none", "invvar"], default="none",
                      help="training weights: invvar = 1/sigma_20d^2 (GLS under heteroskedastic noise)")
     fit.add_argument("--factors", type=Path, default=None,
@@ -300,6 +313,12 @@ def main() -> None:
         if (start, factors) not in loaded:
             loaded.clear()
             features, labels = _load(args.cache, args.universe, start)
+            if args.train_universes:  # union of the universes' rows; the label is normalised over the union
+                parts = [_load(args.cache, u, start) for u in args.train_universes.split(",")]
+                features = pd.concat([f for f, _ in parts]).sort_index()
+                labels = pd.concat([lab for _, lab in parts]).sort_index()
+                keep = ~features.index.duplicated()
+                features, labels = features[keep], labels[~labels.index.duplicated()]
             if factors is not None:  # extra columns, as run_qlib_baselines --handler alpha158_plus
                 extra = pd.read_csv(factors) if factors.suffix == ".csv" else pd.read_parquet(factors)
                 extra["datetime"] = pd.to_datetime(extra["datetime"])
@@ -308,6 +327,9 @@ def main() -> None:
                 features = features.join(extra.add_prefix("fm_"), how="left")
             loaded[start, factors] = features, labels
         return loaded[start, factors]
+
+    def _universe_rows(universe: str, protocol: str) -> pd.Index:
+        return _load_index(args.cache, universe, PROTOCOLS[protocol]["start"])
 
     if args.check is not None:
         meta = json.loads((args.check / "metrics.json").read_text())
@@ -330,8 +352,13 @@ def main() -> None:
                 out = args.out / args.universe / protocol / name
                 if (out / "metrics.json").exists() and not args.force:
                     continue
+                outputs = None
+                if args.train_universes:  # one fit, scored in every universe it was trained on
+                    outputs = {args.out / u / protocol / name: _universe_rows(u, protocol)
+                               for u in args.train_universes.split(",")}
                 m = _fit_one(*data(protocol), args.universe, protocol, h, s, out, args.feature_norm,
-                             args.label_norm, args.lgb_config, args.purge, args.threads, args.weight)
+                             args.label_norm, args.lgb_config, args.purge, args.threads, args.weight,
+                             outputs, args.train_universes.split(",") if args.train_universes else None)
                 print(f"{protocol} {name}: trees {m['best_iteration']} RankIC {m.get('RankIC', float('nan')):.4f} "
                       f"{m['fit_seconds']}s", flush=True)
 

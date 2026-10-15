@@ -617,14 +617,14 @@ def _band_strategy(**kwargs):
 
 def _backtest(pred: pd.Series, universe: str, split, n_drop: int = 5,
               return_report: bool = False, tie_salt: int = 0, cache_exchange: bool = True,
-              band: float | None = None):
+              band: float | None = None, topk: int = TOPK):
     from qlib.backtest import backtest, executor
     from qlib.contrib.evaluate import risk_analysis
     from qlib.contrib.strategy import TopkDropoutStrategy
 
     signal = _untie(pred, tie_salt).to_frame("score")
-    strategy = (TopkDropoutStrategy(signal=signal, topk=TOPK, n_drop=n_drop, only_tradable=ONLY_TRADABLE)
-                if band is None else _band_strategy(signal=signal, topk=TOPK, n_drop=n_drop, band=band))
+    strategy = (TopkDropoutStrategy(signal=signal, topk=topk, n_drop=n_drop, only_tradable=ONLY_TRADABLE)
+                if band is None else _band_strategy(signal=signal, topk=topk, n_drop=n_drop, band=band))
     # The test window can run past the provider's calendar (protocol live): stop at the last signal.
     end = min(pd.Timestamp(split["test"][1]), pred.index.get_level_values("datetime").max())
     exec_obj = executor.SimulatorExecutor(time_per_step="day", generate_portfolio_metrics=True)

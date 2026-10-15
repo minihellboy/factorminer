@@ -83,6 +83,7 @@ from run_qlib_baselines import PROTOCOLS, TOPK, _backtest  # noqa: E402
 
 DAYS = 238  # Qlib risk_analysis annualisation for daily returns
 BLOCK, DRAWS = 20, 2000
+UNIVERSE_SIZE = {"csi300": 300, "csi500": 500, "csi1000": 1000}
 
 
 def _nw_t(x: np.ndarray, lags: int) -> float:
@@ -204,24 +205,24 @@ def _frame(report: pd.DataFrame) -> pd.DataFrame:
 
 
 def _simulate(scores: dict[str, pd.Series], universe: str, n_drop: int, sim: str, salt: int,
-              band: float | None = None) -> pd.DataFrame:
+              band: float | None = None, topk: int = TOPK) -> pd.DataFrame:
     if sim == "reset":
         return pd.concat([_frame(_backtest(scores[p], universe, PROTOCOLS[p], n_drop=n_drop, return_report=True,
-                                           tie_salt=salt, band=band)[1]) for p in scores]).sort_index()
+                                           tie_salt=salt, band=band, topk=topk)[1]) for p in scores]).sort_index()
     spans = sorted(PROTOCOLS[p]["test"] for p in scores)
     score = pd.concat(scores.values()).sort_index()
     _, report = _backtest(score, universe, {"test": (spans[0][0], spans[-1][1])}, n_drop=n_drop,
-                          return_report=True, tie_salt=salt, band=band)
+                          return_report=True, tie_salt=salt, band=band, topk=topk)
     return _frame(report)
 
 
-_SCORES: dict[str, tuple[dict[str, pd.Series], int, float | None]] = {}  # key -> (window scores, n_drop, band)
+_SCORES: dict[str, tuple] = {}  # key -> (window scores, n_drop, band, topk); read by forked workers
 JOBS = 1  # --jobs
 
 
 def _simulate_key(key: str, universe: str, sim: str, salt: int) -> pd.DataFrame:
-    scores, n_drop, band = _SCORES[key]
-    return _simulate(scores, universe, n_drop, sim, salt, band)
+    scores, n_drop, band, topk = _SCORES[key]
+    return _simulate(scores, universe, n_drop, sim, salt, band, topk)
 
 
 def _map(fn, tasks: list[tuple]) -> list:
@@ -236,14 +237,14 @@ def _map(fn, tasks: list[tuple]) -> list:
 
 def _books(universe: str, windows: dict[str, str], specs: dict[str, tuple], sim: str,
            draws: int = 1) -> dict[str, tuple[pd.DataFrame, pd.Series, dict[str, float]]]:
-    """Daily book returns over all windows for every ``key -> (patterns, smooth, n_drop, neutral, band)``,
+    """Daily book returns over all windows for every ``key -> (patterns, smooth, n_drop, neutral, band, topk)``,
     each averaged over ``draws`` tie-breaking keys; all (book, draw) backtests run in parallel."""
     from run_qlib_baselines import _exchange
 
     _SCORES.clear()
-    for key, (patterns, smooth, n_drop, neutral, band) in specs.items():
+    for key, (patterns, smooth, n_drop, neutral, band, topk) in specs.items():
         _SCORES[key] = ({p: _neutralize(_signal(_runs(Path(root), patterns[p]), smooth), neutral)
-                         for p, root in windows.items()}, n_drop, band)
+                         for p, root in windows.items()}, n_drop, band, topk)
     _exchange(universe)  # built once, before forking
     tasks = [(key, universe, sim, salt) for key in specs for salt in range(draws)]
     reports = dict(zip([(t[0], t[3]) for t in tasks], _map(_simulate_key, tasks)))
@@ -291,6 +292,9 @@ def main() -> None:
     parser.add_argument("--book", action="append", required=True, help="name=glob[,glob...]")
     parser.add_argument("--smooth", default="0", help="comma-separated EMA half-lives (0 = none)")
     parser.add_argument("--n-drop", default="5", help="comma-separated TopkDropout n_drop values")
+    parser.add_argument("--size", default=None,
+                        help="comma-separated book sizes as fractions of the universe: also trade each book with "
+                             "topk = f x N and n_drop scaled by the same factor (n_drop/topk kept)")
     parser.add_argument("--band", default=None,
                         help="comma-separated rank bands (x topk): also trade each book with the band rule")
     parser.add_argument("--select", action="append", default=[],
@@ -345,15 +349,18 @@ def main() -> None:
     smooths = [float(h) for h in args.smooth.split(",")]
     drops = [int(n) for n in args.n_drop.split(",")]
     bands = [None] + [float(b) for b in args.band.split(",")] if args.band else [None]
+    sizes = [None] + [float(f) for f in args.size.split(",")] if args.size else [None]
 
     per_book = {name: {p: patterns for p in windows} for name, patterns in books.items()}
     per_book.update({name: {p: books[c["chosen"]] for p, c in chosen.items()} for name, chosen in selections.items()})
     specs = {}
     for name, patterns in per_book.items():
-        for h, n_drop, w, band in itertools.product(smooths, drops, neutrals, bands):
+        for h, n_drop, w, band, size in itertools.product(smooths, drops, neutrals, bands, sizes):
             key = (name + (f"@ema{h:g}" if h else "") + (f"@drop{n_drop}" if n_drop != 5 else "")
-                   + (f"@neutral{w:g}" if w else "") + (f"@band{band:g}" if band else ""))
-            specs[key] = (patterns, h, n_drop, w, band)
+                   + (f"@neutral{w:g}" if w else "") + (f"@band{band:g}" if band else "")
+                   + (f"@size{size:g}" if size else ""))
+            topk = round(size * UNIVERSE_SIZE[args.universe]) if size else TOPK
+            specs[key] = (patterns, h, max(1, round(topk * n_drop / TOPK)) if size else n_drop, w, band, topk)
     daily: dict[str, pd.DataFrame] = {}
     ties: dict[str, dict] = {}
     for key, (frame, score, ties[key]) in _books(args.universe, windows, specs, args.sim, args.tie_draws).items():

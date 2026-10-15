@@ -1,0 +1,53 @@
+# XGBoost follow-up: 7 seeds at the 1-day label (s1-6 new) and the 5-day label (s0-6).
+wf2018 alpha158_xgb_s1 --handler alpha158 --model xgb --seed 1
+wf2020 alpha158_xgb_s1 --handler alpha158 --model xgb --seed 1
+wf2022 alpha158_xgb_s1 --handler alpha158 --model xgb --seed 1
+wf2024 alpha158_xgb_s1 --handler alpha158 --model xgb --seed 1
+wf2018 alpha158_xgb_s2 --handler alpha158 --model xgb --seed 2
+wf2020 alpha158_xgb_s2 --handler alpha158 --model xgb --seed 2
+wf2022 alpha158_xgb_s2 --handler alpha158 --model xgb --seed 2
+wf2024 alpha158_xgb_s2 --handler alpha158 --model xgb --seed 2
+wf2018 alpha158_xgb_s3 --handler alpha158 --model xgb --seed 3
+wf2020 alpha158_xgb_s3 --handler alpha158 --model xgb --seed 3
+wf2022 alpha158_xgb_s3 --handler alpha158 --model xgb --seed 3
+wf2024 alpha158_xgb_s3 --handler alpha158 --model xgb --seed 3
+wf2018 alpha158_xgb_s4 --handler alpha158 --model xgb --seed 4
+wf2020 alpha158_xgb_s4 --handler alpha158 --model xgb --seed 4
+wf2022 alpha158_xgb_s4 --handler alpha158 --model xgb --seed 4
+wf2024 alpha158_xgb_s4 --handler alpha158 --model xgb --seed 4
+wf2018 alpha158_xgb_s5 --handler alpha158 --model xgb --seed 5
+wf2020 alpha158_xgb_s5 --handler alpha158 --model xgb --seed 5
+wf2022 alpha158_xgb_s5 --handler alpha158 --model xgb --seed 5
+wf2024 alpha158_xgb_s5 --handler alpha158 --model xgb --seed 5
+wf2018 alpha158_xgb_s6 --handler alpha158 --model xgb --seed 6
+wf2020 alpha158_xgb_s6 --handler alpha158 --model xgb --seed 6
+wf2022 alpha158_xgb_s6 --handler alpha158 --model xgb --seed 6
+wf2024 alpha158_xgb_s6 --handler alpha158 --model xgb --seed 6
+wf2018 alpha158_h5_xgb_s0 --handler alpha158 --model xgb --horizon 5 --seed 0
+wf2020 alpha158_h5_xgb_s0 --handler alpha158 --model xgb --horizon 5 --seed 0
+wf2022 alpha158_h5_xgb_s0 --handler alpha158 --model xgb --horizon 5 --seed 0
+wf2024 alpha158_h5_xgb_s0 --handler alpha158 --model xgb --horizon 5 --seed 0
+wf2018 alpha158_h5_xgb_s1 --handler alpha158 --model xgb --horizon 5 --seed 1
+wf2020 alpha158_h5_xgb_s1 --handler alpha158 --model xgb --horizon 5 --seed 1
+wf2022 alpha158_h5_xgb_s1 --handler alpha158 --model xgb --horizon 5 --seed 1
+wf2024 alpha158_h5_xgb_s1 --handler alpha158 --model xgb --horizon 5 --seed 1
+wf2018 alpha158_h5_xgb_s2 --handler alpha158 --model xgb --horizon 5 --seed 2
+wf2020 alpha158_h5_xgb_s2 --handler alpha158 --model xgb --horizon 5 --seed 2
+wf2022 alpha158_h5_xgb_s2 --handler alpha158 --model xgb --horizon 5 --seed 2
+wf2024 alpha158_h5_xgb_s2 --handler alpha158 --model xgb --horizon 5 --seed 2
+wf2018 alpha158_h5_xgb_s3 --handler alpha158 --model xgb --horizon 5 --seed 3
+wf2020 alpha158_h5_xgb_s3 --handler alpha158 --model xgb --horizon 5 --seed 3
+wf2022 alpha158_h5_xgb_s3 --handler alpha158 --model xgb --horizon 5 --seed 3
+wf2024 alpha158_h5_xgb_s3 --handler alpha158 --model xgb --horizon 5 --seed 3
+wf2018 alpha158_h5_xgb_s4 --handler alpha158 --model xgb --horizon 5 --seed 4
+wf2020 alpha158_h5_xgb_s4 --handler alpha158 --model xgb --horizon 5 --seed 4
+wf2022 alpha158_h5_xgb_s4 --handler alpha158 --model xgb --horizon 5 --seed 4
+wf2024 alpha158_h5_xgb_s4 --handler alpha158 --model xgb --horizon 5 --seed 4
+wf2018 alpha158_h5_xgb_s5 --handler alpha158 --model xgb --horizon 5 --seed 5
+wf2020 alpha158_h5_xgb_s5 --handler alpha158 --model xgb --horizon 5 --seed 5
+wf2022 alpha158_h5_xgb_s5 --handler alpha158 --model xgb --horizon 5 --seed 5
+wf2024 alpha158_h5_xgb_s5 --handler alpha158 --model xgb --horizon 5 --seed 5
+wf2018 alpha158_h5_xgb_s6 --handler alpha158 --model xgb --horizon 5 --seed 6
+wf2020 alpha158_h5_xgb_s6 --handler alpha158 --model xgb --horizon 5 --seed 6
+wf2022 alpha158_h5_xgb_s6 --handler alpha158 --model xgb --horizon 5 --seed 6
+wf2024 alpha158_h5_xgb_s6 --handler alpha158 --model xgb --horizon 5 --seed 6
