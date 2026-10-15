@@ -51,6 +51,25 @@ from run_qlib_baselines import (  # noqa: E402
 )
 
 HORIZONS = (1, 2, 3, 5, 7, 10)
+EW_DAYS = 20  # ``ew<d>`` labels sum this many forward daily returns
+
+
+def _label_spec(name: str) -> tuple[str, int]:
+    """Training label ``name`` -> (Qlib expression, days of lookahead for the purge).
+
+    An integer ``h`` is the ``h``-day forward return (``run_qlib_baselines --horizon``).
+    ``ew<d>`` is the survival-weighted forward return sum_k (d/100)^(k-1) r_{t+k},
+    k = 1..``EW_DAYS``, with r_{t+k} the k-th daily return after entry at close t+1:
+    what a name ranked on day t earns in a book that holds it with daily exit hazard
+    1 - d/100 (TopkDropout top 50, n_drop 5 measures about 0.10).
+    """
+    if name.isdigit():
+        return _label(int(name))[0], int(name)
+    if name.startswith("ew"):
+        decay = int(name[2:]) / 100
+        terms = [f"{decay ** (k - 1):.6g}*(Ref($close, -{k + 1})/Ref($close, -{k}) - 1)" for k in range(1, EW_DAYS + 1)]
+        return " + ".join(terms), EW_DAYS
+    raise ValueError(f"unknown label {name}")
 
 
 def _init(provider: Path) -> None:
@@ -123,19 +142,42 @@ def _segment(frame, start, end):
     return frame[(dates >= pd.Timestamp(start)) & (dates <= pd.Timestamp(end))]
 
 
-def _fit_one(features, labels, universe, protocol, horizon, seed, out: Path, feature_norm: str,
+_NORMED: dict[tuple, pd.Series] = {}
+
+
+def _ensure_label(labels: pd.DataFrame, name: str, universe: str, start: str) -> str:
+    """Column of ``labels`` holding training label ``name``, computing a non-cached one with Qlib."""
+    column = f"h{name}" if name.isdigit() else name
+    if column not in labels:
+        from qlib.data import D
+
+        expr, _ = _label_spec(name)
+        end = labels.index.get_level_values("datetime").max()
+        values = D.features(D.instruments(universe), [expr], start_time=start, end_time=end).swaplevel().sort_index()
+        labels[column] = values.iloc[:, 0].reindex(labels.index).astype(np.float32)
+    return column
+
+
+def _fit_one(features, labels, universe, protocol, label, seed, out: Path, feature_norm: str,
              label_norm: str, lgb_config: str, purge: str, threads: int) -> dict:
     import lightgbm as lgb
 
     started = time.monotonic()
     split = PROTOCOLS[protocol]
+    label = str(label)
+    expr, horizon = _label_spec(label)
+    column = _ensure_label(labels, label, universe, split["start"])
     segments = {"train": (split["start"], _purged(split["fit_end"], horizon, purge)),
                 "valid": (split["valid"][0], _purged(split["valid"][1], horizon, purge)),
                 "test": split["test"]}
     x_all = _segment(features, split["start"], split["test"][1])
     if feature_norm != "raw":
         x_all = _robust(x_all, split["start"], split["fit_end"], clip=feature_norm == "robust")
-    y_all = _norm_label(_segment(labels[f"h{horizon}"], split["start"], split["test"][1]), label_norm)
+    key = (protocol, column, label_norm)
+    if key not in _NORMED:
+        _NORMED.clear()
+        _NORMED[key] = _norm_label(_segment(labels[column], split["start"], split["test"][1]), label_norm)
+    y_all = _NORMED[key]
 
     overrides, rounds, patience = LGB_CONFIGS[lgb_config]
     params = {"objective": "mse", "verbosity": -1,
@@ -171,7 +213,7 @@ def _fit_one(features, labels, universe, protocol, horizon, seed, out: Path, fea
     (out / "metrics.json").write_text(json.dumps({
         "universe": universe, "protocol": protocol, "split": split, "handler": "alpha158", "robust": False,
         "model": "lgb", "seed": seed, "objective": "mse", "early_stop": "loss", "patience": patience,
-        "label": LABEL[0], "train_label": _label(horizon)[0], "horizon": horizon, "segments": segments,
+        "label": LABEL[0], "train_label": expr, "label_name": label, "horizon": horizon, "segments": segments,
         "purge": purge, "feature_norm": feature_norm, "label_norm": label_norm, "lgb_config": lgb_config,
         "lgb_params": params, "metrics": metrics, "fast_fit": True,
     }, indent=2) + "\n")
@@ -198,7 +240,7 @@ def main() -> None:
                                       help="comma-separated start dates (default: every protocol's start)")
     fit = sub.choices["fit"]
     fit.add_argument("--protocols", default="wf2018,wf2020,wf2022,wf2024")
-    fit.add_argument("--horizons", default="1")
+    fit.add_argument("--horizons", default="1", help="training labels: day counts and/or ew<d> (see _label_spec)")
     fit.add_argument("--seeds", default="0-6", help="e.g. 0-6 or 0,2,5")
     fit.add_argument("--name", default="alpha158_h{h}_lgb_s{s}", help="run name; {h} horizon, {s} seed")
     fit.add_argument("--feature-norm", choices=["raw", "robust", "robust_noclip"], default="raw")
@@ -230,7 +272,7 @@ def main() -> None:
     if args.check is not None:
         meta = json.loads((args.check / "metrics.json").read_text())
         scratch = args.out / "_check" / args.check.name
-        _fit_one(*data(meta["protocol"]), args.universe, meta["protocol"], meta.get("horizon", 1), meta["seed"], scratch,
+        _fit_one(*data(meta["protocol"]), args.universe, meta["protocol"], meta.get("label_name", meta.get("horizon", 1)), meta["seed"], scratch,
                  meta.get("feature_norm") or ("robust" if meta.get("robust") else "raw"),
                  meta.get("label_norm") or ("rank" if meta.get("robust") else "zscore"),
                  meta.get("lgb_config", "qlib"), meta.get("purge", "qlib"), meta["lgb_params"]["num_threads"])
@@ -242,7 +284,7 @@ def main() -> None:
         return
 
     for protocol in args.protocols.split(","):
-        for h in [int(x) for x in args.horizons.split(",")]:
+        for h in args.horizons.split(","):
             for s in _seeds(args.seeds):
                 name = args.name.format(h=h, s=s)
                 out = args.out / args.universe / protocol / name
