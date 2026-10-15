@@ -54,6 +54,11 @@ Protocol ``live`` is the prospective holdout: it trains through 2026-09-30
 and tests from 2026-10-16, the first session after its registration
 (``docs/qlib-cn-protocol.md``); its test extends as the provider is updated.
 
+``--checkpoints 16,64,256`` fits LightGBM to the largest count without early
+stopping and also writes each count as a sibling run ``<out>@t<k>`` (test and
+validation scores of the first k trees), so ``book_eval.py --select`` can
+choose the tree count on the validation book.
+
 ``--lgb-config`` picks a LightGBM preset: ``qlib`` (benchmark), ``qlib_bag``
 (row bagging actually on), ``slow63`` / ``slow31`` (lower learning rate, more
 trees, larger leaves' minimum size, lighter L1/L2).
@@ -455,6 +460,20 @@ def _refit(model, dataset, start: str, end: str) -> int:
     return rounds
 
 
+def _checkpoints(booster, dataset, args, counts: list[int]) -> None:
+    """Write the first-k-trees scores of ``booster`` as sibling runs ``<out>@t<k>``."""
+    from qlib.data.dataset.handler import DataHandlerLP
+
+    x = {seg: dataset.prepare(seg, col_set="feature", data_key=DataHandlerLP.DK_I) for seg in ("valid", "test")}
+    for k in counts:
+        out = args.out.parent / f"{args.out.name}@t{k}"
+        out.mkdir(parents=True, exist_ok=True)
+        for seg, file in (("valid", "valid_predictions.parquet"), ("test", "predictions.parquet")):
+            score = pd.Series(booster.predict(x[seg].to_numpy(), num_iteration=k), index=x[seg].index, name="score")
+            score.to_frame().reset_index().to_parquet(out / file, index=False)
+        (out / "metrics.json").write_text(json.dumps({"checkpoint_of": str(args.out), "trees": k}) + "\n")
+
+
 def _load(model, path: Path) -> None:
     """Install a saved LightGBM booster in place of fitting."""
     import lightgbm as lgb
@@ -541,6 +560,8 @@ def main() -> None:
                         help="LightGBM: after early stopping, refit on train+valid with that tree count")
     parser.add_argument("--load-model", type=Path, default=None,
                         help="LightGBM: predict with this saved booster (model.txt) instead of fitting")
+    parser.add_argument("--checkpoints", default=None,
+                        help="LightGBM: comma-separated tree counts; no early stopping, one sibling run each")
     parser.add_argument("--horizon", type=int, default=1,
                         help="training label horizon in days (metrics and backtest stay 1-day)")
     parser.add_argument("--seed", type=int, default=0)
@@ -588,6 +609,11 @@ def main() -> None:
         LGB_PARAMS.update(overrides)
         if args.lgb_config == "qlib":
             patience = args.patience
+        if args.checkpoints:
+            if args.model != "lgb" or args.refit:
+                parser.error("--checkpoints applies to --model lgb without --refit")
+            rounds = max(int(k) for k in args.checkpoints.split(","))
+            patience = rounds + 1
         model = _model(args.model, args.objective, args.early_stop, args.seed, args.top_weight,
                        patience, args.temperature, rounds)
         if isinstance(model, RankLGB):
@@ -637,6 +663,8 @@ def main() -> None:
     pred.rename("score").to_frame().reset_index().to_parquet(args.out / "predictions.parquet", index=False)
     valid_pred.dropna().rename("score").to_frame().reset_index().to_parquet(
         args.out / "valid_predictions.parquet", index=False)
+    if args.checkpoints:
+        _checkpoints(model.model, dataset, args, [int(k) for k in args.checkpoints.split(",")])
     if args.model == "lgb":
         model.model.save_model(str(args.out / "model.txt"))
     (args.out / "metrics.json").write_text(json.dumps({

@@ -1,0 +1,25 @@
+# Tree-count family: one no-early-stop fit per seed writes <run>@t<k> siblings; select k on validation.
+wf2018 alpha158_ck_lgb_s0 --handler alpha158 --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 0
+wf2018 alpha158r_ck_lgb_s0 --handler alpha158 --robust --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 0
+wf2020 alpha158_ck_lgb_s0 --handler alpha158 --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 0
+wf2020 alpha158r_ck_lgb_s0 --handler alpha158 --robust --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 0
+wf2022 alpha158_ck_lgb_s0 --handler alpha158 --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 0
+wf2022 alpha158r_ck_lgb_s0 --handler alpha158 --robust --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 0
+wf2024 alpha158_ck_lgb_s0 --handler alpha158 --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 0
+wf2024 alpha158r_ck_lgb_s0 --handler alpha158 --robust --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 0
+wf2018 alpha158_ck_lgb_s1 --handler alpha158 --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 1
+wf2018 alpha158r_ck_lgb_s1 --handler alpha158 --robust --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 1
+wf2020 alpha158_ck_lgb_s1 --handler alpha158 --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 1
+wf2020 alpha158r_ck_lgb_s1 --handler alpha158 --robust --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 1
+wf2022 alpha158_ck_lgb_s1 --handler alpha158 --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 1
+wf2022 alpha158r_ck_lgb_s1 --handler alpha158 --robust --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 1
+wf2024 alpha158_ck_lgb_s1 --handler alpha158 --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 1
+wf2024 alpha158r_ck_lgb_s1 --handler alpha158 --robust --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 1
+wf2018 alpha158_ck_lgb_s2 --handler alpha158 --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 2
+wf2018 alpha158r_ck_lgb_s2 --handler alpha158 --robust --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 2
+wf2020 alpha158_ck_lgb_s2 --handler alpha158 --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 2
+wf2020 alpha158r_ck_lgb_s2 --handler alpha158 --robust --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 2
+wf2022 alpha158_ck_lgb_s2 --handler alpha158 --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 2
+wf2022 alpha158r_ck_lgb_s2 --handler alpha158 --robust --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 2
+wf2024 alpha158_ck_lgb_s2 --handler alpha158 --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 2
+wf2024 alpha158r_ck_lgb_s2 --handler alpha158 --robust --model lgb --checkpoints 4,8,16,32,64,128,256,512 --seed 2
