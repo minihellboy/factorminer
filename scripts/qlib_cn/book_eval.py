@@ -21,7 +21,10 @@ daily difference of after-cost excess return gets a Newey-West t, which
 removes the market noise both books share and is far tighter than comparing
 IRs across seeds. Windows must not overlap, every run of a book must cover
 its window's test days, and the daily series of every book are saved next to
-``--out`` (``<out>.daily.parquet``) for bootstraps and attribution.
+``--out`` (``<out>.daily.parquet``) for bootstraps and attribution. The IR
+difference gets a paired circular block bootstrap (20-day blocks, the same
+resampled days for both books) 90% interval, and the mean-difference t is
+also reported at Newey-West bandwidths of 20 and 60 days.
 """
 
 from __future__ import annotations
@@ -41,6 +44,29 @@ from arm_lift import _hac_t  # noqa: E402
 from run_qlib_baselines import PROTOCOLS, TOPK, _backtest  # noqa: E402
 
 DAYS = 238  # Qlib risk_analysis annualisation for daily returns
+BLOCK, DRAWS = 20, 2000
+
+
+def _nw_t(x: np.ndarray, lags: int) -> float:
+    e = x - x.mean()
+    variance = e @ e / len(x)
+    for lag in range(1, lags + 1):
+        variance += 2 * (1 - lag / (lags + 1)) * (e[lag:] @ e[:-lag]) / len(x)
+    return float(x.mean() / math.sqrt(variance / len(x))) if variance > 0 else float("nan")
+
+
+def _ir(x: np.ndarray) -> np.ndarray:
+    return x.mean(axis=-1) / x.std(axis=-1) * math.sqrt(DAYS)
+
+
+def _ir_diff_interval(a: np.ndarray, b: np.ndarray, seed: int = 0) -> list[float]:
+    """90% paired circular block-bootstrap interval of IR(a) - IR(b)."""
+    n = len(a)
+    rng = np.random.default_rng(seed)
+    starts = rng.integers(0, n, size=(DRAWS, -(-n // BLOCK)))
+    index = ((starts[:, :, None] + np.arange(BLOCK)) % n).reshape(DRAWS, -1)[:, :n]
+    diff = _ir(a[index]) - _ir(b[index])
+    return [float(q) for q in np.quantile(diff, [0.05, 0.95])]
 
 
 def _runs(root: Path, patterns: str) -> list[list[Path]]:
@@ -161,8 +187,11 @@ def main() -> None:
             both = frame.join(base, rsuffix="_base", how="inner")
             diff = (both["excess"] - both["excess_base"]).to_numpy()
             top = (both["top"] - both["top_base"]).to_numpy()
+            ex, ex_base = both["excess"].to_numpy(), both["excess_base"].to_numpy()
             entry["vs_baseline"] = {
                 "annualized_excess_diff": float(diff.mean() * DAYS), "excess_diff_t": _hac_t(diff),
+                "excess_diff_t_nw20": _nw_t(diff, 20), "excess_diff_t_nw60": _nw_t(diff, 60),
+                "ir_diff": float(_ir(ex) - _ir(ex_base)), "ir_diff_90ci": _ir_diff_interval(ex, ex_base),
                 "top_spread_diff_bps": float(np.nanmean(top)), "top_spread_diff_t": _hac_t(top),
                 "RankIC_diff": float((both["ric"] - both["ric_base"]).mean()),
                 "RankIC_diff_t": _hac_t((both["ric"] - both["ric_base"]).to_numpy()),
