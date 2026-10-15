@@ -519,6 +519,33 @@ a single pre-specified challenger or grid, pooled over the three universes,
   and GLS is the efficient estimator of the same mean. Pooled t −1.0, ΔIR
   −0.10 [−0.48, 0.26]; RankIC lower in every universe. Rejected.
 
+- **Mined libraries under h5, without the export look-ahead.** Every
+  library export before 2026-10-15 17:17 had its rows masked by the future
+  return (fixed in `evaluate_library.py`, not re-run until now). Re-exported
+  (`<window>_{marginal,fq}_v2`; wf2024's control campaign never finished,
+  so the control arm is out) and appended to Alpha158 under h5, CSI300:
+  marginal 1.33, fq 1.09 vs 1.41 (t −0.33 and −1.68, reality-check p 0.77),
+  while RankIC rises from 0.0344 to 0.0375 for both. The old verdict was not
+  an artefact of the leak: RankIC lift still does not reach the book.
+- **Power.** One universe's 8 years give a 90% interval on ΔIR of about
+  ±0.35; pooled over three universes about ±0.25. A RankIC lift of 0.003 is
+  worth perhaps +0.05 IR: invisible here. More hill-climbing on these days is
+  mostly noise-chasing; more independent days are the lever.
+- **Earlier windows: out-of-sample replication of h5** (registered before any
+  fit, `docs/registrations/spec_h5_vs_h1_early.json`). CSI300 membership
+  starts 2005 and CSI500 2007, so walk-forward windows wf2012/2014/2016
+  (tests 2012–2017) were added; no h5-vs-h1 decision had used them. Result
+  (`output/qlib_cn/family/early_*`): CSI300 h1 2.83 → h5 3.06 (t 0.65),
+  CSI500 5.74 → 6.07 (t 0.81), pooled t 0.91, ΔIR +0.20 [−0.24, 0.65]:
+  positive in both universes, so it replicates by the registered rule, but
+  the relative gain (+6–8%) is far smaller than in 2018–2025 (+50% and more).
+  The early books are extraordinary in every year (CSI500 IR 4.4–7.6, ~40%/yr
+  excess, frictionless and without impact costs); every member has rows
+  (300/500 a day, delisted names included), so this is not survivorship but
+  a less efficient market whose 1-day reversal alpha the 1-day label already
+  captured. As that alpha was arbitraged away, what remained sits at longer
+  horizons, where the 5-day label is matched.
+
 ### Does marginal value persist?
 
 Partial IC beyond Alpha158's 16 PCs, oriented by the train sign:
