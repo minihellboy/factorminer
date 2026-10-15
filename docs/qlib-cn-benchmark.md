@@ -430,6 +430,12 @@ Pooled 2018–2025 walk-forward. Baseline: tuned top-stopped LightGBM
   1.21 (reality-check p 0.85); turning Qlib's row bagging on (`qlib_bag`,
   seed 0) 0.86 (t −2.15, CI excludes 0). The five-to-forty-tree default is
   not beaten by a model with ten times the trees.
+- **Reference models, seed 0, 1-day label** (`book_wf_reference_s0.json`,
+  4 tie draws, vs LightGBM seed 0 at 0.89): XGBoost 1.22 (t 0.94), CatBoost
+  0.94, MLP 0.85 (RankIC 0.041, the highest, yet no better book), ALSTM 0.26
+  (t −1.67). Single seeds carry a seed sd near 0.1, so XGBoost is the only
+  one worth a seven-seed follow-up; none approaches the 5-day LightGBM book
+  (1.47).
 - **Industry-neutral scores** (`--neutral`, Eastmoney industry of the latest
   report, groups of five or more names demeaned): pooled IR 1.25 → 0.88 at
   half weight and 0.60 at full weight. The book's sector tilts are part of
