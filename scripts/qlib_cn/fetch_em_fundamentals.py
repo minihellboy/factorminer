@@ -13,14 +13,18 @@ requests per year, run serially with a pause between quarters:
   flow per share, ROE, gross margin, and the Eastmoney industry;
 * ``stock_yysj_em`` (预约披露时间): each report's actual disclosure date.
 
-A report counts as published on its actual disclosure date. Without one, the
-earlier of the table's latest-announcement date and the statutory deadline
-(Q1 and annual reports by 30 April, half-year by 31 August, Q3 by 31 October)
-is used: a latest-announcement date past the deadline marks a later revision
-of a report first published by the deadline, so figures may carry small
-restatements. Raw tables are cached per quarter under ``<out>/raw``. Writes
-``<out>/quarterly.parquet`` with ``asset_id, pubDate, statDate`` and the
-figures, the industry included (point in time, as of each report).
+A report counts as published on its actual disclosure date (53% of reports).
+Otherwise: on the table's latest-announcement date when that falls by the
+statutory deadline (it is at or after first publication), else on the
+deadline (Q1 and annual reports by 30 April, half-year by 31 August, Q3 by 31
+October; the 2019 annual and 2020 Q1 reports by 30 June 2020 after the
+CSRC's COVID extension). Only a report filed after its deadline is dated too
+early; using the latest-announcement date instead would delay 43% of reports
+by about a year, since it usually marks a later announcement. The figures are
+today's table, so a restated report carries its restated values from its
+first date: values are not vintage-exact. Raw tables are cached per quarter under ``<out>/raw``. Writes
+``<out>/quarterly.parquet`` with ``asset_id, pubDate, statDate, latest_notice`` and the
+figures, the industry included (as of each report).
 """
 
 from __future__ import annotations
@@ -44,7 +48,10 @@ def _asset(code: pd.Series) -> pd.Series:
     return prefix + code
 
 
+
 def _deadline(stat: pd.Timestamp) -> pd.Timestamp:
+    if (stat.year, stat.month) in {(2019, 12), (2020, 3)}:  # CSRC COVID extension
+        return pd.Timestamp(2020, 6, 30)
     if stat.month == 12:
         return pd.Timestamp(stat.year + 1, 4, 30)
     return {3: pd.Timestamp(stat.year, 4, 30), 6: pd.Timestamp(stat.year, 8, 31),
@@ -108,11 +115,12 @@ def main() -> None:
             else:
                 report["actual"] = pd.NaT
             notice = pd.to_datetime(report["latest_notice"], errors="coerce")
-            fallback = notice.where(notice <= _deadline(stat), _deadline(stat))
-            report["pubDate"] = report["actual"].fillna(fallback)
+            report["latest_notice"] = notice
+            deadline = _deadline(stat)
+            report["pubDate"] = report["actual"].fillna(notice.where(notice <= deadline, deadline))
             report["statDate"] = stat
-            report["pub_source"] = report["actual"].notna().map({True: "actual", False: "fallback"})
-            frames.append(report.drop(columns=["actual", "latest_notice"]))
+            report["pub_source"] = report["actual"].notna().map({True: "actual", False: "notice_or_deadline"})
+            frames.append(report.drop(columns=["actual"]))
             print(f"{key}: {len(report)} rows, actual dates {float((report['pub_source'] == 'actual').mean()):.2f}",
                   flush=True)
 

@@ -15,13 +15,11 @@ Run in an environment with ``pandas`` and ``pyarrow``::
   income / revenue), ``yoy_ni`` and ``yoy_rev`` (year-on-year net-income and
   revenue growth, %), ``cfo_to_book`` (operating cash flow per share / book
   value per share);
-* ``ind_return``: the equal-weight mean daily return of the stock's
-  Eastmoney industry among all panel stocks trading that day (current and
-  past index members; groups with fewer than five stocks are left NaN). The
-  industry is the one of the stock's latest report, and before its first
-  labelled report the earliest known label: industries are nearly static, so
-  this small classification look-ahead fills the early years, where a third
-  of reports carry no label.
+* ``ind_return``: the equal-weight mean daily return of the other index
+  members in the stock's Eastmoney industry that day (leave-one-out; NaN with
+  fewer than three peers). The industry is the one of the stock's latest
+  report; before its first labelled report it is unknown. Peers are that
+  day's members only, never stocks selected by later membership.
 
 ``--factors-out`` writes, for universe-member rows, a fixed set of standard
 data features ranked cross-sectionally to [-1, 1] (``datetime, instrument,
@@ -43,7 +41,7 @@ import numpy as np
 import pandas as pd
 
 QUARTERLY = ["roe", "gp_margin", "np_margin", "yoy_ni", "yoy_rev", "cfo_to_book"]
-MIN_GROUP = 5
+MIN_PEERS = 3
 
 
 def _quarterly(directory: Path, dates: pd.DatetimeIndex) -> pd.DataFrame:
@@ -96,11 +94,14 @@ def main() -> None:
         panel = panel.merge(q, on=["asset_id", "datetime"], how="left")
         fields = QUARTERLY + ["roe_yoy", "industry"]
         panel[fields] = panel.groupby("asset_id")[fields].ffill()
-        panel["industry"] = panel.groupby("asset_id")["industry"].bfill()
         added += QUARTERLY + ["roe_yoy"]
+        member = (panel["in_universe"] == 1) & panel["ret"].notna()
         key = [panel["datetime"], panel["industry"]]
-        size = panel["ret"].notna().groupby(key).transform("sum")
-        panel["ind_return"] = panel["ret"].groupby(key).transform("mean").where(size >= MIN_GROUP)
+        total = panel["ret"].where(member).groupby(key).transform("sum")
+        count = member.groupby(key).transform("sum")
+        peers = count - member.astype(int)
+        own = panel["ret"].where(member, 0.0)
+        panel["ind_return"] = ((total - own) / peers).where(peers >= MIN_PEERS)
         added.append("ind_return")
 
     if args.panel_out is not None:
@@ -140,11 +141,11 @@ def main() -> None:
         f["ivol20"] = resid.groupby(panel["asset_id"]).transform(lambda s: s.rolling(20, min_periods=15).std())
         f["st"] = panel["st"].astype(float)
         if have_q:
-            ind_ret = panel["ind_return"]
-            log_ind = np.log1p(ind_ret.fillna(0)).groupby(panel["asset_id"])
+            # Missing days stay missing: windows need most of their observations.
+            log_ind = np.log1p(panel["ind_return"]).groupby(panel["asset_id"])
             f["ind_mom20"] = log_ind.transform(lambda s: s.rolling(20, min_periods=15).sum())
-            ret5 = np.log1p(ret.fillna(0)).groupby(panel["asset_id"]).transform(lambda s: s.rolling(5).sum())
-            f["ind_rel_ret5"] = ret5 - log_ind.transform(lambda s: s.rolling(5).sum())
+            ret5 = np.log1p(ret).groupby(panel["asset_id"]).transform(lambda s: s.rolling(5, min_periods=4).sum())
+            f["ind_rel_ret5"] = ret5 - log_ind.transform(lambda s: s.rolling(5, min_periods=4).sum())
         if have_q:
             for c in QUARTERLY + ["roe_yoy"]:
                 f[c] = panel[c]
