@@ -431,6 +431,54 @@ expected best of about 1,400 draws from that spread (0.30–0.33) is as high as
 the best trial itself. That version of the DSR cannot be passed by
 construction here. The noise-only version is reported as the informative one.
 
+### Judging on the book
+
+`book_eval.py` backtests a book (a rank-averaged set of saved predictions)
+in each walk-forward window and pools the daily after-cost excess returns
+over 2018–2025 (1,942 days). Each book is compared with a baseline book on
+the paired daily difference, with a Newey-West t. Pairing removes the market
+noise both books share, so the comparison is much tighter than per-seed IRs.
+The baseline is the tuned handler with top-50 early stopping (`mtop`), three
+seeds. A pooled IR is that of the concatenated daily series, not the mean of
+per-window IRs.
+
+| Book (3 seeds unless noted) | After-cost IR | Excess / yr | Top-50 spread (bps/day) | RankIC | Excess diff t |
+| --- | --- | --- | --- | --- | --- |
+| tuned, top-stopped (`mtop`, baseline) | 1.00 | 7.7% | 6.40 | 0.042 | – |
+| tuned, loss-stopped | 0.98 | 7.8% | 5.07 | 0.040 | +0.05 |
+| Qlib default processors (`q3`) | **1.29** | **10.9%** | 6.24 | 0.028 | +1.24 |
+| `mtop` + `q3`, 50/50 | 1.06 | 8.6% | 6.66 | 0.038 | +0.62 |
+| `mtop`, score EMA (half-life 3) | 0.68 | 5.6% | 4.55 | 0.039 | −1.24 |
+| `q3`, score EMA (half-life 3) | 0.72 | 6.1% | 5.38 | 0.021 | −0.69 |
+| `mtop` one seed | 1.05 | 7.9% | 6.12 | 0.040 | +0.16 |
+| listwise softmax CE, T = 1 (one seed) | 0.57 | 6.2% | 3.83 | −0.003 | −0.46 |
+| rank_xendcg (one seed) | 0.71 | 7.3% | 6.17 | 0.002 | −0.15 |
+| top-sextile logloss (one seed) | 0.53 | 6.2% | 3.85 | −0.013 | −0.37 |
+| + valuation/size/liquidity features, tuned | 0.98 | 7.6% | 5.15 | 0.046 | −0.10 |
+| + valuation/size/liquidity features, default | 1.05 | 9.7% | 6.07 | 0.030 | +0.66 |
+
+- **Ranking objectives do not pay.** Listwise softmax cross-entropy,
+  rank_xendcg and a top-sextile classifier all target the top of the
+  cross-section, and all lose to the regression baseline. Their pooled RankIC
+  falls to about zero, and listnet and the classifier also lose 2.3 bps of
+  top spread (t −1.6 and −1.4). The earlier top-weighted MSE result (tmtop)
+  also failed to replicate in walk-forward (+0.13 bps top lift, t 0.15).
+- **Smoothing and lower turnover do not pay.** An EMA of the score lowers
+  every book. `n_drop` 1–3 cuts turnover from 0.20 to 0.04–0.12, but the gross
+  alpha falls about one for one with the costs saved (`mtop` net IR
+  1.12 / 0.97 / 0.99 against 1.00; no paired |t| above 0.6).
+- **Qlib's default processors give the best book, and the worst RankIC.** The
+  z-scored label keeps the return tails that a rank label flattens, which acts
+  as an implicit top weighting. The edge (+3.2%/yr, t 1.24) is not
+  significant.
+- **RankIC gains still do not reach the book.** Replaying admission with
+  top-of-book gates (zone partial IC, top-lift t) on the wf2018 and wf2020
+  campaigns: every rule's library raises RankIC (+0.001 to +0.005). But every
+  rule lowers the book against `mtop` (IR 0.81–1.18 against 1.45 on those two
+  windows; excess t −0.5 to −1.7). Appending valuation, size and liquidity
+  features does the same: RankIC +0.004 on the tuned handler, book unchanged,
+  top spread lower (t −2.3).
+
 ## Running
 
 ```bash
