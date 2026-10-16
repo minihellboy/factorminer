@@ -18,14 +18,21 @@ close (deal price close), buys cost 5 bps and sells 15 bps, no trade in a
 suspended name (no volume) and no buy at +9.5% or sell at -9.5% (Qlib's
 limit_threshold on $change). Each day the book moves a fraction ``--rate`` of
 the way from its drifted weights to the target (partial trading towards an
-aim portfolio, Garleanu-Pedersen); untradable names keep their weight and the
+aim portfolio, Garleanu-Pedersen), except names already within
+``--threshold`` x their target weight of it (a no-trade region against the
+noise of the float-share estimate); untradable names keep their weight and the
 tradable ones absorb the difference. Weights drift with close-to-close returns.
 
 Reported per book: after-cost excess over the index (annualised mean, IR,
 tracking error), its excess over the float-cap replica (``cap`` book, the same
-simulation without a tilt: pure tilt alpha, free of replication error), and
-one-sided turnover. ``--compare path:book`` adds a ``book_eval`` daily series
-(e.g. the top-50 book) and paired block-bootstrap IR-difference intervals.
+simulation without a tilt), and one-sided turnover. The CSI indices are price
+indices while the holdings' returns (Qlib's adjusted close) include
+dividends, so even the replica beats its index by about the dividend yield;
+excess over the replica is the honest alpha, for the ``--compare`` books too. ``--compare path:book`` adds a ``book_eval`` daily series
+(e.g. the top-50 book) and the paired block-bootstrap interval of the
+difference in replica-relative IR. (IR over the price index favours
+low-tracking-error books: about 2%/yr of dividends on 2.5% tracking error is
+0.8 of IR for nothing.)
 Daily series go to ``--out`` (.daily.parquet next to the .json) for
 ``cross_universe.py``-style pooling.
 """
@@ -63,7 +70,7 @@ def _tilt(spec: str, pct: np.ndarray) -> np.ndarray:
     return mult
 
 
-def simulate(spec: str, rate: float, score: pd.DataFrame, cap: pd.DataFrame, ret: pd.DataFrame,
+def simulate(spec: str, rate: float, threshold: float, score: pd.DataFrame, cap: pd.DataFrame, ret: pd.DataFrame,
              member: pd.DataFrame, buyable: pd.DataFrame, sellable: pd.DataFrame) -> pd.DataFrame:
     """Daily (gross, cost, turnover) of the tilted index book. All frames: dates x instruments, aligned.
 
@@ -89,6 +96,9 @@ def simulate(spec: str, rate: float, score: pd.DataFrame, cap: pd.DataFrame, ret
             new = target.copy()
         else:
             new = w + rate * (target - w) if rate < 1 else target.copy()
+            # no-trade region: leave a name whose weight is within threshold x its target of the target
+            hold = np.abs(target - w) <= threshold * target
+            new[hold] = w[hold]
             frozen = ~(buyable[i] | sellable[i])
             no_buy = (new > w) & ~buyable[i]
             no_sell = (new < w) & ~sellable[i]
@@ -118,6 +128,8 @@ def main() -> None:
     parser.add_argument("--book", required=True, help="run glob(s) of the score, book_eval syntax")
     parser.add_argument("--tilt", action="append", default=[], help="excl<q>, exp<l> or both joined by +")
     parser.add_argument("--rate", default="1", help="comma-separated daily trading rates towards the target")
+    parser.add_argument("--threshold", type=float, default=0.1,
+                        help="no-trade region: skip a name within this fraction of its target weight")
     parser.add_argument("--compare", action="append", default=[], help="book_eval .daily.parquet:book")
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args()
@@ -158,7 +170,7 @@ def main() -> None:
     specs = [("cap", 1.0)] + [(t, r) for t in args.tilt for r in rates]
     daily = {}
     for spec, rate in specs:
-        sim = simulate(spec, rate, frames["sig"], frames["cap"], frames["ret"], frames["member"],
+        sim = simulate(spec, rate, args.threshold, frames["sig"], frames["cap"], frames["ret"], frames["member"],
                        frames["buyable"], frames["sellable"])
         key = spec if spec == "cap" else f"{spec}@r{rate:g}"
         daily[key] = sim.assign(excess=sim["gross"] - sim["cost"] - index.reindex(sim.index))
@@ -180,15 +192,16 @@ def main() -> None:
         row = {"annualized_excess": float(x.mean() * DAYS), "information_ratio": ir(x),
                "tracking_error": float(x.std() * DAYS ** .5)}
         if key in daily:
+            row.update(turnover=float(daily[key]["turnover"].mean()), cost=float(daily[key]["cost"].mean() * DAYS))
+        if key != "cap":
             vs_cap = x - excess["cap"]
-            row.update(turnover=float(daily[key]["turnover"].mean()),
-                       cost=float(daily[key]["cost"].mean() * DAYS),
-                       over_replica=float(vs_cap.mean() * DAYS),
-                       over_replica_ir=ir(vs_cap) if key != "cap" else float("nan"))
+            row.update(over_replica=float(vs_cap.mean() * DAYS), over_replica_ir=ir(vs_cap))
         for other in [c for c in excess if c.startswith("cmp:")]:
-            if key != other:
-                lo, hi = _ir_diff_interval(x.to_numpy(), excess[other].to_numpy())
-                row[f"dIR_vs_{other[4:]}"] = [round(ir(x) - ir(excess[other]), 3), round(lo, 3), round(hi, 3)]
+            if key not in (other, "cap"):
+                a, b = (x - excess["cap"]).to_numpy(), (excess[other] - excess["cap"]).to_numpy()
+                lo, hi = _ir_diff_interval(a, b)
+                row[f"dIR_vs_{other[4:]}"] = [round(ir(x - excess["cap"]) - ir(excess[other] - excess["cap"]), 3),
+                                              round(lo, 3), round(hi, 3)]
         results[key] = row
         print(f"  {key:22s} " + " ".join(
             f"{k} {v:.3f}" if isinstance(v, float) else f"{k} {v}" for k, v in row.items()))
