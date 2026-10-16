@@ -13,3 +13,4 @@ dist/
 output/
 results/
 docs/_build/
+catboost_info/
