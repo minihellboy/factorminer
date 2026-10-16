@@ -722,6 +722,17 @@ over the replica (the top-50 book in brackets):
 | `exp0.5`, rate 0.1 | +1.7%/yr, IR 0.91 | +1.4%/yr, IR 0.88 |
 | `exp1`, rate 0.2 | +3.9%/yr, IR 0.99 | +2.0%/yr, IR 0.56 |
 
+Grinold's active weights (`add<k>`: cap + k·z/N, equal risk; `mv<k>`: scaled
+by median σ² / σᵢ², the diagonal mean-variance weight; cut at zero) do a
+little better than the multiplicative tilts, best at low strength:
+`add0.5` replica-relative IR 1.21/1.06 (CSI300/CSI500, rate 0.2), `mv0.5`
+1.36/0.94, against 1.03/0.75 for the top 50 (paired ΔIR +0.18 to +0.33,
+intervals spanning 0). IR falls as k grows (`add2` 0.90/0.74, `mv2`
+0.96/0.52): costs rise and the long-only constraint binds, the transfer
+coefficient of the fundamental law. Every construction tried lands within
+±0.3 of a replica-relative IR of 1; the score's information, not the book,
+sets the ceiling.
+
 Trading fully to the target each day costs 5–8%/yr and loses; rate 0.1–0.2
 keeps costs at 0.6–2.6%/yr. Underweighting cannot go below zero, so the loser
 tail is worth about its index weight times its shortfall: roughly 15% of

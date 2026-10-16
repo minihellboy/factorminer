@@ -11,7 +11,15 @@ zero weight. Target weight on day t, from the previous close's float caps
 
 * ``excl<q>``: cap x 1[score percentile > q], renormalised (drop the bottom q);
 * ``exp<l>``: cap x exp(l x z), z the normal quantile of the score percentile;
-* ``excl<q>+exp<l>``: both.
+* ``excl<q>+exp<l>``: both;
+* ``add<k>``: Grinold's active weight with equal risk, cap + k x z / N, cut at
+  zero and renormalised: additive active bets of the same size in every
+  name, so small index weights can be overweighted (a multiplicative tilt
+  cannot) and k spans the range from the index to a concentrated top book;
+* ``mv<k>``: the same with a diagonal risk model, cap + k x z x (median
+  sigma^2 / sigma_i^2) / N, sigma the trailing 20-day volatility (clipped to
+  0.5-3 x the day's median): the mean-variance active weight alpha_i /
+  (lambda sigma_i^2) when alpha_i is proportional to z_i (constant IC).
 
 Execution mirrors the Qlib exchange the TopkDropout books use: trades at the
 close (deal price close), buys cost 5 bps and sells 15 bps, no trade in a
@@ -55,30 +63,40 @@ from run_qlib_baselines import BENCHMARK_INDEX  # noqa: E402
 BUY_COST, SELL_COST, LIMIT = 0.0005, 0.0015, 0.095
 
 
-def _tilt(spec: str, pct: np.ndarray) -> np.ndarray:
-    mult = np.ones_like(pct)
+def _target(spec: str, pct: np.ndarray, bench: np.ndarray, vol: np.ndarray) -> np.ndarray:
+    """Target weights over one day's members: benchmark weights ``bench`` (summing to 1) tilted by ``spec``."""
+    z = norm.ppf(np.clip(pct - 0.5 / max(len(pct), 1), 1e-4, 1 - 1e-4))
+    mult, active = np.ones_like(pct), np.zeros_like(pct)
     for part in spec.split("+"):
         if part == "cap":
             continue
         if part.startswith("excl"):
             mult = mult * (pct > float(part[4:]))
         elif part.startswith("exp"):
-            z = norm.ppf(np.clip(pct - 0.5 / max(len(pct), 1), 1e-4, 1 - 1e-4))
             mult = mult * np.exp(float(part[3:]) * z)
+        elif part.startswith("add"):
+            active = active + float(part[3:]) * z / len(z)
+        elif part.startswith("mv"):
+            med = np.nanmedian(vol) if np.isfinite(vol).any() else 1.0
+            sigma = np.clip(np.nan_to_num(vol, nan=med), 0.5 * med, 3 * med)
+            active = active + float(part[2:]) * z * (med / sigma) ** 2 / len(z)
         else:
             raise SystemExit(f"unknown tilt {part!r}")
-    return mult
+    w = bench * mult
+    w = np.maximum(w / w.sum() + active, 0)
+    return w / w.sum()
 
 
 def simulate(spec: str, rate: float, threshold: float, score: pd.DataFrame, cap: pd.DataFrame, ret: pd.DataFrame,
-             member: pd.DataFrame, buyable: pd.DataFrame, sellable: pd.DataFrame) -> pd.DataFrame:
+             member: pd.DataFrame, buyable: pd.DataFrame, sellable: pd.DataFrame, vol: pd.DataFrame) -> pd.DataFrame:
     """Daily (gross, cost, turnover) of the tilted index book. All frames: dates x instruments, aligned.
 
     Row t of ``score`` and ``cap`` is what is known at the close of t-1; trades happen at the close of t;
     ``ret`` row t+1 is earned on the weights held after trading at t.
     """
     dates, names = score.index, score.columns
-    score, cap, ret, member, buyable, sellable = (f.to_numpy() for f in (score, cap, ret, member, buyable, sellable))
+    score, cap, ret, member, buyable, sellable, vol = (
+        f.to_numpy() for f in (score, cap, ret, member, buyable, sellable, vol))
     w = np.zeros(len(names))
     rows = []
     for i in range(len(dates) - 1):
@@ -90,8 +108,7 @@ def simulate(spec: str, rate: float, threshold: float, score: pd.DataFrame, cap:
             scored = m & np.isfinite(s)
             if scored.any():
                 pct[scored] = pd.Series(s[scored]).rank(pct=True).to_numpy()
-            target[m] = cap[i][m] * _tilt(spec, pct[m])
-            target /= target.sum()
+            target[m] = _target(spec, pct[m], cap[i][m] / cap[i][m].sum(), vol[i][m])
         if w.sum() == 0:
             new = target.copy()
         else:
@@ -161,8 +178,9 @@ def main() -> None:
     sig = score.unstack("instrument").reindex(index=dates, columns=names).shift(1)
     tested = sig.notna().any(axis=1)
     sl = slice(tested.idxmax(), None)
+    vol = wide["ret"].rolling(20, min_periods=10).std().shift(1)
     frames = {k: v.loc[sl] for k, v in dict(sig=sig, cap=cap, ret=wide["ret"], member=member,
-                                             buyable=buyable, sellable=sellable).items()}
+                                             buyable=buyable, sellable=sellable, vol=vol).items()}
     index = D.features([BENCHMARK_INDEX[args.universe]], ["$close/Ref($close, 1) - 1"], start_time=start,
                        end_time=end).iloc[:, 0].droplevel(0)
 
@@ -171,7 +189,7 @@ def main() -> None:
     daily = {}
     for spec, rate in specs:
         sim = simulate(spec, rate, args.threshold, frames["sig"], frames["cap"], frames["ret"], frames["member"],
-                       frames["buyable"], frames["sellable"])
+                       frames["buyable"], frames["sellable"], frames["vol"])
         key = spec if spec == "cap" else f"{spec}@r{rate:g}"
         daily[key] = sim.assign(excess=sim["gross"] - sim["cost"] - index.reindex(sim.index))
         print(f"{key} done", file=sys.stderr, flush=True)
