@@ -651,6 +651,13 @@ size residuals, per universe and pooled) explain and adjust it.
   higher-volatility half earns as much or more (CSI500 20.5 vs 14.9 bps,
   CSI1000 25.0 vs 20.3); a volatility filter would not lift the top.
 
+- **Recency-weighted training does not change the shape.** `fast_fit.py
+  --weight decay2` / `decay4` (sample weight 0.5^(age / 2 or 4 years)):
+  pooled ΔIR +0.01 [−0.33, 0.33] and +0.02 [−0.18, 0.22] (`--tradable`), and
+  the CSI500 top still saturates (ventiles 16–20: +18/+16/+16/+18/+15 bps).
+  The saturated top is in the post-2017 data, not in a model fitted to the old
+  regime.
+
 Consequence for the search: improvements must find *winners* in a market
 where the cheapest winner signal has been arbitraged. Tail-symmetric metrics
 (RankIC, IC) and losses (MSE on z-scored labels) spend capacity on the short

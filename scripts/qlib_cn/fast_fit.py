@@ -173,9 +173,18 @@ def _weights(labels: pd.DataFrame, index: pd.MultiIndex, how: str, universe: str
     0.5%/day; missing -> the day's median). Under squared loss a name's label noise scales
     with sigma^2, so unweighted MSE is dominated by volatile names; inverse-variance weights
     are the GLS (efficient) estimator of the same conditional mean.
+
+    ``decay<H>``: 0.5^(age / H years), age measured back from the last training day. The
+    return-generating process drifts (short-term reversal lost its long side in 2017); a
+    half-life discounts the regime the model no longer trades in. Training rows only.
     """
     if how == "none":
         return None
+    if how.startswith("decay"):
+        dates = index.get_level_values("datetime")
+        age = (dates.max() - dates).days.to_numpy() / 365.25
+        w = 0.5 ** (age / float(how[5:]))
+        return w / w.mean()
     if "_vol20" not in labels:
         from qlib.data import D
 
@@ -219,7 +228,8 @@ def _fit_one(features, labels, universe, protocol, label, seed, out: Path, featu
         x = _segment(x_all, *segments[key])
         y = y_all.reindex(x.index)
         keep = y.notna().to_numpy()
-        w = _weights(labels, x.index[keep], weight, universe, split["start"])
+        w = (None if key == "valid" and weight.startswith("decay")
+             else _weights(labels, x.index[keep], weight, universe, split["start"]))
         sets.append(lgb.Dataset(x.to_numpy()[keep], label=y.to_numpy()[keep], weight=w, free_raw_data=False))
     booster = lgb.train(params, sets[0], num_boost_round=rounds, valid_sets=sets, valid_names=["train", "valid"],
                         callbacks=[lgb.early_stopping(patience, verbose=False)])
@@ -257,6 +267,12 @@ def _fit_one(features, labels, universe, protocol, label, seed, out: Path, featu
     return metrics
 
 
+def _weight_arg(text: str) -> str:
+    if text in ("none", "invvar") or (text.startswith("decay") and text[5:].replace(".", "", 1).isdigit()):
+        return text
+    raise argparse.ArgumentTypeError(f"--weight: none, invvar or decay<years>, not {text!r}")
+
+
 def _seeds(text: str) -> list[int]:
     out = []
     for part in text.split(","):
@@ -283,8 +299,9 @@ def main() -> None:
     fit.add_argument("--train-universes", default=None,
                      help="comma-separated universes whose rows are pooled for training; the fit is written "
                           "to <out>/<u>/<protocol>/<name> for each, scored on that universe's rows")
-    fit.add_argument("--weight", choices=["none", "invvar"], default="none",
-                     help="training weights: invvar = 1/sigma_20d^2 (GLS under heteroskedastic noise)")
+    fit.add_argument("--weight", default="none", type=_weight_arg,
+                     help="training weights: invvar = 1/sigma_20d^2 (GLS under heteroskedastic noise); "
+                          "decay<H> = half-life of H years back from the last training day")
     fit.add_argument("--factors", type=Path, default=None,
                      help="csv/parquet (datetime, instrument, columns...) joined to Alpha158 as fm_<column>; "
                           "{p} in the path is replaced by the protocol (per-window libraries)")
