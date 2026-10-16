@@ -1,0 +1,10 @@
+{
+  "name": "exclusion_book_early_windows",
+  "written": "2026-10-16, after the 2018-2025 wide-book grid (family/wideband_*, not --tradable) and before any wide-book band test on the early windows",
+  "hypothesis": "The signal's predictability is concentrated in the bottom tail (book_diagnostics.py curve), so a broad book that holds 80% of the universe and sells a name only once it falls into the bottom ~12% by score (BandStrategy, topk = 0.8 N, band 1.1) has a higher size-adjusted after-cost IR than the fixed top-50 TopkDropout book.",
+  "book": "alpha158_h5_lgb_s[0-6] (adopted h5 model) for both books",
+  "windows": {"csi300": ["wf2012", "wf2014", "wf2016"], "csi500": ["wf2014", "wf2016"]},
+  "settings": "book_eval.py --tradable --tie-draws 4 --size 0.8 --band 1.1, continuous simulation; book h5@band1.1@size0.8 against baseline h5",
+  "statistic": "book_diagnostics.py size --baseline h5: IR difference of the daily after-cost excess (over the cap-weighted index) net of its regression on the equal-weight-minus-index return, paired 90% block-bootstrap interval, per universe and pooled (day-averaged residuals over the two universes).",
+  "rule": "Confirmed if the pooled size-adjusted IR difference > 0 and positive in both universes; refuted if the pooled 90% interval lies below 0; otherwise inconclusive. Secondary, reported but not decisive: h5@size0.5 (TopkDropout, 50% of the universe) and h5@band1.2@size0.8 on the same statistic. 2018-2025 in-sample values (not tradable): pooled +0.90 [+0.19, +1.63], CSI300 +0.19, CSI500 +0.55, CSI1000 +1.49."
+}
