@@ -16,7 +16,9 @@ the panel it downloads
   tables, each stamped with its publication date (``pubDate``), so a panel can
   take the figures point in time.
 
-It also downloads the CSI300 and CSI500 index bars. Each instrument's result is
+It also downloads the CSI300, CSI500 and CSI1000 index bars. ``volume / (turn / 100)``
+is the day's float (circulating A) share count, from which ``float_cap.py``
+builds index weights. Each instrument's result is
 cached under ``<out>/cache`` so an interrupted run resumes. BaoStock sessions
 are not thread-safe; ``--workers`` runs that many processes, each with one
 login for its lifetime. BaoStock blacklists clients that hold several
@@ -37,7 +39,7 @@ import pandas as pd
 
 DAILY_FIELDS = "date,code,close,volume,amount,turn,peTTM,pbMRQ,psTTM,pcfNcfTTM,isST"
 QUARTERLY_TABLES = ("profit", "growth", "balance", "cash_flow", "operation")
-INDEXES = {"sh.000300": "CSI300", "sh.000905": "CSI500"}
+INDEXES = {"sh.000300": "CSI300", "sh.000905": "CSI500", "sh.000852": "CSI1000"}
 
 
 def _bs_code(asset_id: str) -> str:
@@ -126,8 +128,12 @@ def _fetch_indexes(start: str, end: str) -> pd.DataFrame:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--panel", type=Path, action="append", required=True,
+    parser.add_argument("--panel", type=Path, action="append", default=[],
                         help="FactorMiner panel(s) whose instruments to fetch")
+    parser.add_argument("--instruments", type=Path, action="append", default=[],
+                        help="Qlib instruments file(s) (code, first, last) whose members to fetch")
+    parser.add_argument("--members-since", default="2000-01-01",
+                        help="--instruments: only members whose membership ends on or after this date")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--start", default="2007-01-01")
     parser.add_argument("--end", default=dt.date.today().isoformat())
@@ -140,7 +146,12 @@ def main() -> None:
     for panel in args.panel:
         ids = pd.read_parquet(panel, columns=["asset_id"])["asset_id"].unique()
         assets += [a for a in ids if a not in assets]
-    assets = assets  # panel order: first panel's instruments are fetched first
+    for path in args.instruments:
+        members = pd.read_csv(path, sep="\t", header=None, names=["code", "first", "last"])
+        ids = members.loc[members["last"] >= args.members_since, "code"].unique()
+        assets += [a for a in ids if a not in assets]
+    if not assets:
+        parser.error("give --panel or --instruments")
     cache = args.out / "cache"
     cache.mkdir(parents=True, exist_ok=True)
     print(f"{len(assets)} instruments, {args.workers} workers", flush=True)

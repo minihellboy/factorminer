@@ -28,8 +28,9 @@ the extreme deciles of the past 5-day return, and the reversal RankIC
 short-term reversal (buying recent losers) from its short side (avoiding
 recent winners), which a long-only book cannot trade.
 
-``screen``: long-side value of candidate features (Qlib expressions known at
-close t) for a top-of-book. For each feature, the 5-day excess (lags 1-5,
+``screen``: long-side value of candidate features (Qlib expressions, or
+``--feature`` columns of a (datetime, instrument) parquet, known at close t)
+for a top-of-book. For each feature, the 5-day excess (lags 1-5,
 against the equal-weight mean) of its top and bottom deciles, and the spread
 between the feature's upper and lower half among the book's candidates (the
 score's top 20%, the names a long-only book can buy): the information it adds
@@ -153,11 +154,17 @@ def reversal(args) -> None:
 def screen(args) -> None:
     from qlib.data import D
 
-    names, exprs = zip(*(e.split("=", 1) for e in args.expr))
+    pairs = [e.split("=", 1) for e in args.expr]
+    names, exprs = [n for n, _ in pairs], [e for _, e in pairs]
     ret = "Ref($close, -6)/Ref($close, -1) - 1"
     frame = D.features(D.instruments(args.universe), [ret, *exprs], **_span())
     frame.columns = ["r5", *names]
     frame = frame.swaplevel().sort_index()
+    for spec in args.feature:
+        name, source = spec.split("=", 1)
+        path, column = source.rsplit(":", 1)
+        frame[name] = pd.read_parquet(Path(path).expanduser(), columns=[column])[column].reindex(frame.index)
+        names.append(name)
     name, patterns = args.book[0].split("=", 1)
     frame = frame.join(_score(args.out, args.universe, patterns).rename("s"), how="inner")
     frame = frame[frame["r5"].notna()]
@@ -245,6 +252,8 @@ def main() -> None:
     parser.add_argument("--universe", required=True)
     parser.add_argument("--book", action="append", default=[], help="decay/curve: name=glob[,glob...]")
     parser.add_argument("--expr", action="append", default=[], help="screen: name=Qlib expression")
+    parser.add_argument("--feature", action="append", default=[],
+                        help="screen: name=path.parquet:column, a (datetime, instrument) feature known at close")
     parser.add_argument("--years", default=None, help="decay/curve: walk-forward window years (default 2018-2024)")
     parser.add_argument("--out", type=Path, default=Path("output/qlib_cn"), help="decay: runs root")
     parser.add_argument("--daily", type=Path, action="append", default=[],
