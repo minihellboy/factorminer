@@ -69,8 +69,12 @@ evaluated formulas, 500+ model fits.
 - **Round 5: benchmark-relative books and outside data.** Float-cap index
   weights (from turnover-implied float shares) let a book harvest the loser
   tail as underweights: about +1–4%/yr over a float-cap replica at IR
-  0.6–1.1, the same IR as the top-50 book at a fraction of its tracking
-  error, since underweights stop at zero. The CSI benchmarks are price
+  0.6–1.4 in CSI300/CSI500, the same IR as the top-50 book at a fraction of
+  its tracking error, since underweights stop at zero. In CSI1000 the same
+  construction (chosen on the other two) reaches IR 2.0 against 0.68,
+  ΔIR +1.34 [+0.87, +1.80], positive in all eight years; the registered
+  2016–2017 check is inconclusive (+0.27 [−1.25, +1.91]), a window where the
+  top of the score still won and both books ran at IR ~7. The CSI benchmarks are price
   indices, so every excess return here includes about 2%/yr of dividends.
   Earnings surprise, announcement returns and shareholder concentration
   either lack long-side power in the book's candidates or lower the book as
@@ -741,6 +745,40 @@ top-50 book at a quarter to a half of its tracking error, not a higher one.
 A capital split between the two books (correlation of active returns
 0.2–0.7) lifts replica-relative IR by 0.0–0.35, all intervals spanning 0.
 Not adopted.
+
+**CSI1000** (`fetch_float_inputs.py` filled the 1,293 names BaoStock lacked
+from Sina; caps for 949 of 1,000 members a day). The replica tracks SH000852
+with 1.0–1.9% a year from 2017 (3.1% in 2016; 26–35% in 2014–2015, the
+index's first months and the suspensions) and beats it by +1.7%/yr. The
+constructions picked on CSI300/CSI500 (low strength, rate 0.1–0.2), first
+run here, 2018–2025 over the replica:
+
+| | ann. | TE | cost | IR | ΔIR vs top-50 [90%] |
+| --- | --- | --- | --- | --- | --- |
+| top-50 TopkDropout | +6.8%/yr | 10.3% | | 0.68 | |
+| `add0.5`, rate 0.1 | +3.0%/yr | 1.5% | 0.7% | 2.02 | +1.34 [+0.87, +1.80] |
+| `excl0.2`, rate 0.1 | +3.2%/yr | 1.6% | 0.7% | 1.97 | +1.28 [+0.71, +1.87] |
+| `mv0.5`, rate 0.2 | +2.7%/yr | 1.9% | 1.3% | 1.45 | +0.77 [+0.34, +1.22] |
+| `add1`, rate 0.1 | +4.2%/yr | 2.4% | 1.1% | 1.76 | +1.08 [+0.69, +1.49] |
+
+`add0.5` is positive in every year (IR 1.0–3.5, +1.9 to +4.1%/yr); CSI300
+and CSI500 fall to IR ≤ 0.5 in 2023–2025. A thousand flat-weighted small
+caps give underweights room (a loser holds ~0.1% of the index, not 1–5%), and
+the top 50 carries 10% tracking error of mostly idiosyncratic small-cap risk.
+The gain is in IR, not return: +3%/yr against the top-50 book's +6.8%.
+
+Registered check (docs/registrations/spec_enhanced_csi1000_early.json,
+written before computing): CSI1000 has no training years before wf2018, so
+the frozen CSI500 wf2016 h5 boosters score CSI1000 members over 2016–2017
+(`x500_h5_lgb_s*`). Both books earn far more than later (the top 50 +49%/yr
+over the replica at IR 7.3, as CSI500's top 50 did then, IR 5–9); `add0.5`
++6.2%/yr at IR 7.5, ΔIR +0.27 [−1.25, +1.91]: **inconclusive** by the rule,
+two years being too short. `excl0.2` −0.33, `mv0.5` −0.19. In the
+reversal era the top of the score still won, and a long-only book that
+concentrates on it lost nothing to one that only underweights; the CSI1000
+advantage is a post-2017, losers-only-signal result like the exclusion book's
+(Round 4), which this window could not confirm. It goes to the live holdout,
+which needs live float caps (one serial Sina pass, ~3 h, per scoring).
 
 **Outside data for winners** (`book_diagnostics.py screen --feature`,
 2018–2025; then as model inputs, 7 seeds, `--tradable`, pooled):
