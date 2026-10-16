@@ -5,6 +5,8 @@
         --daily output/qlib_cn/family/ew90_csi1000.daily.parquet --baseline h1
     $QPY -I scripts/qlib_cn/book_diagnostics.py curve --universe csi500 --book h5='alpha158_h5_lgb_s[0-6]'
     $QPY -I scripts/qlib_cn/book_diagnostics.py reversal --universe csi500
+    $QPY -I scripts/qlib_cn/book_diagnostics.py screen --universe csi500 --book h5='alpha158_h5_lgb_s[0-6]' \\
+        --expr 'ovn20=Sum(Log($open/Ref($close, 1)), 20)'
 
 ``decay``: for the book's walk-forward score on day t, the mean daily rank IC
 and top-50 spread (bps, against the universe's equal-weight mean) with the
@@ -25,6 +27,14 @@ the extreme deciles of the past 5-day return, and the reversal RankIC
 (-corr(past 5-day return, next 5-day excess)). Separates the long side of
 short-term reversal (buying recent losers) from its short side (avoiding
 recent winners), which a long-only book cannot trade.
+
+``screen``: long-side value of candidate features (Qlib expressions known at
+close t) for a top-of-book. For each feature, the 5-day excess (lags 1-5,
+against the equal-weight mean) of its top and bottom deciles, and the spread
+between the feature's upper and lower half among the book's candidates (the
+score's top 20%, the names a long-only book can buy): the information it adds
+where the book trades. t uses the daily series with the variance inflated by
+the five-day overlap.
 
 ``size``: each book's daily after-cost excess (over the cap-weighted index)
 regressed on the equal-weight universe minus the index. The intercept is the
@@ -140,6 +150,41 @@ def reversal(args) -> None:
     print(table.round(1).to_string())
 
 
+def screen(args) -> None:
+    from qlib.data import D
+
+    names, exprs = zip(*(e.split("=", 1) for e in args.expr))
+    ret = "Ref($close, -6)/Ref($close, -1) - 1"
+    frame = D.features(D.instruments(args.universe), [ret, *exprs], **_span())
+    frame.columns = ["r5", *names]
+    frame = frame.swaplevel().sort_index()
+    name, patterns = args.book[0].split("=", 1)
+    frame = frame.join(_score(args.out, args.universe, patterns).rename("s"), how="inner")
+    frame = frame[frame["r5"].notna()]
+    day = frame.groupby(level="datetime")
+    frame["x5"] = frame["r5"] - day["r5"].transform("mean")
+    pool = day["s"].rank(pct=True) > 0.8
+
+    def t(daily: pd.Series) -> float:
+        daily = daily.dropna()
+        return daily.mean() / daily.std() * (len(daily) / 5) ** .5
+
+    print(f"{args.universe} {WINDOWS}: 5-day excess bps; 'in book pool' = upper minus lower half of the feature "
+          f"within the top 20% by {name}")
+    for feature in names:
+        pct = day[feature].rank(pct=True)
+        top = frame["x5"][pct > 0.9].groupby(level="datetime").mean() * 1e4
+        bottom = frame["x5"][pct <= 0.1].groupby(level="datetime").mean() * 1e4
+        inner = frame[pool & pct.notna()]
+        upper = inner.groupby(level="datetime")[feature].transform("median") < inner[feature]
+        split = (inner["x5"][upper].groupby(level="datetime").mean()
+                 - inner["x5"][~upper].groupby(level="datetime").mean()) * 1e4
+        rho = frame[[feature, "s"]].dropna().groupby(level="datetime").apply(
+            lambda d: d[feature].corr(d["s"], method="spearman")).mean()
+        print(f"  {feature:10s} top decile {top.mean():6.1f} (t {t(top):5.2f})  bottom decile {bottom.mean():6.1f}"
+              f" (t {t(bottom):5.2f})  in book pool {split.mean():6.1f} (t {t(split):5.2f})  rho with score {rho:5.2f}")
+
+
 def _size_residuals(universe: str, path: Path) -> tuple[pd.DataFrame, pd.Series]:
     """Daily after-cost excess of every book in ``path`` and the universe's equal-weight-minus-index return."""
     from qlib.data import D
@@ -195,10 +240,11 @@ def size(args) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=["decay", "curve", "reversal", "size"])
+    parser.add_argument("command", choices=["decay", "curve", "reversal", "screen", "size"])
     parser.add_argument("--provider", type=Path, default=Path("~/fm-data/qlib_cn"))
     parser.add_argument("--universe", required=True)
     parser.add_argument("--book", action="append", default=[], help="decay/curve: name=glob[,glob...]")
+    parser.add_argument("--expr", action="append", default=[], help="screen: name=Qlib expression")
     parser.add_argument("--years", default=None, help="decay/curve: walk-forward window years (default 2018-2024)")
     parser.add_argument("--out", type=Path, default=Path("output/qlib_cn"), help="decay: runs root")
     parser.add_argument("--daily", type=Path, action="append", default=[],
@@ -212,7 +258,7 @@ def main() -> None:
     import qlib
 
     qlib.init(provider_uri=str(args.provider.expanduser()), region="cn")
-    {"decay": decay, "curve": curve, "reversal": reversal, "size": size}[args.command](args)
+    {"decay": decay, "curve": curve, "reversal": reversal, "screen": screen, "size": size}[args.command](args)
 
 
 if __name__ == "__main__":

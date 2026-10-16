@@ -658,10 +658,28 @@ size residuals, per universe and pooled) explain and adjust it.
   The saturated top is in the post-2017 data, not in a model fitted to the old
   regime.
 
+- **Price-volume anomalies are short-side only.** `book_diagnostics.py
+  screen` over 13 classic features (overnight and intraday 20-day returns,
+  MAX, skewness, abnormal amount and volume, 12-1 momentum, distance to the
+  240-day high, close/VWAP, Amihud illiquidity, 5- and 20-day returns,
+  volatility), 2018–2025. The significant deciles are all losers: in CSI1000
+  the top deciles of intraday run-up, MAX, abnormal amount, volume surge,
+  close/VWAP, 5- and 20-day return and volatility lag by 32–52 bps over five
+  days (t −4.0 to −5.5); in CSI500 intraday run-up (−24, t −2.3). Only 12-1
+  momentum and the 240-day-high ratio lean positive on the long side
+  (CSI300 +15 and +20 bps, t 1.2 and 1.8). Within the score's top 20%,
+  where the book buys, no feature splits returns significantly (largest
+  |t| 2.19 of 39 tests, CSI500 5-day return, in the momentum direction).
+
 Consequence for the search: improvements must find *winners* in a market
 where the cheapest winner signal has been arbitraged. Tail-symmetric metrics
 (RankIC, IC) and losses (MSE on z-scored labels) spend capacity on the short
-side. Not adopted: the exclusion book, sleeve blends, adaptive construction.
+side. Not adopted: the exclusion book, sleeve blends, adaptive construction,
+recency weights. Price and volume alone have little left to say about
+winners; the open routes are information from outside them (earnings and
+analyst revisions, holdings and flows) or a benchmark-relative book that can
+underweight index names, which needs index weights (free-float shares) the
+provider does not have.
 
 ### Does marginal value persist?
 
