@@ -66,6 +66,15 @@ evaluated formulas, 500+ model fits.
   pooled) and loses decisively in its registered 2012–2017 test (−2.19
   [−2.80, −1.46]); the trailing shape does not predict the next window, so
   the top-50 book stays.
+- **Round 5: benchmark-relative books and outside data.** Float-cap index
+  weights (from turnover-implied float shares) let a book harvest the loser
+  tail as underweights: about +1–4%/yr over a float-cap replica at IR
+  0.6–1.1, the same IR as the top-50 book at a fraction of its tracking
+  error, since underweights stop at zero. The CSI benchmarks are price
+  indices, so every excess return here includes about 2%/yr of dividends.
+  Earnings surprise, announcement returns and shareholder concentration
+  either lack long-side power in the book's candidates or lower the book as
+  model inputs (ΔIR −0.16 [−0.31, −0.02]).
 - **Seed sets matter as much as most ideas.** The three-seed default book
   quoted at 1.26–1.29 is the best of the 35 three-seed subsets of seven
   seeds (mean 1.05, sd 0.10). Books are now judged with seven seeds.
@@ -680,6 +689,73 @@ winners; the open routes are information from outside them (earnings and
 analyst revisions, holdings and flows) or a benchmark-relative book that can
 underweight index names, which needs index weights (free-float shares) the
 provider does not have.
+
+### Round 5: benchmark-relative books and outside data
+
+**Index weights.** `float_cap.py build` turns BaoStock's daily turnover rate
+into float (circulating A) share counts, volume / (turn / 100), smoothed by a
+20-day median; `fetch_float_inputs.py` fills names BaoStock lacks from Sina's
+outstanding shares. Float-cap weights over the day's members replicate
+CSI500 with 1.1–2.2% tracking error a year (13% in 2015, the year of mass
+suspensions) and CSI300 with 2.4–4.8%: circulating shares overstate the free
+float of state-held large caps, which CSI's banded free-float ratios exclude.
+
+**Benchmark caveat for every book in this document.** SH000300/SH000905/
+SH000852 are price indices; the holdings' returns (Qlib's adjusted close)
+include dividends. A cost-free float-cap replica beats its index by
++2.8%/yr (CSI300) and +1.9%/yr (CSI500) over 2018–2025, about the dividend
+yield. Every "excess over the index" above carries this; it does not move
+paired comparisons of two full books, but IR over the index favours
+low-tracking-error books (2% on 2.5% tracking error is 0.8 of IR). Books are
+now also judged over the replica.
+
+**Enhanced-index books** (`enhanced.py`: target = float-cap weight × tilt by
+score percentile, `excl<q>` drops the bottom q, `exp<l>` multiplies by
+exp(l·z); trade a fraction `rate` towards the target daily, skip names within
+10% of their target; Qlib's costs and limit/suspension rules). 2018–2025,
+over the replica (the top-50 book in brackets):
+
+| | CSI300 | CSI500 |
+| --- | --- | --- |
+| top-50 TopkDropout | +9.4%/yr, IR 1.03 | +6.3%/yr, IR 0.75 |
+| `excl0.2`, rate 0.1 | +1.0%/yr, IR 0.72 | +1.5%/yr, IR 1.09 |
+| `exp0.5`, rate 0.1 | +1.7%/yr, IR 0.91 | +1.4%/yr, IR 0.88 |
+| `exp1`, rate 0.2 | +3.9%/yr, IR 0.99 | +2.0%/yr, IR 0.56 |
+
+Trading fully to the target each day costs 5–8%/yr and loses; rate 0.1–0.2
+keeps costs at 0.6–2.6%/yr. Underweighting cannot go below zero, so the loser
+tail is worth about its index weight times its shortfall: roughly 15% of
+weight × 12%/yr ≈ 2%/yr, which is what `excl0.2` collects. Same IR as the
+top-50 book at a quarter to a half of its tracking error, not a higher one.
+A capital split between the two books (correlation of active returns
+0.2–0.7) lifts replica-relative IR by 0.0–0.35, all intervals spanning 0.
+Not adopted.
+
+**Outside data for winners** (`book_diagnostics.py screen --feature`,
+2018–2025; then as model inputs, 7 seeds, `--tradable`, pooled):
+
+- Earnings surprise and announcement return (`event_factors.py`: SUE from
+  single-quarter net income, EAR over the two days after an exactly dated
+  report, live 60 days): no post-announcement drift at five days in CSI300
+  or CSI500; in CSI1000 SUE splits both tails weakly (top decile +14 bps,
+  t 1.1; bottom −14, t −1.9). Neither splits the book's candidates
+  (|t| ≤ 0.43).
+- Shareholder concentration (`fetch_holders.py`, quarterly counts with
+  announcement dates, 2013–; `hconc` = −log change in holders, live 120
+  days): the one long-side pattern found, top decile +9 and +12 bps
+  (CSI300 t 1.65, CSI500 t 2.06), uncorrelated with the score; within the
+  book's candidates |t| ≤ 1.2.
+- As inputs to the h5 model: `hconc` lowers the book, ΔIR −0.16
+  [−0.31, −0.02]; `hconc + sue + ear` −0.20 [−0.40, +0.02]. Like every
+  feature set appended so far, a weak orthogonal input does not survive the
+  fit.
+- Institutional site visits: the bulk endpoint only serves the last 12
+  months (full history is ~48k paged requests); usable live, not testable.
+
+**Live scoring** is one command, `scripts/qlib_cn/live_score.sh
+<registration>`: it fetches a dated provider release into its own directory,
+verifies the boosters, predicts, judges the registered books and records
+the release's last date and calendar hash (docs/qlib-cn-protocol.md).
 
 ### Does marginal value persist?
 

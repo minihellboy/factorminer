@@ -15,6 +15,10 @@ close and for ``LIVE`` trading days after it (NaN otherwise):
   the statutory deadline, which is never early but can be late). Known at the
   close of the second day.
 * ``age``: trading days since the report counted as known.
+* ``hconc``: shareholder concentration, -log(holders / previous count) from
+  ``fetch_holders.py`` (a falling count of holders is buying by fewer, larger
+  holders), known at the close of its announcement date and live for
+  ``HOLDERS_LIVE`` trading days (the counts are quarterly).
 
 A report published on day d (Chinese reports are released outside trading
 hours) is known at d's close, so the row dated d carries it and the book
@@ -31,6 +35,7 @@ import numpy as np
 import pandas as pd
 
 LIVE = 60
+HOLDERS_LIVE = 120
 
 
 def _single_quarter(reports: pd.DataFrame) -> pd.Series:
@@ -48,6 +53,7 @@ def _single_quarter(reports: pd.DataFrame) -> pd.Series:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--reports", type=Path, default=Path("~/fm-data/eastmoney/quarterly.parquet"))
+    parser.add_argument("--holders", type=Path, default=Path("~/fm-data/eastmoney/holders.parquet"))
     parser.add_argument("--provider", type=Path, default=Path("~/fm-data/qlib_cn"))
     parser.add_argument("--universes", default="csi300,csi500,csi1000")
     parser.add_argument("--start", default="2008-01-01")
@@ -84,22 +90,30 @@ def main() -> None:
     reports["ear_known"] = calendar[np.minimum(calendar.searchsorted(reports["known"].to_numpy()) + 2,
                                                len(calendar) - 1)]
 
+    holders = pd.read_parquet(args.holders.expanduser()) if args.holders.expanduser().exists() else None
+    sources = [("sue", "known", reports, LIVE), ("ear", "ear_known", reports, LIVE)]
+    if holders is not None:
+        holders = holders[holders["asset_id"].isin(names) & (holders["holders"] > 0) & (holders["holders_prev"] > 0)
+                          & (holders["pub_date"] >= holders["stat_date"])]  # a few rows predate their count
+        holders = holders.assign(hconc=-np.log(holders["holders"] / holders["holders_prev"]))
+        pos = calendar.searchsorted(holders["pub_date"].to_numpy())
+        holders = holders[pos < len(calendar)].assign(known=calendar[pos[pos < len(calendar)]])
+        sources.append(("hconc", "known", holders, HOLDERS_LIVE))
     columns = {}
-    for field, when in (("sue", "known"), ("ear", "ear_known")):
-        events = reports.dropna(subset=[field]).sort_values(when).drop_duplicates(["asset_id", when], keep="last")
+    for field, when, table, live in sources:
+        events = table.dropna(subset=[field]).sort_values(when).drop_duplicates(["asset_id", when], keep="last")
         wide = events.pivot(index=when, columns="asset_id", values=field).reindex(index=calendar, columns=names)
         stamp = pd.DataFrame(np.where(wide.notna(), np.arange(len(calendar))[:, None], np.nan),
                              index=calendar, columns=names)
         age = np.arange(len(calendar))[:, None] - stamp.ffill()
-        columns[field] = wide.ffill().where(age <= LIVE)
+        columns[field] = wide.ffill().where(age <= live)
         if field == "sue":
             columns["age"] = age.where(age <= LIVE)
     out = pd.concat({k: v.stack(future_stack=True) for k, v in columns.items()}, axis=1)
     out.index.names = ["datetime", "instrument"]
     out = out.dropna(how="all").astype(np.float32)
     out.to_parquet(args.out.expanduser())
-    print(f"{args.out}: {len(out)} rows; non-null sue {out['sue'].notna().mean():.0%}, "
-          f"ear {out['ear'].notna().mean():.0%}")
+    print(f"{args.out}: {len(out)} rows; non-null " + ", ".join(f"{c} {out[c].notna().mean():.0%}" for c in out))
 
 
 if __name__ == "__main__":
