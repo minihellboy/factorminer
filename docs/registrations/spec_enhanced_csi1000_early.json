@@ -1,0 +1,10 @@
+{
+  "name": "enhanced_csi1000_early_window",
+  "written": "2026-10-16, after the 2018-2025 CSI1000 enhanced-index grid (output/qlib_cn/enhanced/grinold_csi1000.json) and before any CSI1000 score or book on 2016-2017 was computed",
+  "hypothesis": "In CSI1000 a float-cap index book with Grinold's additive active weight (add0.5: cap weight + 0.5 z / N, cut at zero, traded 10% of the way to target daily) has a higher after-cost IR over the cost-free float-cap replica than the top-50 TopkDropout book on the same score. 2018-2025: +2.02 vs +0.68, paired dIR +1.34 [+0.87, +1.80]; the construction (add0.5, rate 0.1) was chosen on CSI300/CSI500 before CSI1000 was run.",
+  "book": "CSI1000 membership has no training years before wf2018, so the score is the adopted h5 model trained on CSI500 for wf2016 (output/qlib_cn/csi500/wf2016/alpha158_h5_lgb_s[0-6]/model.txt), loaded unchanged and predicting CSI1000 members over 2016-2017 (run_qlib_baselines.py --load-model, runs output/qlib_cn/csi1000/wf2016/x500_h5_lgb_s[0-6]). Both books use this score.",
+  "window": "csi1000 wf2016 (2016-01-01 .. 2017-12-31); the replica tracks the index with 3.1% (2016) and 1.5% (2017).",
+  "settings": "enhanced.py --universe csi1000 --years 2016 --book 'x500_h5_lgb_s[0-6]' --tilt add0.5 --tilt excl0.2 --tilt mv0.5 --rate 0.1 --threshold 0.1 against book_eval.py --tradable --tie-draws 4 top-50 TopkDropout on the same runs (baseline h5).",
+  "statistic": "enhanced.py dIR_vs_h5: paired difference of replica-relative IRs, 90% block-bootstrap interval.",
+  "rule": "Confirmed if add0.5@r0.1 dIR > 0; refuted if its 90% interval lies below 0; otherwise inconclusive (two years: an interval about +/-0.9 wide is expected). Secondary, reported but not decisive: excl0.2@r0.1 and mv0.5@r0.1."
+}
