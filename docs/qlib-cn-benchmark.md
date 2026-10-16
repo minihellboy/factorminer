@@ -57,6 +57,15 @@ evaluated formulas, 500+ model fits.
   RankIC everywhere but not the book: the model is far better at losers than
   winners and a top-50 long-only book sees only the winners. Wider books in
   the larger universes are the open lead.
+- **Round 4: the signal's shape changed in 2017.** Short-term reversal, the
+  main source of the score's top, lost its long side (CSI500 reversal RankIC
+  4–8% a year before 2017, ~1% after; recent losers no longer rebound, recent
+  winners still lag), consistent with buyers arbitraging the underpriced side
+  while short-sale limits protect the overpriced side. A broad exclusion book
+  that harvests the loser tail wins in 2018–2025 (size-adjusted ΔIR +0.90
+  pooled) and loses decisively in its registered 2012–2017 test (−2.19
+  [−2.80, −1.46]); the trailing shape does not predict the next window, so
+  the top-50 book stays.
 - **Seed sets matter as much as most ideas.** The three-seed default book
   quoted at 1.26–1.29 is the best of the 35 three-seed subsets of seven
   seeds (mean 1.05, sd 0.10). Books are now judged with seven seeds.
@@ -588,6 +597,64 @@ a single pre-specified challenger or grid, pooled over the three universes,
   rule. What both periods agree on: in the larger universes a fixed 50 names
   is too narrow. Not adopted; a 100-name CSI500 book is the candidate for the
   next prospective registration.
+
+### Round 4: the shape of the signal
+
+Book construction is a function of one object, the conditional mean of
+forward excess return given the score's cross-sectional rank. `book_diagnostics.py
+curve` measures it (5-day excess by score ventile) together with
+frictionless daily-rebalanced books and their break-even costs;
+`reversal` and `size` (now with a paired IR-difference interval of the
+size residuals, per universe and pooled) explain and adjust it.
+
+- **2018–2025: the top saturated, the bottom carries the signal.** 5-day
+  excess by ventile, top three (18, 19, 20) / bottom: CSI300 +25.5/+23.5/+34.0
+  / −44; CSI500 +21.8/+21.6/+12.7 / −50; CSI1000 +20.2/+23.4/+18.2 / −87.
+  Frictionless, a book that holds the universe minus its bottom 10–20% has IR
+  2.4–3.6 at 5–10% daily turnover (break-even 11–19 bps one-way), against
+  1.2–2.1 for the top 50 at 37–47% (break-even 4.5–10 bps).
+- **Exclusion book, in sample.** `--size 0.8 --band 1.1` (hold 80% of N,
+  sell a name only when it falls below rank 0.88 N, refill from the top)
+  raises the size-adjusted IR over the top-50 book by +0.19/+0.55/+1.49,
+  pooled +0.90 [+0.19, +1.63], with lower return (3–5%/yr vs 6–12%) at much
+  lower tracking error. Bands at small books (band 1.1–1.2 at 50 names)
+  multiply turnover and lose 1–1.6 IR.
+- **Registered early-window test: refuted**
+  (`docs/registrations/spec_exclusion_book_early.json`, committed before
+  running). 2012–2017, `--tradable`: size-adjusted IR difference CSI300
+  −1.96 [−2.58, −1.21], CSI500 −1.82 [−2.90, −0.68], pooled −2.19
+  [−2.80, −1.46]. The top-50 book earned 28%/yr (CSI300) and 39%/yr
+  (CSI500) there; concentration wins. A 50/50 split of capital between the
+  two books does not hedge the regime either: it loses 0.25–0.7 pooled IR in
+  2012–2017 for +0.12–0.27 in 2018–2025.
+- **Why: the shape changed.** In 2012–2017 the curve is convex at the top
+  (top ventile +77 bps CSI300, +93 bps CSI500, the largest of all; frictionless
+  top-50 IR 5.2/8.0). Across 17 window × universe cells the top's convexity
+  (top ventile minus ventiles 17–19) sets which construction wins in the same
+  window (Spearman −0.85 with the exclusion book's IR gain), but the previous
+  window's convexity barely predicts the next (−0.42, n = 14): construction
+  cannot be timed from the trailing shape.
+- **Mechanism: short-term reversal lost its long side in 2017.** The top
+  ventile is mostly recent losers (past-5-day return percentile 0.32–0.44).
+  Reversal RankIC in CSI500 was 3.8–8.5 (×100) every year 2010–2016 and
+  −1.3 to 2.0 in 2017–2024; the decile of biggest 5-day losers went from
+  +12 bps over the next 5 days (mean of 2010–2016) to −10 (2017–2024),
+  while the biggest winners still lag (−7 to −33 bps in six of those eight
+  years). CSI300 breaks the same way (4–6 → about 1); CSI1000, whose
+  history starts in 2014, falls from 4–8 to 2–3. What remains of reversal is the overpriced side, which
+  needs shorting, and A-shares restrict it: the pattern Miller (1977) predicts
+  when short sales are constrained and buyers compete away the underpriced
+  side. It is why the model now finds losers 1.5–2× better than winners, why
+  RankIC gains (which count both tails) miss a long-only book, and why
+  2012–2017 books are so much stronger.
+- **Volatility is not the reason.** Within the top 10% by score, the
+  higher-volatility half earns as much or more (CSI500 20.5 vs 14.9 bps,
+  CSI1000 25.0 vs 20.3); a volatility filter would not lift the top.
+
+Consequence for the search: improvements must find *winners* in a market
+where the cheapest winner signal has been arbitraged. Tail-symmetric metrics
+(RankIC, IC) and losses (MSE on z-scored labels) spend capacity on the short
+side. Not adopted: the exclusion book, sleeve blends, adaptive construction.
 
 ### Does marginal value persist?
 

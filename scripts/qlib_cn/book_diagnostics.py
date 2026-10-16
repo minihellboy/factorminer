@@ -4,6 +4,7 @@
     $QPY -I scripts/qlib_cn/book_diagnostics.py size --universe csi1000 \\
         --daily output/qlib_cn/family/ew90_csi1000.daily.parquet --baseline h1
     $QPY -I scripts/qlib_cn/book_diagnostics.py curve --universe csi500 --book h5='alpha158_h5_lgb_s[0-6]'
+    $QPY -I scripts/qlib_cn/book_diagnostics.py reversal --universe csi500
 
 ``decay``: for the book's walk-forward score on day t, the mean daily rank IC
 and top-50 spread (bps, against the universe's equal-weight mean) with the
@@ -18,6 +19,12 @@ universe minus its bottom q. For each book, the mean daily excess (lag 1), its
 IR, the one-sided daily membership turnover and the break-even one-way cost
 (mean excess / turnover / 2). The gap between these IRs and book_eval's is
 what costs, the n_drop limit and execution take.
+
+``reversal``: by calendar year, the mean 5-day excess return (lags 1-5) of
+the extreme deciles of the past 5-day return, and the reversal RankIC
+(-corr(past 5-day return, next 5-day excess)). Separates the long side of
+short-term reversal (buying recent losers) from its short side (avoiding
+recent winners), which a long-only book cannot trade.
 
 ``size``: each book's daily after-cost excess (over the cap-weighted index)
 regressed on the equal-weight universe minus the index. The intercept is the
@@ -57,12 +64,15 @@ def _score(root: Path, universe: str, patterns: str) -> pd.Series:
     return pd.concat([_signal(_runs(root / universe / f"wf{y}", patterns), 0) for y in WINDOWS]).sort_index()
 
 
+def _span() -> dict[str, str]:
+    return dict(start_time=f"{WINDOWS[0]}-01-01", end_time=f"{WINDOWS[-1] + 1}-12-31")
+
+
 def decay(args) -> None:
     from qlib.data import D
 
     exprs = [f"Ref($close, -{k + 1})/Ref($close, -{k}) - 1" for k in range(1, LAGS + 1)]
-    returns = D.features(D.instruments(args.universe), exprs, start_time=f"{WINDOWS[0]}-01-01",
-                         end_time=f"{WINDOWS[-1] + 1}-12-31").swaplevel().sort_index()
+    returns = D.features(D.instruments(args.universe), exprs, **_span()).swaplevel().sort_index()
     returns.columns = range(1, LAGS + 1)
     for spec in args.book:
         name, patterns = spec.split("=", 1)
@@ -85,8 +95,7 @@ def curve(args) -> None:
     from qlib.data import D
 
     exprs = [f"Ref($close, -{k + 1})/Ref($close, -{k}) - 1" for k in range(1, 6)]
-    returns = D.features(D.instruments(args.universe), exprs, start_time=f"{WINDOWS[0]}-01-01",
-                         end_time=f"{WINDOWS[-1] + 1}-12-31").swaplevel().sort_index()
+    returns = D.features(D.instruments(args.universe), exprs, **_span()).swaplevel().sort_index()
     returns.columns = range(1, 6)
     n = UNIVERSE_SIZE[args.universe]
     for spec in args.book:
@@ -110,6 +119,25 @@ def curve(args) -> None:
             turnover = (held.diff().clip(lower=0).sum(axis=1) / held.sum(axis=1)).iloc[1:].mean()
             print(f"  {label:13s} {daily.mean() * 1e4:6.2f} bps/day  IR {daily.mean() / daily.std() * DAYS ** .5:5.2f}"
                   f"  turnover {turnover:5.1%}/day  break-even {daily.mean() / turnover / 2 * 1e4:5.1f} bps one-way")
+
+
+def reversal(args) -> None:
+    from qlib.data import D
+
+    exprs = ["Ref($close, -6)/Ref($close, -1) - 1", "$close/Ref($close, 5) - 1"]
+    frame = D.features(D.instruments(args.universe), exprs, start_time="2010-01-01", end_time="2025-12-31")
+    frame.columns = ["r5", "past5"]
+    frame = frame.swaplevel().sort_index().dropna()
+    day = frame.groupby(level="datetime")
+    frame["x5"] = frame["r5"] - day["r5"].transform("mean")
+    frame["decile"] = np.minimum((day["past5"].rank(pct=True) * 10).astype(int), 9)
+    year = frame.index.get_level_values("datetime").year
+    table = frame.groupby([year, "decile"])["x5"].mean().unstack() * 1e4
+    ic = -frame.groupby(level="datetime").apply(lambda d: d["past5"].corr(d["x5"], method="spearman"))
+    table = pd.DataFrame({"losers bps": table[0], "winners bps": table[9],
+                          "RankIC x100": ic.groupby(ic.index.year).mean() * 100})
+    print(f"{args.universe}: next 5-day excess of past-5-day return deciles, and reversal RankIC")
+    print(table.round(1).to_string())
 
 
 def _size_residuals(universe: str, path: Path) -> tuple[pd.DataFrame, pd.Series]:
@@ -167,20 +195,24 @@ def size(args) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=["decay", "curve", "size"])
+    parser.add_argument("command", choices=["decay", "curve", "reversal", "size"])
     parser.add_argument("--provider", type=Path, default=Path("~/fm-data/qlib_cn"))
     parser.add_argument("--universe", required=True)
     parser.add_argument("--book", action="append", default=[], help="decay/curve: name=glob[,glob...]")
+    parser.add_argument("--years", default=None, help="decay/curve: walk-forward window years (default 2018-2024)")
     parser.add_argument("--out", type=Path, default=Path("output/qlib_cn"), help="decay: runs root")
     parser.add_argument("--daily", type=Path, action="append", default=[],
                         help="size: a book_eval .daily.parquet per --universe entry (comma-separated)")
     parser.add_argument("--baseline", default=None)
     args = parser.parse_args()
 
+    global WINDOWS
+    if args.years:
+        WINDOWS = tuple(int(y) for y in args.years.split(","))
     import qlib
 
     qlib.init(provider_uri=str(args.provider.expanduser()), region="cn")
-    {"decay": decay, "curve": curve, "size": size}[args.command](args)
+    {"decay": decay, "curve": curve, "reversal": reversal, "size": size}[args.command](args)
 
 
 if __name__ == "__main__":
