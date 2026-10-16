@@ -89,7 +89,12 @@ registered).
    commit and push it. The spec names the books, the baseline and the
    rule. The record keeps the git commit, the provider's last date and the
    SHA-256 of every booster. A registration is never edited or replaced.
-3. **Score.** After each provider update:
+3. **Score.** `scripts/qlib_cn/live_score.sh docs/registrations/<name>.json`
+   (optionally `TAG=<release>`) does all of the following against a separate
+   copy of the release under `~/fm-data/live/<tag>/`, leaving the research
+   provider untouched, and writes `output/qlib_cn/live/<name>_<tag>.json`
+   with the release tag, last date and calendar hash. By hand, after each
+   provider update:
    - `register.py verify`;
    - `run_qlib_baselines.py --protocol live --load-model <run>/model.txt
      --out output/qlib_cn/csi300/live_pred/<run>` for every frozen run;
