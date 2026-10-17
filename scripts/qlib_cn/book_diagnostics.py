@@ -170,14 +170,19 @@ def screen(args) -> None:
     frame = frame[frame["r5"].notna()]
     day = frame.groupby(level="datetime")
     frame["x5"] = frame["r5"] - day["r5"].transform("mean")
-    pool = day["s"].rank(pct=True) > 0.8
+    if args.cand:  # the two-stage candidate set: top N names by score
+        pool = day["s"].rank(ascending=False, method="first") <= args.cand
+        where = f"the top {args.cand} names by {name}"
+    else:
+        pool = day["s"].rank(pct=True) > 0.8
+        where = f"the top 20% by {name}"
 
     def t(daily: pd.Series) -> float:
         daily = daily.dropna()
         return daily.mean() / daily.std() * (len(daily) / 5) ** .5
 
     print(f"{args.universe} {WINDOWS}: 5-day excess bps; 'in book pool' = upper minus lower half of the feature "
-          f"within the top 20% by {name}")
+          f"within {where}")
     for feature in names:
         pct = day[feature].rank(pct=True)
         top = frame["x5"][pct > 0.9].groupby(level="datetime").mean() * 1e4
@@ -188,8 +193,12 @@ def screen(args) -> None:
                  - inner["x5"][~upper].groupby(level="datetime").mean()) * 1e4
         rho = frame[[feature, "s"]].dropna().groupby(level="datetime").apply(
             lambda d: d[feature].corr(d["s"], method="spearman")).mean()
+        rho_pool = inner[[feature, "s"]].dropna().groupby(level="datetime").apply(
+            lambda d: d[feature].corr(d["s"], method="spearman")).mean()
+        coverage = float(inner[feature].notna().mean())
         print(f"  {feature:10s} top decile {top.mean():6.1f} (t {t(top):5.2f})  bottom decile {bottom.mean():6.1f}"
-              f" (t {t(bottom):5.2f})  in book pool {split.mean():6.1f} (t {t(split):5.2f})  rho with score {rho:5.2f}")
+              f" (t {t(bottom):5.2f})  in book pool {split.mean():6.1f} (t {t(split):5.2f})  rho with score {rho:5.2f}"
+              f" (in pool {rho_pool:5.2f})  pool coverage {coverage:.2f}")
 
 
 def _size_residuals(universe: str, path: Path) -> tuple[pd.DataFrame, pd.Series]:
@@ -255,6 +264,8 @@ def main() -> None:
     parser.add_argument("--feature", action="append", default=[],
                         help="screen: name=path.parquet:column, a (datetime, instrument) feature known at close")
     parser.add_argument("--years", default=None, help="decay/curve: walk-forward window years (default 2018-2024)")
+    parser.add_argument("--cand", type=int, default=0,
+                        help="screen: judge features within the top N names by score (0 = the top 20%)")
     parser.add_argument("--out", type=Path, default=Path("output/qlib_cn"), help="decay: runs root")
     parser.add_argument("--daily", type=Path, action="append", default=[],
                         help="size: a book_eval .daily.parquet per --universe entry (comma-separated)")

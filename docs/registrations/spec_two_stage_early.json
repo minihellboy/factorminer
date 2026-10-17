@@ -1,0 +1,10 @@
+{
+  "name": "two_stage_winners_only_early_windows",
+  "written": "2026-10-18 00:40, after the 2018-2025 A0 family (family/ts_a0_*, ts_slow_*; --tradable, 7 seeds) and before any early-window two-stage book was judged (the early fits were running)",
+  "hypothesis": "A second LightGBM fitted only on the top 125 names by the h5 score (label: 5-day return standardised within that set; features: Alpha158 plus the cross-fitted h5 score), used to re-rank those names above the rest of the universe, raises the after-cost IR of the top-50 TopkDropout book over the h5 7-seed book. Mechanism: the h5 model spends its capacity separating losers; IC within the candidate set (IC_top) is what the book earns.",
+  "books": "h5 = alpha158_h5_lgb_s[0-6]; tsr = ts125r_h5_lgb_s[0-6] (stage-2 config reg: min_data_in_leaf 300, colsample 0.7), tss = ts125s_h5_lgb_s[0-6] (config slow), and their 'b' blends (candidate set ordered by the mean rank of stage-2 and s1)",
+  "windows": {"csi300": ["wf2012", "wf2014", "wf2016"], "csi500": ["wf2014", "wf2016"]},
+  "settings": "two_stage.py fit --cand 125 --folds 5 --embargo 5; book_eval.py --tradable --tie-draws 4, continuous simulation; family.sh ts_early_csi300 / ts_early_csi500, cross_universe.py pooled",
+  "statistic": "Paired daily after-cost excess difference against h5: Newey-West t (7, 20, 60 days) and the paired block-bootstrap 90% interval of the IR difference, per universe and pooled (day-averaged).",
+  "rule": "Pre-registered in the program (2026-10-18): adopt only if, on 2018-2025, the pooled 90% interval of dIR lies above 0 and the sign agrees in at least 3 of 4 windows in every universe, and the early windows confirm (pooled dIR > 0). 2018-2025 result, recorded before the early windows were judged: ts +0.07 [-0.16, +0.29] (t 0.10), tsb +0.11 [-0.05, +0.26], tsr +0.26 [+0.04, +0.47] (t 1.41, reality-check p 0.16-0.31, sign flips in 1-2 windows per universe), tsrb +0.06, tss +0.07, tssb -0.08. No book meets the rule; the early windows are reported as the confirmation step the rule required, not as a second chance."
+}

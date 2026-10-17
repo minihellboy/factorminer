@@ -30,6 +30,7 @@ class MiningConfig:
     replacement_ic_ratio: float = 1.3
     skip_tried: bool = False
     tried_in_prompt: int = 0
+    task_brief: str = ""
     fast_screen_assets: int = 100
     num_workers: int = 40
     output_dir: str = "./output"

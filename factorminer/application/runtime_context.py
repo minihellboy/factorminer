@@ -79,6 +79,10 @@ class MiningSettings:
         return int(self._value("mining", "tried_in_prompt", 0))
 
     @property
+    def task_brief(self) -> str:
+        return str(self._value("mining", "task_brief", "") or "")
+
+    @property
     def ic_threshold(self) -> float:
         return float(self._value("mining", "ic_threshold", 0.04))
 

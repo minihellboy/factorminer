@@ -396,7 +396,10 @@ def test_a_truncated_batch_is_skipped_but_a_run_of_them_aborts(monkeypatch):
 
 
 def test_deepseek_thinking_calls_get_the_full_reasoning_budget(monkeypatch):
-    from factorminer.agent.llm_interface import DEEPSEEK_MAX_OUTPUT_TOKENS, DEEPSEEK_THINKING_TIMEOUT_S
+    from factorminer.agent.llm_interface import (
+        DEEPSEEK_MAX_OUTPUT_TOKENS,
+        DEEPSEEK_THINKING_TIMEOUT_S,
+    )
 
     thinking = DeepSeekProvider(api_key="key", effort="max", timeout_s=300)
     assert thinking.build_request_kwargs("s", "u", max_tokens=128)["max_tokens"] == DEEPSEEK_MAX_OUTPUT_TOKENS

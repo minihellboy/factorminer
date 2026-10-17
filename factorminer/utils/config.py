@@ -31,6 +31,9 @@ class MiningConfig:
     # evaluated, and show the model its last ``tried_in_prompt`` rejected formulas.
     skip_tried: bool = False
     tried_in_prompt: int = 0
+    # A research brief (path to a text file) shown to the model in place of the generic
+    # orthogonality directive: e.g. the residual-explanation task of ``error_analysis.py``.
+    task_brief: str = ""
 
     def validate(self) -> None:
         if self.target_library_size < 1:
@@ -771,6 +774,18 @@ class AdmissionConfig:
     min_top_t: float | None = None
     min_top_lift_bps: float | None = None
     min_top_lift_t: float | None = None
+    # out-of-sample-aware gates (evaluation.marginal.MarginalConfig)
+    blocks: int = 0
+    block_purge: int = 6
+    min_block_t: float | None = None
+    min_block_mean_minus_sd: float | None = None
+    retention: tuple[tuple[float, float], ...] = ()
+    min_shrunk_partial_ic: float | None = None
+    regime_periods: int = 0
+    regime_weight: float = 1.0
+    # top-of-book admission against a frozen stage-1 score held in a panel leaf (e.g. "s1")
+    zone_leaf: str = ""
+    zone_residual: bool = False
 
     def validate(self) -> None:
         if self.policy not in ADMISSION_POLICIES:
@@ -791,6 +806,8 @@ class AdmissionConfig:
         settings = asdict(self)
         settings.pop("policy")
         settings.pop("reference")
+        settings.pop("zone_leaf")
+        settings["retention"] = tuple((float(t), float(share)) for t, share in settings["retention"])
         return settings
 
 

@@ -33,7 +33,6 @@ from factorminer.agent.factor_generator import FactorGenerator
 from factorminer.agent.llm_interface import LLMProvider, MockProvider
 from factorminer.agent.output_parser import candidate_pairs
 from factorminer.agent.prompt_builder import PromptBuilder
-from factorminer.architecture.trial_ledger import canonical_formula_identity
 from factorminer.application.marginal_admission import build_marginal_basis
 from factorminer.application.mining_budget import BudgetTracker, EvaluationResult
 from factorminer.application.mining_reporting import MiningReporter
@@ -63,6 +62,7 @@ from factorminer.architecture import (
     build_memory_policy,
     dataset_scope_identity,
 )
+from factorminer.architecture.trial_ledger import canonical_formula_identity
 from factorminer.core.factor_library import FactorLibrary
 from factorminer.core.library_io import load_library, save_library
 from factorminer.core.loop_services import LoopExecutionService
@@ -433,6 +433,8 @@ class RalphLoop:
         extras: dict[str, Any] = {"dataset_contract": self.dataset_contract.to_dict()}
         if self.settings.tried_in_prompt > 0:
             extras["recently_tried"] = self._recently_tried(self.settings.tried_in_prompt)
+        if self.settings.task_brief:
+            extras["task_brief"] = self._task_brief()
         payload.prompt_context = self.prompt_context_builder.build(
             payload.memory_signal,
             payload.library_state,
@@ -450,6 +452,14 @@ class RalphLoop:
             pairs, skipped = self._drop_tried(pairs)
             payload.stage_metrics["tried_skipped"] = skipped
         return pairs
+
+    def _task_brief(self) -> str:
+        """The campaign's research brief (``mining.task_brief`` file), read once."""
+        if not hasattr(self, "_task_brief_text"):
+            from pathlib import Path
+
+            self._task_brief_text = Path(self.settings.task_brief).expanduser().read_text().strip()
+        return self._task_brief_text
 
     def _recently_tried(self, limit: int) -> list[str]:
         """Most recent distinct formulas this campaign evaluated and did not admit."""

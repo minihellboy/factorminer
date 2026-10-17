@@ -62,6 +62,29 @@ class MarginalConfig:
     min_top_t: float | None = None  # admission: same-sign partial IC t in the zone
     min_top_lift_bps: float | None = None  # admission: top-spread lift over the base score
     min_top_lift_t: float | None = None  # admission: Newey-West t of that lift
+    # Out-of-sample-aware admission (2026-10-17). Pooled train-window t selects on noise and on the
+    # pre-2017 regime: admitted factors kept 27% of their train partial IC in walk-forward tests, and
+    # the strongest (|t| >= 6) shrank the most. Three statistics make the decay part of the rule.
+    blocks: int = 0  # contiguous time blocks of the panel; 0 disables the block statistics
+    block_purge: int = 6  # periods dropped between blocks (a 5-day label spans 6 closes)
+    min_block_t: float | None = None  # admission: min over blocks of the same-sign partial IC t
+    min_block_mean_minus_sd: float | None = None  # admission: mean - sd of the block t values
+    retention: tuple[tuple[float, float], ...] = ()  # (|t| from, expected test/train ratio) steps
+    min_shrunk_partial_ic: float | None = None  # admission: |partial IC| x retention(|t|)
+    regime_periods: int = 0  # the panel's last periods form the current regime; 0 disables
+    regime_weight: float = 1.0  # weight of those periods in the partial IC mean and t
+    # Top-of-book admission against a frozen stage-1 score (``MarginalBasis(zone_score=...)``): the
+    # zone is the best ``zone_fraction`` by that score, the score joins the basis, and with
+    # ``zone_residual`` the zone statistics residualise candidate and target on zone rows only.
+    zone_residual: bool = False
+
+    def retention_at(self, t: float) -> float:
+        """Expected out-of-sample share of a train partial IC with HAC statistic ``t``."""
+        share = 1.0
+        for threshold, value in sorted(self.retention):
+            if abs(t) >= threshold:
+                share = value
+        return share
 
     def validate(self) -> None:
         if self.reference_components < 0:
@@ -78,6 +101,14 @@ class MarginalConfig:
             raise ValueError("recent_periods must be >= 0")
         if not self.topk_fraction <= self.zone_fraction <= 1.0:
             raise ValueError("zone_fraction must be in [topk_fraction, 1]")
+        if self.blocks < 0 or self.blocks == 1:
+            raise ValueError("blocks must be 0 (off) or at least 2")
+        if self.block_purge < 0:
+            raise ValueError("block_purge must be >= 0")
+        if any(not 0 <= share <= 1 for _, share in self.retention):
+            raise ValueError("retention shares must be in [0, 1]")
+        if self.regime_periods < 0 or self.regime_weight <= 0:
+            raise ValueError("regime_periods must be >= 0 and regime_weight positive")
 
 
 @dataclass(frozen=True)
@@ -101,6 +132,9 @@ class MarginalStats:
     top_partial_ic_t: float = 0.0
     top_lift_bps: float = 0.0  # daily top-spread change from adding the candidate
     top_lift_t: float = 0.0
+    block_t_min: float = 0.0  # min over contiguous blocks of the same-sign partial IC t
+    block_t_mean_minus_sd: float = 0.0
+    shrunk_partial_ic: float = 0.0  # |partial IC| x retention(|t|)
 
     def to_dict(self) -> dict[str, float]:
         return {key: float(value) for key, value in asdict(self).items()}
@@ -131,6 +165,18 @@ def passes_marginal_admission(stats: MarginalStats, config: MarginalConfig) -> t
         failures.append(f"top lift {stats.top_lift_bps:.2f} bps <= {config.min_top_lift_bps:g}")
     if config.min_top_lift_t is not None and not stats.top_lift_t >= config.min_top_lift_t:
         failures.append(f"top lift t {stats.top_lift_t:.2f} < {config.min_top_lift_t:g}")
+    if config.min_block_t is not None and not stats.block_t_min >= config.min_block_t:
+        failures.append(f"block partial IC t min {stats.block_t_min:.2f} < {config.min_block_t:g}")
+    if (config.min_block_mean_minus_sd is not None
+            and not stats.block_t_mean_minus_sd >= config.min_block_mean_minus_sd):
+        failures.append(
+            f"block t mean - sd {stats.block_t_mean_minus_sd:.2f} < {config.min_block_mean_minus_sd:g}"
+        )
+    if (config.min_shrunk_partial_ic is not None
+            and not stats.shrunk_partial_ic >= config.min_shrunk_partial_ic):
+        failures.append(
+            f"shrunk partial IC {stats.shrunk_partial_ic:.4f} < {config.min_shrunk_partial_ic:g}"
+        )
     if failures:
         return False, "Marginal value: " + "; ".join(failures)
     return True, (
@@ -157,6 +203,7 @@ class MarginalBasis:
         returns: np.ndarray,
         reference: Iterable[np.ndarray],
         config: MarginalConfig | None = None,
+        zone_score: np.ndarray | None = None,
     ) -> None:
         self.config = config or MarginalConfig()
         self.config.validate()
@@ -182,6 +229,9 @@ class MarginalBasis:
         self.reference_components, self.reference_explained = self._principal_components(
             reference_ranks
         )
+        # A frozen stage-1 score (e.g. the cross-fitted h5 model): a permanent basis column that
+        # also defines the contention zone and the base score the top lift is measured against.
+        self._zone_ranks = None if zone_score is None else self._ranks(self._gather(zone_score))
         self._library: dict[object, np.ndarray] = {}
         self._factor()
 
@@ -252,6 +302,8 @@ class MarginalBasis:
 
     def _factor(self) -> None:
         columns = [self.reference_components]
+        if self._zone_ranks is not None:
+            columns.append(self._zone_ranks[..., None])
         if self._library:
             columns.append(np.stack(list(self._library.values()), axis=-1))
         self._basis = np.concatenate(columns, axis=-1)
@@ -270,7 +322,7 @@ class MarginalBasis:
         gram[:, np.arange(k), np.arange(k)] += ridge[:, None]
         self._chol = np.linalg.cholesky(gram)
         self._y_resid = self._residualize(self._y)
-        self._set_base_score(self._basis @ beta)
+        self._set_base_score(self._basis @ beta if self._zone_ranks is None else self._zone_ranks)
 
     def _set_base_score(self, score: np.ndarray) -> None:
         """Contention zone and top-book returns of the basis's pooled prediction."""
@@ -303,37 +355,67 @@ class MarginalBasis:
         residual: np.ndarray = values - np.einsum("pnk,pk->pn", self._basis, beta)
         return residual
 
+    def _residualize_within(self, values: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        """Ridge residual of ``values`` on the basis fitted on ``mask`` rows only, centred within them.
+
+        The relationship between features and returns at the top of a score differs from the
+        one over the whole cross-section; a residual fitted on all rows can leave the zone with
+        a component the zone's own fit would remove.
+        """
+        count = np.maximum(mask.sum(axis=1), 1)[:, None]
+        v = np.where(mask, values, 0.0)
+        v = np.where(mask, v - v.sum(axis=1, keepdims=True) / count, 0.0)
+        if self._chol is None:
+            return v
+        basis = np.where(mask[..., None], self._basis, 0.0)
+        basis = np.where(mask[..., None], basis - basis.sum(axis=1, keepdims=True) / count[..., None], 0.0)
+        k = basis.shape[-1]
+        gram = np.einsum("pnk,pnj->pkj", basis, basis)
+        scale = np.trace(gram, axis1=1, axis2=2) / k
+        gram[:, np.arange(k), np.arange(k)] += self.config.ridge * np.maximum(scale, 1e-12)[:, None]
+        beta = np.linalg.solve(gram, np.einsum("pnk,pn->pk", basis, v)[..., None])[..., 0]
+        return np.asarray(v - np.einsum("pnk,pk->pn", basis, beta))
+
     # -- statistics -------------------------------------------------------
 
-    def evaluate(self, signals: np.ndarray) -> MarginalStats:
-        """Marginal statistics of ``signals`` against the current basis."""
+    def evaluate(self, signals: np.ndarray, config: MarginalConfig | None = None) -> MarginalStats:
+        """Marginal statistics of ``signals`` against the current basis.
+
+        ``config`` (default: the basis's own) sets the statistics' options: the recent
+        window, the regime weights, the block split and the retention table. The basis
+        itself (components, ridge, zone) is fixed at construction.
+        """
+        cfg = config or self.config
         candidate = self._ranks(self._gather(signals))
         residual = self._residualize(candidate)
         num = np.sum(residual * self._y_resid, axis=1)
         den = np.sqrt(np.sum(residual**2, axis=1) * np.sum(self._y_resid**2, axis=1))
         usable = den > 1e-12
         series = num[usable] / den[usable]
-        recent = self._periods[usable] >= self.shape[1] - self.config.recent_periods
+        recent = self._periods[usable] >= self.shape[1] - cfg.recent_periods
         total = float(np.sum(candidate**2))
         residual_share = float(np.sum(residual**2) / total) if total > 1e-12 else 0.0
         if series.size < 3:
             return MarginalStats(0.0, 0.0, 0.0, int(series.size), residual_share, 1.0,
                                  0.0, 0.0, 0.0, 0.0, self.size)
-        mean = float(series.mean())
+        weights = self._regime_weights(usable, cfg)
+        mean = float(np.average(series, weights=weights))
         std = float(series.std(ddof=1))
-        hac = compute_hac_mean_test(series)
+        hac = compute_hac_mean_test(series * weights)  # a weighted mean test: E[w x] = 0
         direction = 1.0 if mean >= 0 else -1.0
+        block_min, block_mms = self._block_t(direction * series, usable, cfg)
+        t_abs = float(abs(hac.t_stat)) if np.isfinite(hac.t_stat) else 0.0
         excess, turnover, net, net_t = self._bucket(direction * residual)
-        top_ic, top_t, lift, lift_t = self._top_of_book(residual, direction, usable)
+        top_ic, top_t, lift, lift_t = self._top_of_book(residual, direction, usable, candidate, cfg)
         recent_ic = recent_t = 0.0
-        if self.config.recent_periods and recent.sum() >= 3:
+        if cfg.recent_periods and recent.sum() >= 3:
             tail = direction * series[recent]
             recent_ic = float(tail.mean())
             tail_t = compute_hac_mean_test(tail).t_stat
             recent_t = float(tail_t) if np.isfinite(tail_t) else 0.0
         return MarginalStats(
             partial_ic=mean,
-            partial_ic_t=float(abs(hac.t_stat)) if np.isfinite(hac.t_stat) else 0.0,
+            partial_ic_t=t_abs,
             partial_icir=mean / std if std > 0 else 0.0,
             periods=int(series.size),
             residual_share=residual_share,
@@ -349,18 +431,60 @@ class MarginalBasis:
             top_partial_ic_t=top_t,
             top_lift_bps=lift,
             top_lift_t=lift_t,
+            block_t_min=block_min,
+            block_t_mean_minus_sd=block_mms,
+            shrunk_partial_ic=abs(mean) * cfg.retention_at(t_abs),
         )
 
+    def _regime_weights(self, usable: np.ndarray, cfg: MarginalConfig) -> np.ndarray:
+        """Per-period weights (mean 1): ``regime_weight`` on the panel's last ``regime_periods``."""
+        weights = np.ones(int(usable.sum()))
+        if cfg.regime_periods and cfg.regime_weight != 1.0:
+            recent = self._periods[usable] >= self.shape[1] - cfg.regime_periods
+            weights[recent] = cfg.regime_weight
+            weights /= weights.mean()
+        return weights
+
+    def _block_t(self, series: np.ndarray, usable: np.ndarray, cfg: MarginalConfig) -> tuple[float, float]:
+        """Same-sign HAC t of the partial IC in each of ``blocks`` contiguous blocks: (min, mean - sd).
+
+        Blocks are equal spans of the panel's periods with ``block_purge`` periods dropped
+        at the start of every block after the first, so a label window cannot straddle two
+        blocks. A factor that is strong in one regime and absent in another has a low
+        minimum even when its pooled t is high; the pooled statistic cannot tell them apart.
+        """
+        if cfg.blocks < 2:
+            return 0.0, 0.0
+        periods = self._periods[usable]
+        edges = np.linspace(0, self.shape[1], cfg.blocks + 1)
+        values = []
+        for b in range(cfg.blocks):
+            lo = edges[b] + (cfg.block_purge if b else 0)
+            inside = (periods >= lo) & (periods < edges[b + 1])
+            if inside.sum() < 3:
+                values.append(0.0)
+                continue
+            t = compute_hac_mean_test(series[inside]).t_stat
+            values.append(float(t) if np.isfinite(t) else 0.0)
+        block_t = np.asarray(values)
+        return float(block_t.min()), float(block_t.mean() - block_t.std(ddof=1))
+
     def _top_of_book(
-        self, residual: np.ndarray, direction: float, usable: np.ndarray
+        self, residual: np.ndarray, direction: float, usable: np.ndarray,
+        candidate: np.ndarray | None = None, cfg: MarginalConfig | None = None,
     ) -> tuple[float, float, float, float]:
         """Zone partial IC (mean, t) and top-spread lift (bps, t) of a residual."""
         zone = self._zone
-        x = np.where(zone, residual, 0.0)
-        y = np.where(zone, self._y_resid, 0.0)
-        count = np.maximum(zone.sum(axis=1), 1)
-        x = np.where(zone, x - x.sum(axis=1, keepdims=True) / count[:, None], 0.0)
-        y = np.where(zone, y - y.sum(axis=1, keepdims=True) / count[:, None], 0.0)
+        cfg = cfg or self.config
+        if cfg.zone_residual and candidate is not None:
+            x = self._residualize_within(candidate, zone)
+            y = self._residualize_within(self._y, zone)
+        else:
+            x = np.where(zone, residual, 0.0)
+            y = np.where(zone, self._y_resid, 0.0)
+            count = np.maximum(zone.sum(axis=1), 1)
+            x = np.where(zone, x - x.sum(axis=1, keepdims=True) / count[:, None], 0.0)
+            y = np.where(zone, y - y.sum(axis=1, keepdims=True) / count[:, None], 0.0)
         den = np.sqrt(np.sum(x**2, axis=1) * np.sum(y**2, axis=1))
         ok = usable & (den > 1e-12)
         zone_series = direction * np.sum(x * y, axis=1)[ok] / den[ok]

@@ -68,8 +68,12 @@ def _summary(ic: np.ndarray) -> dict[str, float]:
             "hac_t": float(hac.t_stat), "win_rate": float((finite > 0).mean()), "periods": int(finite.size)}
 
 
-def _marginal(dataset, signals: dict[str, np.ndarray], split_idx, backend: str):
-    """Per-split partial-IC statistics of each signal beyond Alpha158 PCs."""
+def _marginal(dataset, signals: dict[str, np.ndarray], split_idx, backend: str, admission=None):
+    """Per-split partial-IC statistics of each signal beyond Alpha158 PCs (and the zone leaf, if any)."""
+    from factorminer.application.marginal_admission import zone_panel
+
+    zone = zone_panel(admission, dataset.data_dict) if admission is not None else None
+    zone_residual = bool(getattr(admission, "zone_residual", False)) if admission is not None else False
     trees = [try_parse(formula) for _, formula in reference_catalog("alpha158")]
     trees = [tree for tree in trees if tree is not None]
     returns = dataset.returns
@@ -85,7 +89,8 @@ def _marginal(dataset, signals: dict[str, np.ndarray], split_idx, backend: str):
                 if error is None and panel is not None:
                     yield panel
 
-        basis = MarginalBasis(masked, panels(), MarginalConfig(min_excess_bps=None))
+        basis = MarginalBasis(masked, panels(), MarginalConfig(min_excess_bps=None, zone_residual=zone_residual),
+                              zone_score=zone)
         for name, signal in signals.items():
             stats[name][split] = basis.evaluate(signal)
     columns = {}
@@ -170,7 +175,7 @@ def main() -> None:
         with warnings.catch_warnings(), np.errstate(all="ignore"):
             warnings.simplefilter("ignore")
             marginal = _marginal(dataset, {**values, "__composite__": composite}, split_idx,
-                                 args.backend)
+                                 args.backend, cfg.admission)
         for row in rows:
             row.update(marginal.get(row["name"], {}))
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import numpy as np
@@ -239,3 +240,95 @@ def test_top_of_book_gates_are_off_by_default(basis, market):
     assert stats.top_lift_bps != 0.0
     assert basis.config.min_top_t is None and basis.config.min_top_lift_t is None
     assert passes_marginal_admission(stats, basis.config)[0]
+
+
+def test_block_statistic_refuses_a_factor_that_only_worked_in_one_regime(market):
+    one_regime = market.novel.copy()
+    half = PERIODS // 2
+    one_regime[:, half:] = market.rng.standard_normal((ASSETS, PERIODS - half))
+    config = MarginalConfig(reference_components=0, min_excess_bps=None, blocks=4, min_block_t=0.5)
+    basis = MarginalBasis(market.returns, market.reference, config)
+    stale = basis.evaluate(one_regime)
+    assert stale.partial_ic_t > 3  # pooled evidence is strong
+    assert stale.block_t_min < 0.5 and stale.block_t_mean_minus_sd < stale.block_t_min + 3
+    admitted, reason = passes_marginal_admission(stale, config)
+    assert not admitted and "block partial IC t min" in reason
+    steady = basis.evaluate(market.novel)
+    assert steady.block_t_min > 0.5 and passes_marginal_admission(steady, config)[0]
+
+
+def test_retention_shrinkage_and_regime_weight(market):
+    retention = ((0.0, 0.25), (3.0, 0.35), (4.0, 0.45))
+    config = MarginalConfig(reference_components=0, min_excess_bps=None, retention=retention,
+                            min_shrunk_partial_ic=0.5)  # unreachable bar: every candidate is refused
+    assert config.retention_at(2.0) == 0.25 and config.retention_at(3.5) == 0.35
+    assert config.retention_at(-9.0) == 0.45 and MarginalConfig().retention_at(9.0) == 1.0
+    basis = MarginalBasis(market.returns, market.reference, config)
+    stats = basis.evaluate(market.novel)
+    assert stats.shrunk_partial_ic == pytest.approx(
+        abs(stats.partial_ic) * config.retention_at(stats.partial_ic_t))
+    admitted, reason = passes_marginal_admission(stats, config)
+    assert not admitted and "shrunk partial IC" in reason
+
+    # Weighting the recent regime moves the mean toward the recent partial IC.
+    decayed = market.novel.copy()
+    tail = PERIODS // 4
+    decayed[:, -tail:] = market.rng.standard_normal((ASSETS, tail))
+    plain = MarginalBasis(market.returns, market.reference,
+                          MarginalConfig(reference_components=0, min_excess_bps=None, recent_periods=tail))
+    weighted = MarginalBasis(market.returns, market.reference,
+                             MarginalConfig(reference_components=0, min_excess_bps=None, recent_periods=tail,
+                                            regime_periods=tail, regime_weight=3.0))
+    a, b = plain.evaluate(decayed), weighted.evaluate(decayed)
+    assert b.partial_ic < a.partial_ic and b.partial_ic_t < a.partial_ic_t
+    assert b.recent_partial_ic == pytest.approx(a.recent_partial_ic)
+
+
+def test_out_of_sample_gates_pass_through_config():
+    cfg = load_config(overrides={"admission": {
+        "policy": "marginal", "blocks": 4, "min_block_t": 1.0, "retention": [[0, 0.25], [4, 0.45]],
+        "min_shrunk_partial_ic": 0.002, "regime_periods": 500, "regime_weight": 2.0}})
+    marginal = MarginalConfig(**cfg.admission.marginal_settings())
+    assert marginal.blocks == 4 and marginal.retention == ((0.0, 0.25), (4.0, 0.45))
+    assert marginal.retention_at(4.0) == 0.45 and marginal.regime_weight == 2.0
+    with pytest.raises(ValueError, match="blocks"):
+        load_config(overrides={"admission": {"policy": "marginal", "blocks": 1}})
+
+
+def test_zone_score_defines_the_zone_and_joins_the_basis(market):
+    config = MarginalConfig(reference_components=0, min_excess_bps=None, zone_fraction=0.4)
+    plain = MarginalBasis(market.returns, market.reference, config)
+    staged = MarginalBasis(market.returns, market.reference, config, zone_score=market.reference[0])
+    assert staged.size == plain.size + 1
+    # the zone is the best 40% by the stage-1 score, not by the basis's own prediction
+    ranks = staged._ranks(staged._gather(market.reference[0]))
+    expected = staged._top_mask(ranks, 0.4)
+    assert np.array_equal(staged._zone, expected) and not np.array_equal(plain._zone, expected)
+    # the stage-1 score itself has no marginal value once it is in the basis
+    assert abs(staged.evaluate(market.reference[0]).partial_ic) < 0.005
+    novel = staged.evaluate(market.novel)
+    assert novel.partial_ic_t > 3 and novel.top_partial_ic > 0
+
+
+def test_zone_residual_refits_inside_the_zone(market):
+    base = MarginalConfig(reference_components=0, min_excess_bps=None, zone_fraction=0.4)
+    basis = MarginalBasis(market.returns, market.reference, base, zone_score=market.reference[0])
+    pooled = basis.evaluate(market.novel)
+    within = basis.evaluate(market.novel, replace(base, zone_residual=True))
+    assert within.partial_ic == pooled.partial_ic  # the whole-panel statistics do not change
+    assert within.top_partial_ic != pooled.top_partial_ic and within.top_partial_ic > 0
+    assert within.top_partial_ic_t > 2
+
+
+def test_zone_leaf_passes_through_config_and_resolves_a_panel_leaf():
+    from factorminer.application.marginal_admission import zone_panel
+
+    cfg = load_config(overrides={"admission": {"policy": "marginal", "zone_leaf": "s1", "zone_residual": True}})
+    settings = cfg.admission.marginal_settings()
+    assert "zone_leaf" not in settings and MarginalConfig(**settings).zone_residual
+    panel = np.ones((3, 4))
+    assert zone_panel(cfg.admission, {"$s1": panel}) is not None
+    assert zone_panel(cfg.admission, {"s1": panel}) is not None
+    assert zone_panel(AdmissionConfig(), {}) is None
+    with pytest.raises(KeyError):
+        zone_panel(cfg.admission, {"$close": panel})

@@ -386,15 +386,23 @@ class PromptBuilder:
                 + "\n".join(f"  - {formula}" for formula in tried)
             )
 
-        # --- Orthogonality directive ---
-        sections.append(
-            "\n## CRITICAL REQUIREMENT: ORTHOGONALITY\n"
-            "Generate factors that are UNCORRELATED with existing library members. "
-            "Each candidate should explore a DIFFERENT structural pattern. "
-            "Vary your operator choices, window sizes, feature combinations, and "
-            "nesting depth across candidates. Do NOT generate trivial variations "
-            "of the same formula (e.g., changing only the window size)."
-        )
+        # --- Research brief or the generic orthogonality directive ---
+        brief = memory_signal.get("task_brief")
+        if brief:
+            sections.append(
+                "\n## RESEARCH TASK (this replaces the generic 'find orthogonal alpha' directive)\n"
+                + str(brief).strip()
+                + "\nEvery candidate must be a hypothesis about this residual, stated in its name."
+            )
+        else:
+            sections.append(
+                "\n## CRITICAL REQUIREMENT: ORTHOGONALITY\n"
+                "Generate factors that are UNCORRELATED with existing library members. "
+                "Each candidate should explore a DIFFERENT structural pattern. "
+                "Vary your operator choices, window sizes, feature combinations, and "
+                "nesting depth across candidates. Do NOT generate trivial variations "
+                "of the same formula (e.g., changing only the window size)."
+            )
 
         # --- Output format ---
         sections.append(

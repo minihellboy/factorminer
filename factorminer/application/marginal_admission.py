@@ -13,6 +13,17 @@ from factorminer.evaluation.marginal import MarginalBasis, MarginalConfig
 logger = logging.getLogger(__name__)
 
 
+def zone_panel(admission: Any, data_dict: dict[str, np.ndarray]) -> np.ndarray | None:
+    """The frozen stage-1 score panel ``admission.zone_leaf`` names, if any."""
+    leaf = str(getattr(admission, "zone_leaf", "") or "")
+    if not leaf:
+        return None
+    for key in (leaf, f"${leaf}", leaf.lstrip("$")):
+        if key in data_dict:
+            return np.asarray(data_dict[key], dtype=np.float64)
+    raise KeyError(f"admission.zone_leaf {leaf!r} is not a panel leaf: {sorted(data_dict)[:12]}...")
+
+
 def build_marginal_basis(
     config: Any,
     kernel: Any,
@@ -40,7 +51,8 @@ def build_marginal_basis(
                 continue
             yield signals
 
-    basis = MarginalBasis(returns, panels(), MarginalConfig(**admission.marginal_settings()))
+    basis = MarginalBasis(returns, panels(), MarginalConfig(**admission.marginal_settings()),
+                          zone_score=zone_panel(admission, data_dict))
     if len(failed) == len(formulas):
         raise RuntimeError(f"no {admission.reference} reference factor evaluated on this panel")
     logger.info(

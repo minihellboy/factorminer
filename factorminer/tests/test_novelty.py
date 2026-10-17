@@ -73,3 +73,10 @@ def test_prompt_builder_renders_recently_tried():
     prompt = PromptBuilder().build_user_prompt({"recently_tried": ["Neg($close)"]}, {}, batch_size=4)
     assert "ALREADY TRIED" in prompt and "  - Neg($close)" in prompt
     assert "ALREADY TRIED" not in PromptBuilder().build_user_prompt({}, {}, batch_size=4)
+
+
+def test_prompt_builder_renders_a_task_brief_instead_of_the_generic_directive():
+    brief = "False positives in the book have higher 20-day volume growth than true positives."
+    prompt = PromptBuilder().build_user_prompt({"task_brief": brief}, {}, batch_size=4)
+    assert "RESEARCH TASK" in prompt and brief in prompt and "ORTHOGONALITY" not in prompt
+    assert "ORTHOGONALITY" in PromptBuilder().build_user_prompt({}, {}, batch_size=4)
