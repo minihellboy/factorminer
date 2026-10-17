@@ -207,6 +207,9 @@ class LLMConfig:
     prompt_cache: bool = True
     # Request timeout seconds (frontier + local compatible clients).
     timeout_s: float = 120.0
+    # Reasoning effort for providers that take one (deepseek: none/low/high/max;
+    # anthropic: low..max). None keeps the provider's default.
+    effort: str | None = None
     # Optional OpenAI-compatible base URL (local YAML only; SSRF-sensitive).
     base_url: str | None = None
     # Cheap-first cascade routing (default OFF). Nested keys under llm.cascade

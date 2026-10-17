@@ -92,6 +92,29 @@ def test_hosted_draft_uses_its_own_credential_and_endpoint(monkeypatch):
     assert roles["primary"]["credential"]["source"] == "config"
 
 
+def test_deepseek_effort_is_sent_as_reasoning_effort_and_named(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-env")
+    provider = create_provider({"provider": "deepseek", "model": "deepseek-flash", "effort": "max"})
+    assert provider.inner.effort == "max"
+    assert provider.inner.build_request_kwargs("s", "u")["reasoning_effort"] == "max"
+    assert provider.provider_name == "deepseek/deepseek-flash@max"
+    default = DeepSeekProvider(api_key="key")
+    assert "reasoning_effort" not in default.build_request_kwargs("s", "u")
+    assert default.provider_name == "deepseek/deepseek-flash"
+    with pytest.raises(ValueError):
+        DeepSeekProvider(api_key="key", effort="ultra")
+
+
+def test_cli_passes_llm_effort_to_the_provider(monkeypatch):
+    from factorminer.cli.app import _create_llm_provider
+    from factorminer.utils.config import load_config
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-env")
+    cfg = load_config(overrides={"llm": {"provider": "deepseek", "model": "deepseek-flash", "effort": "high"}})
+    assert cfg.llm.effort == "high"
+    assert _create_llm_provider(cfg, mock=False).inner.effort == "high"
+
+
 def test_guarded_provider_types_and_records_failures():
     guarded = GuardedProvider(FailingProvider(RateLimitError("slow down")), role=PRIMARY)
     with pytest.raises(ProviderCallError) as caught:

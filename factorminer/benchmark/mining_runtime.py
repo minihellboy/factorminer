@@ -42,6 +42,8 @@ def _build_runtime_provider(cfg, *, mock: bool):
         "provider": cfg.llm.provider,
         "model": cfg.llm.model,
     }
+    if getattr(cfg.llm, "effort", None) is not None:
+        provider_cfg["effort"] = cfg.llm.effort
     raw_llm_cfg = getattr(cfg, "_raw", {}).get("llm", {})
     if raw_llm_cfg.get("api_key"):
         provider_cfg["api_key"] = raw_llm_cfg["api_key"]

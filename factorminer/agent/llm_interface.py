@@ -626,14 +626,32 @@ class OpenAICompatibleProvider(LLMProvider):
         return f"openai_compatible/{self.model}"
 
 
+DEEPSEEK_EFFORTS = ("none", "low", "high", "max")
+
+
 class DeepSeekProvider(OpenAICompatibleProvider):
-    """DeepSeek's official endpoint, with its own environment credential."""
+    """DeepSeek's official endpoint, with its own environment credential.
+
+    ``effort`` is sent as ``reasoning_effort`` (``none`` disables thinking;
+    the API default is ``high``). DeepSeek ignores ``temperature`` while
+    thinking, so sampling diversity comes from the prompt alone.
+    """
 
     def __init__(self, model: str = "deepseek-flash", api_key: str | None = None,
-                 timeout_s: float = 120.0, prompt_cache: bool = False) -> None:
+                 timeout_s: float = 120.0, prompt_cache: bool = False,
+                 effort: str | None = None) -> None:
         super().__init__(model=model, base_url="https://api.deepseek.com",
                          api_key=api_key or os.environ.get("DEEPSEEK_API_KEY", ""),
                          timeout_s=timeout_s, prompt_cache=prompt_cache)
+        if effort is not None and effort not in DEEPSEEK_EFFORTS:
+            raise ValueError(f"DeepSeek effort must be one of {DEEPSEEK_EFFORTS} (got {effort!r})")
+        self.effort = effort
+
+    def build_request_kwargs(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        request = super().build_request_kwargs(*args, **kwargs)
+        if self.effort is not None:
+            request["reasoning_effort"] = self.effort
+        return request
 
     def _get_client(self) -> Any:
         if not self.api_key:
@@ -642,7 +660,8 @@ class DeepSeekProvider(OpenAICompatibleProvider):
 
     @property
     def provider_name(self) -> str:
-        return f"deepseek/{self.model}"
+        suffix = f"@{self.effort}" if self.effort is not None else ""
+        return f"deepseek/{self.model}{suffix}"
 
 
 class CascadeProvider(LLMProvider):
@@ -1006,6 +1025,8 @@ def _build_raw_provider(config: dict[str, Any], role: str) -> LLMProvider:
     kwargs["prompt_cache"] = prompt_cache
     if provider_name == "deepseek":
         kwargs["timeout_s"] = float(config.get("timeout_s", 120.0))
+        if config.get("effort") is not None:
+            kwargs["effort"] = config["effort"]
         return cls(**kwargs)
 
     if provider_name == "openai":

@@ -45,6 +45,8 @@ def _create_llm_provider(cfg, mock: bool):
         "prompt_cache": bool(getattr(llm_cfg, "prompt_cache", True)),
         "timeout_s": float(getattr(llm_cfg, "timeout_s", 120.0)),
     }
+    if getattr(llm_cfg, "effort", None) is not None:
+        llm_config["effort"] = llm_cfg.effort
     # Use api_key from config if set (frontier providers only)
     raw_llm = {}
     if hasattr(cfg, "_raw") and isinstance(cfg._raw.get("llm"), dict):
@@ -98,7 +100,8 @@ def _create_llm_provider(cfg, mock: bool):
 
     click.echo(
         f"Using LLM provider: {llm_cfg.provider}/{llm_cfg.model}"
-        f" (prompt_cache={llm_config['prompt_cache']}"
+        f" (effort={llm_config.get('effort', 'default')}"
+        f", prompt_cache={llm_config['prompt_cache']}"
         f", cascade={cascade_enabled})"
     )
     try:
