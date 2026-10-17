@@ -27,6 +27,10 @@ class MiningConfig:
     correlation_threshold: float = 0.5
     replacement_ic_min: float = 0.10
     replacement_ic_ratio: float = 1.3
+    # Novelty: drop candidates whose canonical formula this campaign already
+    # evaluated, and show the model its last ``tried_in_prompt`` rejected formulas.
+    skip_tried: bool = False
+    tried_in_prompt: int = 0
 
     def validate(self) -> None:
         if self.target_library_size < 1:
@@ -45,6 +49,8 @@ class MiningConfig:
             raise ValueError("replacement_ic_min must be > ic_threshold")
         if self.replacement_ic_ratio < 1.0:
             raise ValueError("replacement_ic_ratio must be >= 1.0")
+        if self.tried_in_prompt < 0:
+            raise ValueError("tried_in_prompt must be >= 0")
 
 
 @dataclass

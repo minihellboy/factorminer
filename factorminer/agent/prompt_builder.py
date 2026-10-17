@@ -377,6 +377,15 @@ class PromptBuilder:
                 + "\n".join(rej_lines)
             )
 
+        # --- Formulas this campaign already evaluated (novelty) ---
+        tried = memory_signal.get("recently_tried", [])
+        if tried:
+            sections.append(
+                "\n## ALREADY TRIED (evaluated and not admitted -- do NOT resubmit these, "
+                "rename them, or change only a window or constant)\n"
+                + "\n".join(f"  - {formula}" for formula in tried)
+            )
+
         # --- Orthogonality directive ---
         sections.append(
             "\n## CRITICAL REQUIREMENT: ORTHOGONALITY\n"

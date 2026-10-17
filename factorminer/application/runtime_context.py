@@ -71,6 +71,14 @@ class MiningSettings:
         return int(self._value("mining", "max_iterations", 0))
 
     @property
+    def skip_tried(self) -> bool:
+        return bool(self._value("mining", "skip_tried", False))
+
+    @property
+    def tried_in_prompt(self) -> int:
+        return int(self._value("mining", "tried_in_prompt", 0))
+
+    @property
     def ic_threshold(self) -> float:
         return float(self._value("mining", "ic_threshold", 0.04))
 

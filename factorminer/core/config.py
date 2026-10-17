@@ -28,6 +28,8 @@ class MiningConfig:
     correlation_threshold: float = 0.5
     replacement_ic_min: float = 0.10
     replacement_ic_ratio: float = 1.3
+    skip_tried: bool = False
+    tried_in_prompt: int = 0
     fast_screen_assets: int = 100
     num_workers: int = 40
     output_dir: str = "./output"
