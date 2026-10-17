@@ -20,6 +20,8 @@ from factorminer.agent.llm_interface import CascadeProvider, LLMProvider
 from factorminer.agent.output_parser import CandidateFactor, parse_llm_output
 from factorminer.agent.prompt_builder import PromptBuilder
 
+MAX_CONSECUTIVE_TRUNCATIONS = 3
+
 logger = logging.getLogger(__name__)
 
 
@@ -66,6 +68,7 @@ class FactorGenerator:
             else self.prompt_builder.system_prompt
         )
         self._generation_count = 0
+        self._consecutive_truncations = 0
 
     @staticmethod
     def _unwrap_cascade_provider(provider: LLMProvider) -> CascadeProvider | None:
@@ -172,13 +175,25 @@ class FactorGenerator:
 
         # 2. Call LLM (cascade: cheap draft first; parser decides escalate)
         t0 = time.monotonic()
-        raw_output = self._call_llm(
-            system_prompt,
-            user_prompt,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            force_frontier=False,
-        )
+        try:
+            raw_output = self._call_llm(
+                system_prompt,
+                user_prompt,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                force_frontier=False,
+            )
+        except Exception as exc:
+            # A reasoning model occasionally spends the whole budget thinking:
+            # skip that batch, but a run of them means llm.max_tokens is too low.
+            if getattr(exc, "kind", None) != "truncated":
+                raise
+            self._consecutive_truncations += 1
+            if self._consecutive_truncations >= MAX_CONSECUTIVE_TRUNCATIONS:
+                raise
+            logger.warning("Batch #%d skipped: %s", batch_id, exc)
+            return []
+        self._consecutive_truncations = 0
         elapsed = time.monotonic() - t0
         logger.info("LLM response received in %.1fs (%d chars)", elapsed, len(raw_output))
 

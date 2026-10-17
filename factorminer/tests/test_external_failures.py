@@ -376,3 +376,20 @@ def test_mining_budget_records_provider_tokens_per_iteration(tmp_path):
     assert calls["n"] >= 1
     assert loop.budget.llm_prompt_tokens == 500 * calls["n"]
     assert loop.budget.llm_completion_tokens == 200 * calls["n"]
+
+
+def test_a_truncated_batch_is_skipped_but_a_run_of_them_aborts(monkeypatch):
+    from factorminer.agent.factor_generator import MAX_CONSECUTIVE_TRUNCATIONS, FactorGenerator
+
+    provider = DeepSeekProvider(api_key="key")
+    responses = [_completion(None, "length"), _completion("1. a: Neg($close)", "stop")]
+    responses += [_completion(None, "length")] * MAX_CONSECUTIVE_TRUNCATIONS
+    monkeypatch.setattr(provider, "_get_client", lambda: _FakeClient(responses.pop(0)))
+    generator = FactorGenerator(llm_provider=GuardedProvider(provider, role=PRIMARY))
+    assert generator.generate_batch(batch_size=1) == []
+    assert [c.formula for c in generator.generate_batch(batch_size=1)] == ["Neg($close)"]
+    for _ in range(MAX_CONSECUTIVE_TRUNCATIONS - 1):
+        assert generator.generate_batch(batch_size=1) == []
+    with pytest.raises(ProviderCallError) as caught:
+        generator.generate_batch(batch_size=1)
+    assert caught.value.kind == "truncated"
