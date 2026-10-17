@@ -195,7 +195,7 @@ def screen(args) -> None:
             lambda d: d[feature].corr(d["s"], method="spearman")).mean()
         rho_pool = inner[[feature, "s"]].dropna().groupby(level="datetime").apply(
             lambda d: d[feature].corr(d["s"], method="spearman")).mean()
-        coverage = float(inner[feature].notna().mean())
+        coverage = float(frame.loc[pool, feature].notna().mean())
         print(f"  {feature:10s} top decile {top.mean():6.1f} (t {t(top):5.2f})  bottom decile {bottom.mean():6.1f}"
               f" (t {t(bottom):5.2f})  in book pool {split.mean():6.1f} (t {t(split):5.2f})  rho with score {rho:5.2f}"
               f" (in pool {rho_pool:5.2f})  pool coverage {coverage:.2f}")
