@@ -393,3 +393,42 @@ def test_a_truncated_batch_is_skipped_but_a_run_of_them_aborts(monkeypatch):
     with pytest.raises(ProviderCallError) as caught:
         generator.generate_batch(batch_size=1)
     assert caught.value.kind == "truncated"
+
+
+def test_deepseek_thinking_calls_get_the_full_reasoning_budget(monkeypatch):
+    from factorminer.agent.llm_interface import DEEPSEEK_MAX_OUTPUT_TOKENS, DEEPSEEK_THINKING_TIMEOUT_S
+
+    thinking = DeepSeekProvider(api_key="key", effort="max", timeout_s=300)
+    assert thinking.build_request_kwargs("s", "u", max_tokens=128)["max_tokens"] == DEEPSEEK_MAX_OUTPUT_TOKENS
+    assert thinking.build_request_kwargs("s", "u", max_tokens=1_000_000)["max_tokens"] == DEEPSEEK_MAX_OUTPUT_TOKENS
+    assert thinking.timeout_s == DEEPSEEK_THINKING_TIMEOUT_S
+    default = DeepSeekProvider(api_key="key")  # API default effort is high: thinking
+    assert default.build_request_kwargs("s", "u", max_tokens=128)["max_tokens"] == DEEPSEEK_MAX_OUTPUT_TOKENS
+    capped = DeepSeekProvider(api_key="key", reasoning_budget=50_000)
+    assert capped.build_request_kwargs("s", "u", max_tokens=128)["max_tokens"] == 50_000
+    plain = DeepSeekProvider(api_key="key", effort="none", timeout_s=60)
+    assert plain.build_request_kwargs("s", "u", max_tokens=128)["max_tokens"] == 128
+    assert plain.timeout_s == 60
+
+    sent = {}
+
+    def create(**kwargs):
+        sent.update(kwargs)
+        return _completion(None, "length")
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    monkeypatch.setattr(thinking, "_get_client", lambda: client)
+    with pytest.raises(TruncatedResponseError, match=str(DEEPSEEK_MAX_OUTPUT_TOKENS)):
+        thinking.generate("s", "u", max_tokens=128)
+    assert sent["max_tokens"] == DEEPSEEK_MAX_OUTPUT_TOKENS
+
+
+def test_cli_passes_reasoning_budget(monkeypatch):
+    from factorminer.cli.app import _create_llm_provider
+    from factorminer.utils.config import load_config
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-env")
+    cfg = load_config(overrides={"llm": {"provider": "deepseek", "reasoning_budget": 100_000}})
+    assert _create_llm_provider(cfg, mock=False).inner.reasoning_budget == 100_000
+    cfg = load_config(overrides={"llm": {"provider": "deepseek"}})
+    assert _create_llm_provider(cfg, mock=False).inner.reasoning_budget == 393_216

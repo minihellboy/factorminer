@@ -47,6 +47,8 @@ def _create_llm_provider(cfg, mock: bool):
     }
     if getattr(llm_cfg, "effort", None) is not None:
         llm_config["effort"] = llm_cfg.effort
+    if getattr(llm_cfg, "reasoning_budget", None) is not None:
+        llm_config["reasoning_budget"] = int(llm_cfg.reasoning_budget)
     # Use api_key from config if set (frontier providers only)
     raw_llm = {}
     if hasattr(cfg, "_raw") and isinstance(cfg._raw.get("llm"), dict):

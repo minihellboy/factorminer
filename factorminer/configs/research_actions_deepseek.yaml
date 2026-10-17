@@ -10,8 +10,12 @@ mining:
 llm:
   provider: "deepseek"
   model: "deepseek-flash"
-  max_tokens: 32768  # deepseek-flash reasons before answering; reasoning counts here
-  timeout_s: 180
+  effort: "max"  # reasoning_effort: none | low | high | max
+  # Hidden reasoning counts against max_tokens: every DeepSeek call (generation,
+  # judges, planners) gets llm.reasoning_budget, unset = the API maximum 393216
+  # output tokens (the 1M context is prompt plus output). Thinking calls use a
+  # timeout of at least 3600 s.
+  max_tokens: 393216
   cascade_enabled: false
 
 evaluation:

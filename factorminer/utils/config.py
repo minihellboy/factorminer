@@ -216,6 +216,9 @@ class LLMConfig:
     # Reasoning effort for providers that take one (deepseek: none/low/high/max;
     # anthropic: low..max). None keeps the provider's default.
     effort: str | None = None
+    # Minimum output tokens of every call to a provider whose hidden reasoning
+    # counts against max_tokens (deepseek). None: the API maximum (393216).
+    reasoning_budget: int | None = None
     # Optional OpenAI-compatible base URL (local YAML only; SSRF-sensitive).
     base_url: str | None = None
     # Cheap-first cascade routing (default OFF). Nested keys under llm.cascade
@@ -251,6 +254,8 @@ class LLMConfig:
             raise ValueError("batch_candidates must be >= 1")
         if self.timeout_s <= 0:
             raise ValueError("timeout_s must be > 0")
+        if self.reasoning_budget is not None and self.reasoning_budget < 1:
+            raise ValueError("reasoning_budget must be >= 1")
         if self.cascade_timeout_s <= 0:
             raise ValueError("cascade_timeout_s must be > 0")
 

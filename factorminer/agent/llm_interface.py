@@ -627,6 +627,12 @@ class OpenAICompatibleProvider(LLMProvider):
 
 
 DEEPSEEK_EFFORTS = ("none", "low", "high", "max")
+# The API's output ceiling (max_tokens range [1, 393216]); the 1M context window
+# is prompt plus output, and FactorMiner prompts stay far below the rest.
+DEEPSEEK_MAX_OUTPUT_TOKENS = 393_216
+# A full-length answer at ~260 tokens/s takes ~25 min; a shorter client timeout
+# would turn a long reasoning trace into a timeout instead of an answer.
+DEEPSEEK_THINKING_TIMEOUT_S = 3600.0
 
 
 class DeepSeekProvider(OpenAICompatibleProvider):
@@ -635,23 +641,45 @@ class DeepSeekProvider(OpenAICompatibleProvider):
     ``effort`` is sent as ``reasoning_effort`` (``none`` disables thinking;
     the API default is ``high``). DeepSeek ignores ``temperature`` while
     thinking, so sampling diversity comes from the prompt alone.
+
+    Hidden reasoning counts against ``max_tokens``, so while thinking every
+    call gets at least ``reasoning_budget`` tokens (default: the API maximum)
+    whatever its caller asked for: the 128-token judge and absorption calls
+    would otherwise be cut off before they answer. Billing is per token used.
+    Requests above the API maximum are clamped to it.
     """
 
     def __init__(self, model: str = "deepseek-flash", api_key: str | None = None,
                  timeout_s: float = 120.0, prompt_cache: bool = False,
-                 effort: str | None = None) -> None:
+                 effort: str | None = None,
+                 reasoning_budget: int = DEEPSEEK_MAX_OUTPUT_TOKENS) -> None:
+        if effort is not None and effort not in DEEPSEEK_EFFORTS:
+            raise ValueError(f"DeepSeek effort must be one of {DEEPSEEK_EFFORTS} (got {effort!r})")
+        thinking = effort != "none"
+        if thinking:
+            timeout_s = max(float(timeout_s), DEEPSEEK_THINKING_TIMEOUT_S)
         super().__init__(model=model, base_url="https://api.deepseek.com",
                          api_key=api_key or os.environ.get("DEEPSEEK_API_KEY", ""),
                          timeout_s=timeout_s, prompt_cache=prompt_cache)
-        if effort is not None and effort not in DEEPSEEK_EFFORTS:
-            raise ValueError(f"DeepSeek effort must be one of {DEEPSEEK_EFFORTS} (got {effort!r})")
         self.effort = effort
+        self.reasoning_budget = int(reasoning_budget) if thinking else 0
 
-    def build_request_kwargs(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        request = super().build_request_kwargs(*args, **kwargs)
+    def _max_tokens(self, requested: int) -> int:
+        return min(max(int(requested), self.reasoning_budget), DEEPSEEK_MAX_OUTPUT_TOKENS)
+
+    def build_request_kwargs(self, system_prompt: str, user_prompt: str, temperature: float = 0.8,
+                             max_tokens: int = 4096, **kwargs: Any) -> dict[str, Any]:
+        request = super().build_request_kwargs(system_prompt, user_prompt, temperature,
+                                               self._max_tokens(max_tokens), **kwargs)
         if self.effort is not None:
             request["reasoning_effort"] = self.effort
         return request
+
+    def generate(self, system_prompt: str, user_prompt: str, temperature: float = 0.8,
+                 max_tokens: int = 4096, **kwargs: Any) -> str:
+        # Pass the effective budget on so a truncation error reports what was sent.
+        return super().generate(system_prompt, user_prompt, temperature,
+                                self._max_tokens(max_tokens), **kwargs)
 
     def _get_client(self) -> Any:
         if not self.api_key:
@@ -1027,6 +1055,8 @@ def _build_raw_provider(config: dict[str, Any], role: str) -> LLMProvider:
         kwargs["timeout_s"] = float(config.get("timeout_s", 120.0))
         if config.get("effort") is not None:
             kwargs["effort"] = config["effort"]
+        if config.get("reasoning_budget") is not None:
+            kwargs["reasoning_budget"] = int(config["reasoning_budget"])
         return cls(**kwargs)
 
     if provider_name == "openai":
