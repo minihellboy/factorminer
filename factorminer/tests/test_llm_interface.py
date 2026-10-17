@@ -40,7 +40,7 @@ def test_deepseek_factory_uses_own_credential_and_fixed_endpoint(monkeypatch):
     provider = create_provider({**vars(cfg.llm), "base_url": "https://untrusted.invalid"})
     assert provider.base_url == "https://api.deepseek.com"
     assert provider.api_key == "test-deepseek"
-    assert provider.provider_name == "deepseek/deepseek-flash"
+    assert provider.provider_name == "deepseek/deepseek-flash@max"
     assert provider.build_request_kwargs("system", "user")["model"] == "deepseek-flash"
     assert cfg.mining.max_iterations == 0
     assert cfg.research.planner.enabled
