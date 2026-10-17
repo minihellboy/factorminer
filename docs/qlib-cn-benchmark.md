@@ -855,6 +855,44 @@ ratios spread ~4× wider than sampling noise, so the expected maximum of
 ~1,400 draws (0.30–0.33) equals the best trial. The noise-only DSR is the
 informative one.
 
+### DeepSeek V4.1-Flash-1017
+
+DeepSeek upgraded `deepseek-flash` in place on 2026-10-17; every campaign
+above used the older Flash. Four arms reran the wf marginal template (60
+iterations × 40 candidates per window). `llm.effort` sets `reasoning_effort`.
+Every thinking call, including judges and planners, gets
+`llm.reasoning_budget` output tokens (API maximum 393,216).
+`mining.skip_tried` drops candidates whose canonical formula the campaign
+already evaluated. `mining.tried_in_prompt` lists recent rejections in the
+prompt.
+
+| Arm | Change | Library (wf18/20/22/24) | Unique formulas | Completion tokens / it | IR | RankIC | Top spread (bps) | t vs h5 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| h5 | Alpha158 only | – | – | – | **1.41** | 0.034 | 7.4 | – |
+| old Flash | wf marginal | 39/36/33/13 | 65–78% | 0.22M | 1.33 | 0.037 | 6.0 | −0.33 |
+| v41h | effort high | 38/36/33/21 | 65–84% | 0.24M | 0.96 | 0.036 | 6.1 | −2.14 |
+| v41m | effort max | 38/45/28/25 | 80–91% | 0.49M | 1.30 | 0.037 | 6.8 | −0.83 |
+| v41n | max + skip_tried + tried_in_prompt 40 | 37/38/38/26 | 100% | 0.68M | 1.28 | 0.035 | 6.4 | −0.59 |
+| v41t5 | v41n + 5-day mining target | 38/45/44/27 | 100% | 0.68M | 1.35 | 0.037 | 6.2 | −0.37 |
+
+Books are h5 7-seed LightGBM on CSI300 with `--tradable` and 4 tie draws,
+pooled over wf2018–2024 (1,942 dates). t is the Newey–West (7) t-statistic of
+the daily IR difference against h5. The reality-check p over all books is 0.89.
+
+The new model mines more and repeats less. With skip_tried, wf2024 grows from
+13 to 26–27 factors. Max effort doubles to triples the completion tokens and
+iterations take about 2× as long. At max_tokens 32,768 its reasoning
+occasionally used the entire budget: two campaigns aborted before the
+truncated-batch skip and the larger budget fixed this.
+
+None of this moves the book. No arm beats h5. Bigger libraries do not
+translate into IR, which is consistent with [Does marginal value
+persist?](#does-marginal-value-persist): admission gains on the train window
+decay out of sample. v41t5 is the best arm and ties old Flash. Effort high is
+significantly worse than h5 (t −2.1). Its libraries resemble old Flash's, so
+this is likely campaign luck rather than an effort effect, but max effort is
+the shipped default.
+
 ## Running
 
 ```bash
@@ -907,6 +945,9 @@ $QPY -I scripts/qlib_cn/book_eval.py --provider qlib_cn --universe csi300 --labe
   --book base='alpha158r_mtop_lgb_s?' --book q='alpha158_lgb_s?' --baseline base --out book.json
 uv run python scripts/qlib_cn/marginal_persistence.py output/qlib_cn/marginal_oos
 uv run python scripts/qlib_cn/audit_campaigns.py --campaigns campaigns/classic_* --scores output/qlib_cn/csi300/classic
+
+# Walk-forward campaign arms: export, h5 7-seed fit, CSI300 book vs h5 and old-Flash marginal
+scripts/qlib_cn/score_arm.sh v41 v41h v41m v41n v41t5
 ```
 
 Market data and factor values stay local. Outputs record the provider
@@ -921,7 +962,7 @@ release, panel SHA-256, splits, labels, model parameters and seeds.
 - LLM mining is not seeded end to end. Walk-forward runs one campaign per arm
   per window, and campaign luck (sd 0.0006–0.0019) is the size of the
   effects.
-- One LLM, one universe (CSI300), daily data. Fundamentals have actual
+- One LLM family (DeepSeek Flash, two releases), one universe (CSI300), daily data. Fundamentals have actual
   disclosure dates for 53% of reports; the rest use a conservative deadline
   fallback.
 - The provider is a community rebuild of Qlib's dataset; absolute numbers
