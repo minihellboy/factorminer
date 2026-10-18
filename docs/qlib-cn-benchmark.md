@@ -976,7 +976,7 @@ universes and |rho| with s1 below 0.3.
 | Dragon-tiger list (`lhb_on20`, `lhb_net20`, `lhb_last`; 2010–) | −15 (−0.8) on20 | +66 (0.5) last | +37 (0.6) last | listed names lose: top decile −14 / −21 / −52 (t −1.1 / −2.0 / −6.3) | fails |
 | Margin financing and lending (`mg_fin_chg5/20`, `mg_buy5`, `mg_short_chg5`, `mg_fin_level`; 2017–, eligible names only) | −13 (−2.3) fin_chg20 | +10 (1.4) buy5 | +7 (1.0) short_chg5 | 20-day financing inflow is contrarian: top decile −11 / −6 / −12, bottom +13 / +6 / +15 (t 2.1 / 1.2 / 2.6) | fails (1 of 3) |
 | Industry lead-lag (`ll_lead5/20`, `ll_gap5`, `ll_ind5`, `ll_size_rank`; point-in-time Eastmoney industry, top-3 float-cap leaders) | +6 (0.7) lead20 | +16 (2.3) lead5 | +11 (1.4) size_rank | names that outran their leaders lose: `ll_gap5` bottom decile −3 / −7 / −35 (t −0.4 / −1.0 / −5.5) | fails (1 of 3) |
-| Northbound holdings (`nb_pct`, `nb_chg5/20/60`, `nb_flow5`; 2017-03 to 2024-08; preliminary, 1,404 of ~3,600 names fetched) | +5 (0.7) chg60 | +5 (0.6) pct | +7 (0.6) flow5 | five-day net buying wins: top decile +17 / +22 / +36 (t 2.2 / 2.8 / 4.1) | fails |
+| Northbound holdings (`nb_pct`, `nb_chg5/20/60`, `nb_flow5`; 2017-03 to 2024-08, Connect-eligible names) | +5 (0.9) chg60 | +5 (0.7) pct | +9 (1.2) chg5 | five-day net buying wins: top decile +10 / +20 / +34 (t 1.5 / 3.0 / 5.0) | fails |
 
 Every source is new information (|rho| with the score at most 0.2, inside
 C_t at most 0.12) and three of the four carry a whole-curve signal with the
@@ -1047,8 +1047,8 @@ reaches the whole-curve book. The pattern now holds on two universes, two
 books and two sources of whole-curve information, with the pre-registered
 early-window and transfer checks passed where they could be run.
 **P2, flow data as model inputs.** The thirteen point-in-time flow
-features that are complete (margin, dragon-tiger, industry lead-lag; the
-Northbound arm follows when its fetch completes) appended to Alpha158 under
+features that were complete at the time (margin, dragon-tiger, industry
+lead-lag; the Northbound arm is below) appended to Alpha158 under
 h5, 7 seeds, runs `flow_h5_lgb_s*`. Judged both ways, 2018–2025:
 
 | Universe | Flow share of model gain (top feature) | Top-50 IR h5 → flow | dIR [90% CI] | dRankIC (t) | dTop spread bps (t) | add0.5 IR h5 → flow | dIR [90% CI] | per window | excl0.2 dIR [90% CI] |
@@ -1074,6 +1074,24 @@ the benchmark-relative book harvests is a small-cap tail. Taken with P1,
 the diagnosis's converse holds in both tests: information that measures
 the whole curve, from mined libraries or from flow data, reaches the book
 that holds the whole curve and not the one that holds the top.
+
+*Northbound arm.* With the fetch complete (3,601 names), the five
+Northbound features were added to the thirteen above (`nbflow_h5_lgb_s*`).
+They add nothing the other flow features do not already carry and they
+hurt where they are most used: CSI300 `add0.5` falls from 1.11 to 0.83
+(−0.28 [−0.53, −0.03] vs h5; −0.31 [−0.60, −0.06] vs the flow arm without
+them), RankIC −0.0065 (t −4.5), with the loss in 2022–2025; CSI500 is flat
+(+0.01); CSI1000 is unchanged (+0.62 [+0.42, +0.84] vs h5, −0.02 vs the
+flow arm, Northbound taking 2% of the model's gain against `lhb_last`'s
+9%). Pooled `add0.5` +0.16 [−0.05, +0.38] against the flow arm's +0.33. The
+reason is in the data: HKEX stopped daily per-stock disclosure in
+2024-08, so every model that leaned on the held share (3.6% of CSI300's
+gain) trained on a feature that is missing for the last sixteen months of
+the test, the kind of availability break that point-in-time construction
+cannot repair. As a whole-curve screen Northbound buying is the strongest
+long-side outside signal in this document (CSI1000 top decile +34 bps per
+5 days, t 5.0); as a model input it is not available going forward, and
+the flow arm without it is the one that stands.
 
 **C, admission that survives out of sample** (`evaluation/marginal.py`).
 Three statistics turn the measured decay (admitted factors keep 27% of their

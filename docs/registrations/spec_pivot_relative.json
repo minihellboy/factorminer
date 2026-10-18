@@ -19,5 +19,6 @@
   },
   "P2_result": "2026-10-18 05:40: pooled add0.5 +0.33 [+0.16, +0.50] (NW t 1.5), excl0.2 +0.28 [+0.11, +0.45]; CSI1000 +0.65 [+0.46, +0.86] positive in all four windows (IR 2.02 -> 2.67), CSI500 +0.07, CSI300 +0.03; top-50 pooled +0.16 [-0.06, +0.38]. Rule met, one universe's result.",
   "transfer_result": "2026-10-18 06:10: CSI500 add0.5 shrink30 +0.31 [+0.10, +0.54] (per window +0.62/+0.28/+0.46/+0.08), marginal +0.28 [+0.05, +0.53], v41t5 +0.07 [-0.15, +0.29]; pooled CSI300+CSI500 shrink30 +0.34 [+0.13, +0.56] NW t 3.0. Transfer rule met. Top-50 on CSI500: -0.10..+0.12, RankIC +0.004..+0.006 (t 4-5).",
-  "verdict": "Pivot supported: the program's objective moves to the whole-curve (benchmark-relative) book; admission statistics stay as they are."
+  "verdict": "Pivot supported: the program's objective moves to the whole-curve (benchmark-relative) book; admission statistics stay as they are.",
+  "P2_northbound_result": "2026-10-18 07:50: nbflow (13 flow + 5 Northbound features): CSI300 add0.5 -0.28 [-0.53, -0.03] vs h5 (-0.31 vs flow arm), RankIC -0.0065 t -4.5, loss in 2022-25 (Northbound disclosure ended 2024-08); CSI500 +0.01; CSI1000 +0.62 [+0.42, +0.84] (unchanged vs flow arm, -0.02). Pooled add0.5 +0.16 [-0.05, +0.38]. Northbound adds nothing as an input; the flow arm without it stands."
 }
