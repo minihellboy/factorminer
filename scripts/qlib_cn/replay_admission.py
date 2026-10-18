@@ -110,7 +110,7 @@ def main() -> None:
         kept = _cached_signals(cached, stream, trees, discovery, args)
         rows = None
     else:
-        rows, kept = _score_candidates(full, discovery, stream, trees, train_basis, base_config, args)
+        rows, kept = _score_candidates(full, discovery, stream, trees, train_basis, base_config, args, cfg.admission)
     args.out.mkdir(parents=True, exist_ok=True)
     if rows is not None:
         pd.DataFrame(rows).to_csv(cached, index=False)
@@ -167,11 +167,11 @@ def _cached_signals(cached: Path, stream, trees, discovery, args) -> dict[int, n
     return kept
 
 
-def _score_candidates(full, discovery, stream, trees, train_basis, base_config, args):
+def _score_candidates(full, discovery, stream, trees, train_basis, base_config, args, admission=None):
     valid_returns = np.full_like(full.returns, np.nan)
     valid_idx = full.get_split("validation").indices
     valid_returns[:, valid_idx] = full.returns[:, valid_idx]
-    valid_basis = _basis(full, valid_returns, base_config, args.backend, cfg.admission)
+    valid_basis = _basis(full, valid_returns, base_config, args.backend, admission)
     rows, kept = [], {}
     chunk = 64  # full-panel signals of a chunk at a time
     for start in range(0, len(stream), chunk):

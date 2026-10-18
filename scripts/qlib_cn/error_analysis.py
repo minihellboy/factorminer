@@ -93,7 +93,6 @@ def main() -> None:
     book = rank <= args.topk
     fp, tp = book & (r5 < median), book & (r5 >= median)
     z = x.groupby(level="datetime").transform(lambda f: (f - f.mean()) / f.std()).clip(-5, 5)
-    dates = z.index.get_level_values("datetime")
     regime = pd.Timestamp(args.regime)
 
     def contrast(mask_a: pd.Series, mask_b: pd.Series) -> pd.DataFrame:
