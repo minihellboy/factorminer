@@ -79,6 +79,24 @@ evaluated formulas, 500+ model fits.
   Earnings surprise, announcement returns and shareholder concentration
   either lack long-side power in the book's candidates or lower the book as
   model inputs (ΔIR −0.16 [−0.31, −0.02]).
+- **Round 6: the book held the wrong part of the curve.** Every admission and
+  objective statistic measures the whole score curve; the top-50 book earns
+  only its top, where (A0) a model fitted on the top 125 names alone learns
+  nothing (stage 2 stops at one or two trees, IC within the candidates no
+  better than the base score), and (B) no outside data (margin, dragon-tiger,
+  industry lead-lag, Northbound) sharpens the top, although three of the four
+  carry whole-curve signals of the textbook sign. An OOS-aware admission
+  rule (C) keeps 0.39–0.52 of train partial IC instead of 0.29 and still does
+  not reach the top-50 book. The pre-registered pivot test shows where the
+  value went: the same appended libraries that lost on the top-50 book lift
+  Round 5's whole-curve `add0.5` book in every one of seven arms on CSI300
+  (shrink30 +0.32 [+0.10, +0.53]; reality check p 0.08), transfer to CSI500
+  (+0.31 [+0.10, +0.54], positive in all four windows; pooled +0.34
+  [+0.13, +0.56]), and flow data as model inputs lift CSI1000's
+  benchmark-relative book from IR 2.0 to 2.7 (+0.65 [+0.46, +0.86], all
+  four windows). Mining was never useless; it was judged by a book that
+  could not hold what it found. The program's objective moves to the
+  whole-curve book.
 - **Seed sets matter as much as most ideas.** The three-seed default book
   quoted at 1.26–1.29 is the best of the 35 three-seed subsets of seven
   seeds (mean 1.05, sd 0.10). Books are now judged with seven seeds.
@@ -892,6 +910,234 @@ decay out of sample. v41t5 is the best arm and ties old Flash. Effort high is
 significantly worse than h5 (t −2.1). Its libraries resemble old Flash's, so
 this is likely campaign luck rather than an effort effect, but max effort is
 the shipped default.
+
+### Round 6: the top of the score curve
+
+Every statistic above is a slope over the whole cross-section: MSE on all
+rows, RankIC, the partial IC. The book earns the mean of
+m(q) = E[r5 | rank(s) = q] over q in the top k/N only. After 2017 the curve
+is lopsided (CSI300 5-day excess by score ventile: bottom −44 bps, top three
++25/+23/+34 bps), so a model trained on every row spends its splits on
+losers and a factor that sharpens the bottom raises RankIC without touching
+the book. The relevant information coefficient is the one among the names
+the book could buy, IC_top = corr(s, r5 | s in the top 2.5k). Round 6 tests
+that reading in a fixed order: a winners-only model first (no mining, no
+campaign luck), a within-candidate gate on new data before any mining, an
+admission statistic that survives out of sample, and retargeted mining only
+if the first two pass.
+
+**A0, two-stage winners-only model** (`two_stage.py`). Stage 1 is the h5
+7-seed rank average. Its cross-fitted value on the train+valid span (5
+contiguous blocks, 6-day purge plus a 5-day embargo, each saved booster's
+tree count) and its saved prediction on the test days form a frozen per-window
+panel. The candidate set C_t is the top 125 names by s1; stage 2 is a
+LightGBM fitted on C_t rows only (5-day return standardised within C_t,
+Alpha158 plus s1), and the final score orders C_t by stage 2 above the rest
+by s1. Judged with the standard pooled, tradable, 7-seed comparison against
+h5 (IR 1.27, 2018–2025, three universes):
+
+| Stage-2 config | Book | dIR | 90% CI | NW t | per-universe t | sign agrees in 3/4 windows |
+| --- | --- | --- | --- | --- | --- | --- |
+| Qlib parameters | ts | +0.07 | [−0.16, +0.29] | 0.10 | 0.13 / −0.17 / 0.19 | no |
+| Qlib, blended with s1 | tsb | +0.11 | [−0.05, +0.26] | 0.98 | 1.61 / −0.25 / 0.56 | no |
+| min_data_in_leaf 300, colsample 0.7 | tsr | +0.26 | [+0.04, +0.47] | 1.41 | 0.19 / 1.27 / 0.92 | CSI300 2/4 |
+| same, blended | tsrb | +0.06 | [−0.10, +0.23] | 0.59 | 0.87 / 0.10 / 0.27 | no |
+| slow31 (lr 0.03, L1 0) | tss | +0.07 | [−0.16, +0.29] | 0.12 | −0.72 / 0.33 / 0.30 | no |
+| slow31, blended | tssb | −0.08 | [−0.23, +0.06] | −0.85 | 1.06 / −1.56 / −0.44 | no |
+
+Reality-check p over the four Qlib/reg books is 0.22 (CSI300), 0.16
+(CSI500) and 0.31 (CSI1000). The pre-registered rule (CI above 0, sign in
+3 of 4 windows in every universe, early windows confirm) fails for every
+book. The mechanism is visible in the fits: with Qlib's parameters stage 2
+stops after one or two trees on 200k rows, and within C_t the stage-2
+score's IC_top is no better than s1's (CSI300 0.007 vs 0.013; CSI500 0.001
+vs −0.003; CSI1000 0.006 vs −0.004). The top of the score contains almost
+no signal that Alpha158 can learn, which is the diagnosis stated as a
+measurement. Early-window confirmation (`spec_two_stage_early.json`):
+pooled over CSI300 wf2012–2016 and CSI500 wf2014–2016, tsr −0.14
+[−0.40, +0.12] (t −0.70), tsrb −0.21 [−0.44, 0.00], tss −0.03, tssb −0.07;
+every variant is negative on CSI300 (tsrb t −2.07) and positive on CSI500
+(tss +0.60 [−0.03, +1.24], reality-check p 0.08 over four books). No
+confirmation. A0 is closed: changing n does not change what the model can
+learn at the top.
+
+**B, new data gated within C_t.** Three flow sources were fetched point in
+time (`fetch_margin.py`, `fetch_northbound.py`, `fetch_lhb.py`; AkShare,
+one call per day or per stock): per-security margin financing and
+securities lending balances from both exchanges, HKEX per-stock Northbound
+holdings (2017-03 to 2024-08, when daily disclosure stopped), and the
+dragon-tiger list. `flow_factors.py` turns them into daily features shifted
+one trading day and scaled by 20-day turnover value; `book_diagnostics.py
+screen --cand 125` judges each feature by the upper-minus-lower-half 5-day
+spread inside the candidate set. The gate: t > 2 in at least two of three
+universes and |rho| with s1 below 0.3.
+| Source (features, coverage) | Best within-C_t spread, bps per 5 days (t): CSI300 | CSI500 | CSI1000 | Whole-curve pattern (decile excess, t) | Gate |
+| --- | --- | --- | --- | --- | --- |
+| Dragon-tiger list (`lhb_on20`, `lhb_net20`, `lhb_last`; 2010–) | −15 (−0.8) on20 | +66 (0.5) last | +37 (0.6) last | listed names lose: top decile −14 / −21 / −52 (t −1.1 / −2.0 / −6.3) | fails |
+| Margin financing and lending (`mg_fin_chg5/20`, `mg_buy5`, `mg_short_chg5`, `mg_fin_level`; 2017–, eligible names only) | −13 (−2.3) fin_chg20 | +10 (1.4) buy5 | +7 (1.0) short_chg5 | 20-day financing inflow is contrarian: top decile −11 / −6 / −12, bottom +13 / +6 / +15 (t 2.1 / 1.2 / 2.6) | fails (1 of 3) |
+| Industry lead-lag (`ll_lead5/20`, `ll_gap5`, `ll_ind5`, `ll_size_rank`; point-in-time Eastmoney industry, top-3 float-cap leaders) | +6 (0.7) lead20 | +16 (2.3) lead5 | +11 (1.4) size_rank | names that outran their leaders lose: `ll_gap5` bottom decile −3 / −7 / −35 (t −0.4 / −1.0 / −5.5) | fails (1 of 3) |
+| Northbound holdings (`nb_pct`, `nb_chg5/20/60`, `nb_flow5`; 2017-03 to 2024-08; preliminary, 1,404 of ~3,600 names fetched) | +5 (0.7) chg60 | +5 (0.6) pct | +7 (0.6) flow5 | five-day net buying wins: top decile +17 / +22 / +36 (t 2.2 / 2.8 / 4.1) | fails |
+
+Every source is new information (|rho| with the score at most 0.2, inside
+C_t at most 0.12) and three of the four carry a whole-curve signal with the
+sign the literature gives it: dragon-tiger attention and margin inflows mark
+losers, Northbound buying marks winners (strongest in the small caps it
+covers least). None of it sharpens the top. Of the 54 within-C_t tests, two
+have |t| above 2, one negative and one positive, in different universes;
+chance at the 5% level gives 2.7. The kill criterion of B applies: no outside
+data passes the within-candidate gate, so retargeted mining (A1) is not run
+(it needs inputs the top of the score does not have), and the program pivots
+to the whole-curve book. That pivot is itself a test of the diagnosis, and
+it is pre-registered (`docs/registrations/spec_pivot_relative.json`): a gain
+in the whole-curve statistic that never reached the top-50 book should reach
+a book that holds the whole curve.
+**Pivot test: does the whole-curve gain reach the whole-curve book?**
+(`spec_pivot_relative.json`, written before any library or flow score was
+simulated as a benchmark-relative book.) The books are Round 5's `add0.5`
+and `excl0.2` at rate 0.1, after cost, over the cost-free float-cap replica;
+the statistic is the paired difference in replica-relative IR against the
+same book on the h5 score (block-bootstrap 90% interval). P1 takes the
+CSI300 7-seed runs that already exist with a mined library appended to
+Alpha158: on the top-50 book these added +0.002 to +0.004 RankIC and −0.35
+to +0.07 IR (the Round 6 C table above). As whole-curve books, 2018–2025:
+
+| Library appended to Alpha158 (CSI300) | add0.5 IR | dIR vs h5 | 90% CI | NW t | per window 2018/20/22/24 | excl0.2 IR | dIR vs h5 | 90% CI |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| h5 alone | 1.11 | – | – | – | – | 0.72 | – | – |
+| shrink30 (primary arm) | 1.43 | +0.32 | [+0.10, +0.53] | 2.18 | −0.02 / +0.20 / +0.53 / +0.42 | 1.09 | +0.37 | [+0.09, +0.67] |
+| marginal (plain rule) | 1.25 | +0.13 | [−0.12, +0.37] | 1.23 | −0.27 / +0.13 / +0.52 / +0.04 | 1.00 | +0.27 | [−0.03, +0.58] |
+| block4 | 1.23 | +0.11 | [−0.10, +0.32] | 0.86 | −0.11 / +0.08 / +0.25 / +0.19 | 0.95 | +0.23 | [+0.00, +0.48] |
+| block4m | 1.21 | +0.10 | [−0.12, +0.30] | 0.87 | −0.51 / +0.08 / +0.23 / +0.36 | 0.86 | +0.14 | [−0.12, +0.40] |
+| shrink25 | 1.17 | +0.05 | [−0.15, +0.24] | 0.78 | −0.15 / −0.13 / +0.34 / +0.11 | 0.93 | +0.21 | [−0.07, +0.50] |
+| block4shrink | 1.20 | +0.09 | [−0.12, +0.29] | 0.85 | −0.18 / +0.03 / +0.35 / +0.13 | 0.88 | +0.15 | [−0.09, +0.40] |
+| v41t5 (DeepSeek, best top-50 arm) | 1.26 | +0.15 | [−0.12, +0.39] | 1.54 | −0.16 / −0.14 / +0.78 / +0.16 | 0.95 | +0.23 | [−0.07, +0.54] |
+
+Reality-check p over the seven arms: 0.083 (`add0.5`), 0.091 (`excl0.2`).
+The registered rule (primary interval above zero, sign agreement in at
+least two other arms) is met: every one of the fourteen library books beats
+its h5 counterpart, where on the top-50 book five of the same seven
+libraries lost. The same libraries, the same fits, the same days; only the
+part of the curve the book holds differs. Two cautions are written into the
+reading. shrink30 was named primary from CSI300 test statistics (the best
+retention and RankIC gain in C), so its interval is optimistic and the
+other six arms, +0.05 to +0.15 on `add0.5`, are the unselected estimate;
+and the gain sits in 2022–2025, with wf2018 flat or negative in every arm.
+The reality check at 0.08–0.09 says the family as a whole is at the edge of
+what chance produces, not comfortably past it.
+**Transfer to CSI500** (registered as the `transfer` key of the spec before
+any CSI500 export). Every P1 library was mined on CSI300 and shrink30 was
+named primary from CSI300 test statistics, so CSI500 is the first untouched
+data for the question. The three arms with distinct provenance were exported
+on the CSI500 panel window by window (`csi500_wf*.yaml`), appended to
+Alpha158 under h5 (7 seeds, `lib_<arm>_h5_lgb_s*`), and judged against the
+CSI500 h5 books, 2018–2025:
+
+| Library (mined on CSI300, applied to CSI500) | Top-50 IR h5 → lib | dIR [90% CI] | dRankIC (t) | add0.5 IR h5 → lib | dIR [90% CI] | per window | excl0.2 dIR [90% CI] | pooled CSI300+CSI500 add0.5 dIR [90% CI], NW t |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| shrink30 (primary) | 0.91 → 0.99 | +0.08 [−0.26, +0.41] | +0.006 (5.1) | 1.04 → 1.35 | +0.31 [+0.10, +0.54] | +0.62 / +0.28 / +0.46 / +0.08 | +0.35 [+0.12, +0.61] | +0.34 [+0.13, +0.56], 3.0 |
+| marginal (plain rule) | 0.91 → 0.81 | −0.10 [−0.46, +0.24] | +0.006 (4.9) | 1.04 → 1.32 | +0.28 [+0.05, +0.53] | +0.77 / +0.28 / +0.30 / +0.02 | +0.39 [+0.15, +0.66] | +0.22 [−0.03, +0.47], 2.2 |
+| v41t5 (DeepSeek) | 0.91 → 1.04 | +0.12 [−0.20, +0.44] | +0.004 (3.8) | 1.04 → 1.10 | +0.07 [−0.15, +0.29] | +0.80 / +0.07 / +0.12 / −0.15 | +0.03 [−0.17, +0.25] | +0.10 [−0.14, +0.33], 1.8 |
+
+The transfer rule is met: the primary arm is positive on CSI500 in every
+window, the pooled interval is above zero, and the plain-rule library agrees.
+The libraries also carry their RankIC across universes (+0.004 to +0.006,
+t 4–5, on a universe none of them saw), and as before that RankIC does not
+reach the top-50 book (−0.10 to +0.12, intervals spanning zero) while it
+reaches the whole-curve book. The pattern now holds on two universes, two
+books and two sources of whole-curve information, with the pre-registered
+early-window and transfer checks passed where they could be run.
+**P2, flow data as model inputs.** The thirteen point-in-time flow
+features that are complete (margin, dragon-tiger, industry lead-lag; the
+Northbound arm follows when its fetch completes) appended to Alpha158 under
+h5, 7 seeds, runs `flow_h5_lgb_s*`. Judged both ways, 2018–2025:
+
+| Universe | Flow share of model gain (top feature) | Top-50 IR h5 → flow | dIR [90% CI] | dRankIC (t) | dTop spread bps (t) | add0.5 IR h5 → flow | dIR [90% CI] | per window | excl0.2 dIR [90% CI] |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| CSI300 | 13% (`mg_fin_level` 2.0%) | 1.41 → 1.32 | −0.09 [−0.35, +0.18] | −0.004 (−4.0) | −0.4 (−0.7) | 1.11 → 1.14 | +0.03 [−0.18, +0.26] | +0.11 / +0.02 / −0.28 / +0.10 | +0.01 [−0.25, +0.27] |
+| CSI500 | 15% (`ll_gap5` 2.8%) | 0.91 → 1.02 | +0.11 [−0.20, +0.42] | −0.001 (−1.3) | +0.2 (0.4) | 1.04 → 1.11 | +0.07 [−0.08, +0.23] | +0.05 / +0.53 / +0.01 / −0.29 | +0.09 [−0.11, +0.28] |
+| CSI1000 | 20% (`lhb_last` 9.2%) | 0.76 → 0.98 | +0.22 [−0.07, +0.53] | +0.001 (0.8) | +1.9 (2.5) | 2.02 → 2.67 | +0.65 [+0.46, +0.86] | +1.07 / +0.79 / +0.34 / +0.44 | +0.50 [+0.30, +0.70] |
+| pooled | | 1.27 → 1.43 | +0.16 [−0.06, +0.38] | | | | +0.33 [+0.16, +0.50] (NW t 1.5) | | +0.28 [+0.11, +0.45] |
+
+The registered P2 rule (pooled `add0.5` interval above zero, sign agreement
+in two of three universes) is met, and the result is one universe's. In
+CSI1000 the flow-aware score lifts the whole-curve book from IR 2.0 to 2.7,
+positive in all four windows, the largest single gain in this document, and
+even its top-50 book improves (top spread +1.9 bps, t 2.5) although no flow
+feature passed the within-C_t gate on the h5 score: refitted, the model
+uses days-since-dragon-tiger-listing (9% of its gain) and the industry
+leaders' return to reshape the whole curve, and the top moves with it. In
+CSI300 the same inputs lower RankIC (−0.004, t −4.0) and leave both books
+where they were; CSI500 is flat. The flow data describe small caps: margin
+eligibility, dragon-tiger listings and Northbound coverage all thin out
+toward the large caps the h5 score already prices, and the loser tail that
+the benchmark-relative book harvests is a small-cap tail. Taken with P1,
+the diagnosis's converse holds in both tests: information that measures
+the whole curve, from mined libraries or from flow data, reaches the book
+that holds the whole curve and not the one that holds the top.
+
+**C, admission that survives out of sample** (`evaluation/marginal.py`).
+Three statistics turn the measured decay (admitted factors keep 27% of their
+train partial IC in walk-forward tests; |t| ≥ 6 factors keep 28%) into the
+rule: a block-robust t (`blocks`, `min_block_t`: the minimum over K
+contiguous purged blocks of the same-sign HAC t, or its mean minus one
+standard deviation), retention shrinkage (`retention`: expected test/train
+ratio by train |t| bin, from the 521-factor calibration; the gate is on
+|partial IC| × retention), and a regime weight (`regime_periods`,
+`regime_weight`) on the panel's last periods. `MarginalBasis.evaluate` takes
+the rule's statistics options, so `replay_admission.py` can replay a
+campaign's candidate stream under each rule. Replayed on the four
+walk-forward marginal campaigns and scored on their test splits:
+
+| Rule | Gate (on top of the campaign's) | Factors (4 windows) | Train partial IC | Test partial IC | Retention | Sign held | Composite test t |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| marginal | – | 121 | 0.0075 | 0.0022 | 0.29 | 63% | 1.17 |
+| block4 | min block t ≥ 1.0 (4 blocks) | 59 | 0.0090 | 0.0035 | 0.39 | 74% | 1.70 |
+| block4m | block t mean − sd ≥ 1.0 | 72 | 0.0089 | 0.0035 | 0.39 | 72% | 2.46 |
+| shrink25 | |IC| × retention(|t|) ≥ 0.0025 | 73 | 0.0092 | 0.0031 | 0.34 | 70% | 1.97 |
+| shrink30 | |IC| × retention(|t|) ≥ 0.0030 | 56 | 0.0103 | 0.0045 | 0.44 | 75% | 2.67 |
+| block4shrink | block4 and shrink25 | 48 | 0.0102 | 0.0050 | 0.49 | 81% | 2.68 |
+| regime3 (wf2022/24 only) | post-2017 periods weighted 3× | 25 | 0.0081 | 0.0042 | 0.52 | 81% | 2.44 |
+
+Test partial IC is beyond Alpha158 on the window's test split, oriented by
+the train sign; retention is test over train; the composite is the
+equal-weight sum of the library. Every rule admits fewer factors and keeps
+more of their value: the composite's test t doubles. Part of the higher
+retention is mechanical (a stricter gate also selects a higher train IC),
+so the composite t and the sign-held share are the fairer reading. Whether
+that reaches the book:
+
+| Library appended to Alpha158 (h5, 7 seeds, CSI300) | IR | dIR vs h5 | 90% CI | NW t | dRankIC (t) | dTop spread bps (t) |
+| --- | --- | --- | --- | --- | --- | --- |
+| h5 alone | 1.41 | – | – | – | – | – |
+| marginal (plain rule) | 1.33 | −0.08 | [−0.39, +0.21] | −0.33 | +0.0031 (2.2) | −1.4 (−2.2) |
+| block4 | 1.31 | −0.10 | [−0.41, +0.19] | −0.57 | +0.0020 (1.6) | −0.4 (−0.7) |
+| block4m | 1.29 | −0.11 | [−0.40, +0.15] | −0.63 | +0.0016 (1.3) | −1.1 (−1.8) |
+| shrink25 | 1.06 | −0.35 | [−0.60, −0.10] | −1.99 | +0.0028 (2.2) | −0.9 (−1.6) |
+| shrink30 | 1.48 | +0.07 | [−0.22, +0.35] | 0.44 | +0.0037 (2.8) | −0.7 (−1.1) |
+| block4shrink | 1.29 | −0.11 | [−0.40, +0.17] | −0.64 | +0.0031 (2.4) | −1.1 (−1.8) |
+
+Reality-check p over the six books is 0.64. The rules do what they were
+built to do, and it changes nothing for the book: every library still adds
+RankIC (+0.002 to +0.004) and still lowers the top-50 spread. Out-of-sample
+survival of price–volume factors is not the binding constraint; where on
+the curve their information sits is. C is kept as the admission rule for
+future campaigns because it halves the library at no cost to the book and
+doubles the composite's out-of-sample t, but it is not a lever on IR.
+
+**A1, retargeted mining** is built and gated. `MarginalBasis(zone_score=)`
+takes the frozen s1 panel (`stage1_panel.py` adds it to a window's panel as
+the leaf `s1`; `admission.zone_leaf: s1`): the contention zone is the top
+of s1, s1 joins the basis so it is residualised out of every candidate, and
+`zone_residual` refits the residualisation inside the zone. `error_analysis.py`
+replaces the generic "find orthogonal alpha" directive (`mining.task_brief`)
+with the residual-explanation task: on the train+valid span, held names
+whose 5-day return is below the C_t median are false positives, and the
+brief lists the Alpha158 features whose within-C_t z-score separates them
+from the true positives, by regime. On CSI300 wf2020 the book is right 52%
+of the time; the largest contrasts are small (|z| 0.02–0.04, |t| ≤ 3.7 over
+2,185 days, 158 tests) and most vanish after 2017 (VWAP0, KSFT); only the
+price–volume-change correlations (CORD20/30/60) and WVMA60 persist at
+t ≈ 2.3. Campaigns launch only if a B source passes the gate.
 
 ## Running
 

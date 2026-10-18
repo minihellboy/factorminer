@@ -16,5 +16,8 @@
     "why": "Every P1 library was mined on CSI300 panels and shrink30 was named primary from CSI300 test statistics (Round 6 C), so a CSI500 result is the first genuinely untouched data for this question. CSI1000 has no FactorMiner panel and is left out.",
     "arms": "The three P1 arms with distinct provenance: lib_rp_shrink30 (primary), lib_marginal (shipped rule), lib_v41t5 (different miner). Each CSI300 per-window library (the export's factors.csv name/formula) is evaluated on the CSI500 panel for the same window (evaluate_library.py, csi500_wf*.yaml = csi300 config with the universe changed), appended to Alpha158 under h5, 7 seeds, runs lib_<arm>_h5_lgb_s* in output/qlib_cn/csi500/wf*; then add0.5@r0.1 and excl0.2@r0.1 against the CSI500 h5 books, and the top-50 tradable book as the standard comparison.",
     "decision": "Transfer supported when CSI500 add0.5 dIR of the primary arm is positive and the CSI300+CSI500 pooled (day-averaged paired difference) 90% interval lies above zero, with at least one of the two other arms positive on CSI500. If CSI500 is negative for the primary arm, P1 is read as a CSI300-only result and the pivot stays provisional."
-  }
+  },
+  "P2_result": "2026-10-18 05:40: pooled add0.5 +0.33 [+0.16, +0.50] (NW t 1.5), excl0.2 +0.28 [+0.11, +0.45]; CSI1000 +0.65 [+0.46, +0.86] positive in all four windows (IR 2.02 -> 2.67), CSI500 +0.07, CSI300 +0.03; top-50 pooled +0.16 [-0.06, +0.38]. Rule met, one universe's result.",
+  "transfer_result": "2026-10-18 06:10: CSI500 add0.5 shrink30 +0.31 [+0.10, +0.54] (per window +0.62/+0.28/+0.46/+0.08), marginal +0.28 [+0.05, +0.53], v41t5 +0.07 [-0.15, +0.29]; pooled CSI300+CSI500 shrink30 +0.34 [+0.13, +0.56] NW t 3.0. Transfer rule met. Top-50 on CSI500: -0.10..+0.12, RankIC +0.004..+0.006 (t 4-5).",
+  "verdict": "Pivot supported: the program's objective moves to the whole-curve (benchmark-relative) book; admission statistics stay as they are."
 }
